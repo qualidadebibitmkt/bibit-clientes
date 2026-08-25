@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=6" />
+  <link rel="stylesheet" href="/styles.css?v=7" />
 </head>
 <body>
   <header class="topbar">
@@ -21,14 +21,6 @@
           <span class="picker-label" id="pickerLabel">Todos os clientes</span>
           <span class="picker-caret" aria-hidden="true">▾</span>
         </button>
-        <div class="picker-backdrop" id="pickerBackdrop" hidden></div>
-        <div class="picker-pop" id="pickerPop" hidden>
-          <div class="picker-top">
-            <input type="search" class="picker-search" id="pickerSearch" placeholder="Buscar cliente…" autocomplete="off" />
-            <button class="picker-close" id="pickerClose" aria-label="Fechar lista de clientes">✕</button>
-          </div>
-          <div class="picker-list" id="pickerList" role="listbox"></div>
-        </div>
       </div>
 
       <nav class="tabs" role="tablist" aria-label="Visões">
@@ -55,6 +47,15 @@
     <span id="footInfo"></span>
   </footer>
 
-  <script src="/app.js?v=6"></script>
+  <div class="picker-backdrop" id="pickerBackdrop" hidden></div>
+  <div class="picker-pop" id="pickerPop" hidden>
+    <div class="picker-top">
+      <input type="search" class="picker-search" id="pickerSearch" placeholder="Buscar cliente…" autocomplete="off" />
+      <button class="picker-close" id="pickerClose" aria-label="Fechar lista de clientes">✕</button>
+    </div>
+    <div class="picker-list" id="pickerList" role="listbox"></div>
+  </div>
+
+  <script src="/app.js?v=7"></script>
 </body>
 </html>

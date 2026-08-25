@@ -120,9 +120,7 @@ a:hover { text-decoration: underline; }
 }
 .picker-close:hover { background: var(--garrafa-3); }
 .picker-pop {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  position: fixed; /* filho do body: viewport real, imune a sticky/blur da topbar */
   width: 300px;
   max-height: 380px;
   z-index: 1000;

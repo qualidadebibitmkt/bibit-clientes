@@ -109,7 +109,16 @@
   }
   function openPicker() {
     document.body.classList.add('picker-open');
-    $('#pickerPop').hidden = false;
+    const pop = $('#pickerPop');
+    if (window.matchMedia('(min-width: 721px)').matches) {
+      const r = $('#pickerBtn').getBoundingClientRect();
+      pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - 312)) + 'px';
+      pop.style.top = (r.bottom + 8) + 'px';
+    } else {
+      pop.style.left = '';
+      pop.style.top = '';
+    }
+    pop.hidden = false;
     $('#pickerBackdrop').hidden = false;
     $('#pickerBtn').setAttribute('aria-expanded', 'true');
     buildPicker();
@@ -357,8 +366,10 @@
     // rede de seguranca: fecha no X ou em qualquer toque fora do seletor
     document.addEventListener('click', (e) => {
       if ($('#pickerPop').hidden) return;
-      if (e.target.closest('.picker-close') || !e.target.closest('.client-picker')) closePicker();
+      if (e.target.closest('.picker-close')) { closePicker(); return; }
+      if (!e.target.closest('.client-picker') && !e.target.closest('.picker-pop')) closePicker();
     });
+    window.addEventListener('resize', () => { if (!$('#pickerPop').hidden) closePicker(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     try {
