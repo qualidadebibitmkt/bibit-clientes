@@ -13,6 +13,16 @@ const LISTS = {
   webdesign:  { id: '901713153156', name: 'Web Designer' },
 };
 const GROWTH_LIST = '901712531318';
+const CSAT_LIST = '901713333681'; // CSAT - Envios
+
+// Custom fields — CSAT - Envios (mesmo campo Cliente do restante do workspace)
+const CF_NPS = '93264d0a-8fe6-429a-b8e8-1366e21fcf55';
+const CF_CSAT_NOTAS = [
+  'be7c4a7a-7781-456c-b151-248507fb1f5e', // Gestor de Tráfego
+  '8e179fe1-98ef-4237-b617-2f9123a78f17', // Social Media
+  '465fa81c-df60-48cb-8cab-a2aa33f1a2fc', // RP Manager (UGC/Influencer)
+  '5214a872-383d-4a0b-bc6d-088c5a86bbc1', // Videomaker
+];
 
 // Custom fields — space Operação
 const CF_CLIENTE = 'b8d37b88-3192-4ec7-be2e-5efac5401179';
@@ -60,6 +70,11 @@ function cfDate(cf) {
   const n = Number(cf.value);
   return Number.isFinite(n) ? n : null;
 }
+function cfNumber(cf) {
+  if (!cf || cf.value === undefined || cf.value === null || cf.value === '') return null;
+  const n = Number(cf.value);
+  return Number.isFinite(n) ? n : null;
+}
 function cfText(cf) {
   if (!cf || cf.value === undefined || cf.value === null) return null;
   return String(cf.value).trim() || null;
@@ -92,10 +107,10 @@ function person(u) {
 }
 
 // ---------- ClickUp fetch ----------
-async function fetchAllTasks(token, listId) {
+async function fetchAllTasks(token, listId, includeClosed = false) {
   const out = [];
   for (let page = 0; page < 20; page++) {
-    const url = `${CLICKUP}/list/${listId}/task?page=${page}&include_closed=false&subtasks=true`;
+    const url = `${CLICKUP}/list/${listId}/task?page=${page}&include_closed=${includeClosed}&subtasks=true`;
     const res = await fetch(url, { headers: { Authorization: token } });
     if (res.status === 401 || res.status === 403) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' });
     if (!res.ok) throw new Error(`ClickUp ${res.status} na lista ${listId}`);
@@ -206,8 +221,9 @@ module.exports = async (req, res) => {
 
   try {
     const listKeys = Object.keys(LISTS);
-    const [growthTasks, ...opResults] = await Promise.all([
+    const [growthTasks, csatTasks, ...opResults] = await Promise.all([
       fetchAllTasks(token, GROWTH_LIST),
+      fetchAllTasks(token, CSAT_LIST, true), // respostas fechadas também contam
       ...listKeys.map((k) => fetchAllTasks(token, LISTS[k].id)),
     ]);
 
@@ -235,6 +251,40 @@ module.exports = async (req, res) => {
         tasks.push(shaped);
       }
     });
+
+    // ---- métricas por cliente (CSAT - Envios): mesma regra do painel da operação ----
+    // CSAT: média das notas preenchidas (>0) de todas as respostas do cliente.
+    // NPS: média do "NPS Geral" das respostas que têm a nota. Fórmulas do ClickUp não são usadas.
+    const agg = new Map(); // clienteOptionId -> { soma, n, npsSoma, npsN, respostas, ultima }
+    for (const t of csatTasks) {
+      const cli = cfDropdown(getCF(t, CF_CLIENTE));
+      let key = cli ? cli.id : null;
+      if (!key) {
+        const m = matcher(t.name);
+        if (m) key = m.id;
+      }
+      if (!key || key === TESTE_CLIENTE_OPTION) continue;
+      const notas = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id))).filter((n) => n != null && n > 0);
+      const nps = cfNumber(getCF(t, CF_NPS));
+      if (!notas.length && nps == null) continue; // envio sem resposta não conta
+      if (!agg.has(key)) agg.set(key, { soma: 0, n: 0, npsSoma: 0, npsN: 0, respostas: 0, ultima: 0 });
+      const a = agg.get(key);
+      for (const nota of notas) { a.soma += nota; a.n += 1; }
+      if (nps != null) { a.npsSoma += nps; a.npsN += 1; }
+      a.respostas += 1;
+      const created = Number(t.date_created) || 0;
+      if (created > a.ultima) a.ultima = created;
+    }
+    const round1 = (x) => Math.round(x * 10) / 10;
+    for (const c of clients) {
+      const a = agg.get(c.id);
+      c.metrics = a ? {
+        csat: a.n ? round1(a.soma / a.n) : null,
+        nps: a.npsN ? round1(a.npsSoma / a.npsN) : null,
+        respostas: a.respostas,
+        ultimaResposta: a.ultima || null,
+      } : { csat: null, nps: null, respostas: 0, ultimaResposta: null };
+    }
 
     res.status(200).json({
       generatedAt: now,

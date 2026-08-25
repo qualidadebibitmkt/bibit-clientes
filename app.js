@@ -70,6 +70,16 @@
   const tasksOf = (id) => state.data.tasks.filter((t) => t.clienteId === id);
   const filteredTasks = () => (state.cliente ? tasksOf(state.cliente) : state.data.tasks);
 
+  // fórmula oficial da Bibit: (totais − atrasadas) ÷ totais; zero tarefa = 100%
+  function prodOf(ts) {
+    const abertas = ts.filter(isOpen);
+    if (!abertas.length) return 100;
+    const late = abertas.filter(isLate).length;
+    return Math.round(((abertas.length - late) / abertas.length) * 1000) / 10;
+  }
+  const fmtNota = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+  const metaClass = (v, meta) => (v == null ? '' : v >= meta ? ' hit' : ' miss');
+
   function nextPost(tasks) {
     const tk = todayKey();
     return tasks
@@ -158,6 +168,7 @@
     const open = ts.filter(isOpen).length;
     const late = ts.filter(isLate).length;
     const np = nextPost(ts);
+    const m = c.metrics || {};
     return `<button class="card" data-id="${c.id}">
       <div class="card-head">${glass(c.flag, 26)}
         <div><div class="card-name">${esc(c.name)}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
@@ -166,6 +177,7 @@
         <span><strong>${open}</strong> abertas</span>
         ${late ? `<span class="late"><strong>${late}</strong> atrasadas</span>` : ''}
         ${np ? `<span class="next">post <strong>${fmtCurto(np.calDate || np.dataAgendamento)}</strong></span>` : ''}
+        ${m.csat != null ? `<span class="csat${m.csat >= 9 ? ' hit' : ' miss'}">CSAT <strong>${fmtNota(m.csat)}</strong></span>` : ''}
       </div>
     </button>`;
   }
@@ -188,6 +200,8 @@
       .map(([k, r]) => `<span class="team-cell"><span class="role">${r}</span>${c.team[k].map((p) => `<span class="avatar" title="${esc(p.name)}"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>`).join('')}<span>${esc(c.team[k].map((p) => p.name.split(' ')[0]).join(', '))}</span></span>`)
       .join('');
 
+    const m = c.metrics || {};
+    const prod = prodOf(ts);
     el.innerHTML = `
       <div class="ficha">
         <div class="ficha-glass">${glass(c.flag, 62, true)}${glassCaption(c.flag)}</div>
@@ -206,6 +220,25 @@
             ${item('Produtos', c.produtos.length ? `<span class="chips">${c.produtos.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</span>` : '')}
           </div>
           ${team ? `<div class="team-row">${team}</div>` : ''}
+        </div>
+      </div>
+      <p class="eyebrow">A prova do cliente</p>
+      <div class="metric-row">
+        <div class="metric${metaClass(m.csat, 9)}">
+          <div class="metric-num">${fmtNota(m.csat)}</div>
+          <div class="metric-label">CSAT · meta ≥ 9</div>
+        </div>
+        <div class="metric${metaClass(m.nps, 9)}">
+          <div class="metric-num">${fmtNota(m.nps)}</div>
+          <div class="metric-label">NPS · meta ≥ 9</div>
+        </div>
+        <div class="metric${metaClass(prod, 95)}">
+          <div class="metric-num">${prod.toLocaleString('pt-BR')}<span class="metric-unit">%</span></div>
+          <div class="metric-label">Produtividade · meta ≥ 95%</div>
+        </div>
+        <div class="metric">
+          <div class="metric-num">${m.respostas || 0}</div>
+          <div class="metric-label">respostas CSAT${m.ultimaResposta ? ` · última ${fmtCurto(m.ultimaResposta)}` : ''}</div>
         </div>
       </div>
       <p class="eyebrow">Próximos posts</p>
