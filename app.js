@@ -1,7 +1,8 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 8;
+  const VERSION = 9;
+  console.log('[bibit-clientes] v' + 9);
 
   const FN = {
     social:      { name: 'Social Media',  color: 'var(--fn-social)' },
@@ -118,10 +119,12 @@
     render();
   }
   function openPicker() {
-    document.body.classList.add('picker-open');
     const pop = $('#pickerPop');
-    if (window.matchMedia('(min-width: 721px)').matches) {
-      const r = $('#pickerBtn').getBoundingClientRect();
+    if (!pop) return;
+    document.body.classList.add('picker-open');
+    const btn = $('#pickerBtn');
+    if (btn && window.matchMedia('(min-width: 721px)').matches) {
+      const r = btn.getBoundingClientRect();
       pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - 312)) + 'px';
       pop.style.top = (r.bottom + 8) + 'px';
     } else {
@@ -129,19 +132,25 @@
       pop.style.top = '';
     }
     pop.hidden = false;
-    $('#pickerBackdrop').hidden = false;
-    $('#pickerBtn').setAttribute('aria-expanded', 'true');
+    const bd = $('#pickerBackdrop');
+    if (bd) bd.hidden = false;
+    if (btn) btn.setAttribute('aria-expanded', 'true');
     buildPicker();
-    // no celular, focar sobe o teclado e engole a tela — só foca no desktop
-    if (window.matchMedia('(min-width: 721px)').matches) $('#pickerSearch').focus();
+    const s = $('#pickerSearch');
+    if (s && window.matchMedia('(min-width: 721px)').matches) s.focus();
   }
   function closePicker() {
     document.body.classList.remove('picker-open');
-    $('#pickerPop').hidden = true;
-    $('#pickerBackdrop').hidden = true;
-    $('#pickerBtn').setAttribute('aria-expanded', 'false');
-    $('#pickerSearch').value = '';
+    const pop = $('#pickerPop');
+    if (pop) pop.hidden = true;
+    const bd = $('#pickerBackdrop');
+    if (bd) bd.hidden = true;
+    const btn = $('#pickerBtn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    const s = $('#pickerSearch');
+    if (s) s.value = '';
   }
+  window.__fecharSeletor = () => closePicker();
 
   // ---------- visão geral ----------
   function renderGeral(el) {
@@ -365,22 +374,23 @@
   async function boot() {
     document.querySelectorAll('.tab').forEach((t) =>
       t.addEventListener('click', () => { state.view = t.dataset.view; render(); }));
-    $('#pickerBtn').addEventListener('click', () => ($('#pickerPop').hidden ? openPicker() : closePicker()));
     $('#pickerSearch').addEventListener('input', buildPicker);
     $('#pickerList').addEventListener('click', (e) => {
       const b = e.target.closest('.picker-item');
       if (b) setCliente(b.dataset.id || null);
     });
     $('#clientSelect').addEventListener('change', (e) => setCliente(e.target.value || null));
-    $('#pickerClose').addEventListener('click', closePicker);
-    $('#pickerBackdrop').addEventListener('click', closePicker);
-    // rede de seguranca: fecha no X ou em qualquer toque fora do seletor
-    document.addEventListener('click', (e) => {
-      if ($('#pickerPop').hidden) return;
-      if (e.target.closest('.picker-close')) { closePicker(); return; }
-      if (!e.target.closest('.client-picker') && !e.target.closest('.picker-pop')) closePicker();
-    });
-    window.addEventListener('resize', () => { if (!$('#pickerPop').hidden) closePicker(); });
+    // PONTO ÚNICO de abre/fecha do seletor: fase de captura, roda antes de qualquer
+    // outro handler da página e não depende de bubbling nem de listeners nos elementos.
+    document.addEventListener('pointerdown', (e) => {
+      const pop = $('#pickerPop');
+      if (!pop) return;
+      const noBtn = e.target.closest('#pickerBtn');
+      if (pop.hidden) { if (noBtn) openPicker(); return; }
+      if (e.target.closest('#pickerClose')) { closePicker(); return; }
+      if (!e.target.closest('#pickerPop')) closePicker();
+    }, true);
+    window.addEventListener('resize', () => { const p = $('#pickerPop'); if (p && !p.hidden) closePicker(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     try {
