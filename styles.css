@@ -540,3 +540,179 @@ a:hover { text-decoration: underline; }
   .pour::after { animation: none; height: 60%; }
   .card { transition: none; }
 }
+
+/* ==========================================================
+   TEMA ADEGA — camada de atmosfera sobre a base
+   ========================================================== */
+:root {
+  --madeira-0: #3a2418;
+  --madeira-1: #55351f;
+  --madeira-2: #6b4526;
+  --rolha: #c8a877;
+  --luz: rgba(232, 169, 61, 0.16);
+}
+
+/* --- porão: luz de lâmpada no topo, sombra nos cantos, grão de madeira --- */
+body {
+  background:
+    radial-gradient(760px 320px at 50% -80px, var(--luz), transparent 70%),
+    radial-gradient(1100px 600px at 88% -10%, rgba(232, 169, 61, 0.05), transparent 62%),
+    linear-gradient(180deg, var(--garrafa-1), var(--garrafa-0) 78%);
+  position: relative;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-linear-gradient(92deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 7px),
+    radial-gradient(120% 80% at 50% 40%, transparent 55%, rgba(0,0,0,0.42) 100%);
+  mix-blend-mode: multiply;
+}
+.topbar, #app, .foot { position: relative; z-index: 1; }
+
+/* --- barra superior: ripa de madeira embaixo --- */
+.topbar {
+  border-bottom: 0;
+  box-shadow:
+    0 3px 0 0 var(--madeira-1),
+    0 4px 0 0 rgba(0,0,0,0.35),
+    0 14px 24px -14px rgba(0,0,0,0.7);
+}
+
+/* --- cada card é uma garrafa na prateleira: rótulo + plinto de madeira --- */
+.cards { gap: 16px 14px; }
+.card {
+  position: relative;
+  gap: 10px;
+  padding: 15px 15px 13px;
+  background:
+    linear-gradient(180deg, rgba(243,236,218,0.045), transparent 42%),
+    var(--garrafa-2);
+  border: 1px solid rgba(243, 236, 218, 0.16);
+  border-radius: 11px 11px 4px 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(243,236,218,0.07),
+    0 7px 0 -3px var(--madeira-1),
+    0 9px 0 -3px rgba(0,0,0,0.5),
+    0 16px 20px -14px rgba(0,0,0,0.85);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  background:
+    linear-gradient(180deg, rgba(243,236,218,0.07), transparent 42%),
+    var(--garrafa-3);
+  box-shadow:
+    inset 0 1px 0 rgba(243,236,218,0.1),
+    0 11px 0 -3px var(--madeira-1),
+    0 13px 0 -3px rgba(0,0,0,0.5),
+    0 22px 26px -16px rgba(0,0,0,0.9);
+}
+/* nome com cara de rótulo */
+.card-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15.5px;
+  letter-spacing: 0.02em;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(243, 236, 218, 0.14);
+}
+.card-plan {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--rolha);
+}
+.card-meta { padding-top: 2px; }
+
+/* --- números do topo: giz na lousa da adega --- */
+.stats-row {
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid rgba(243, 236, 218, 0.1);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.1)),
+    var(--garrafa-2);
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.35);
+}
+.stat { padding: 6px 16px; }
+.stat + .stat { border-left: 1px solid rgba(243, 236, 218, 0.1); }
+.stat-btn { margin: 0; border-radius: 8px; }
+.stat .stat-num { font-size: 32px; }
+.stat .stat-label {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--creme-45);
+}
+
+.eyebrow { color: var(--rolha); }
+
+/* --- ficha do cliente: moldura de rótulo e luz na taça --- */
+.ficha {
+  background:
+    linear-gradient(180deg, rgba(243,236,218,0.05), transparent 30%),
+    var(--garrafa-2);
+  border: 1px solid rgba(243, 236, 218, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(243, 236, 218, 0.06),
+    0 8px 0 -4px var(--madeira-1),
+    0 24px 34px -22px rgba(0,0,0,0.9);
+}
+.ficha-glass {
+  position: relative;
+  border-right: 1px solid rgba(243, 236, 218, 0.1);
+}
+.ficha-glass::before {
+  content: "";
+  position: absolute;
+  top: -14px; left: 50%;
+  width: 150px; height: 150px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, var(--luz), transparent 65%);
+  pointer-events: none;
+}
+.ficha-title { letter-spacing: 0.01em; }
+.chip {
+  background: rgba(200, 168, 119, 0.1);
+  border-color: rgba(200, 168, 119, 0.35);
+  color: var(--rolha);
+}
+
+/* --- calendário: engradado de madeira --- */
+.cal-cell {
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.16), transparent 30%),
+    var(--garrafa-2);
+  border: 1px solid rgba(243, 236, 218, 0.09);
+  border-bottom: 3px solid var(--madeira-0);
+  border-radius: 6px 6px 3px 3px;
+  box-shadow: inset 0 1px 0 rgba(243,236,218,0.05);
+}
+.cal-cell.is-today {
+  border-color: var(--ambar);
+  border-bottom-color: var(--ambar);
+  box-shadow: inset 0 0 22px rgba(232, 169, 61, 0.14);
+}
+.cal-dow { color: var(--rolha); }
+.post-pill { border-radius: 4px; }
+
+/* --- blocos por função: placa de prateleira --- */
+.fn-head {
+  padding-bottom: 9px;
+  border-bottom-width: 3px;
+  border-radius: 2px;
+}
+.fn-name { letter-spacing: 0.01em; }
+
+@media (max-width: 720px) {
+  .stats-row { padding: 12px; }
+  .stat { padding: 6px 10px; }
+  .stat + .stat { border-left: 0; }
+  .ficha-glass { border-right: 0; border-bottom: 1px solid rgba(243,236,218,0.1); padding-bottom: 14px; }
+}

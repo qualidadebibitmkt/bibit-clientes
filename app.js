@@ -319,6 +319,11 @@
     });
     $('#pickerClose').addEventListener('click', closePicker);
     $('#pickerBackdrop').addEventListener('click', closePicker);
+    // rede de seguranca: fecha no X ou em qualquer toque fora do seletor
+    document.addEventListener('click', (e) => {
+      if ($('#pickerPop').hidden) return;
+      if (e.target.closest('.picker-close') || !e.target.closest('.client-picker')) closePicker();
+    });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     try {
