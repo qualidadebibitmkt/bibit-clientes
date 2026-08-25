@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bibit · Clientes &amp; Operação</title>
+  <meta name="robots" content="noindex" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">BIBIT</span>
+      <span class="brand-tag">marketing para bebidas</span>
+    </div>
+
+    <div class="controls">
+      <div class="client-picker" id="clientPicker">
+        <button class="picker-btn" id="pickerBtn" aria-haspopup="listbox" aria-expanded="false">
+          <span class="picker-glass" id="pickerGlass"></span>
+          <span class="picker-label" id="pickerLabel">Todos os clientes</span>
+          <span class="picker-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="picker-pop" id="pickerPop" hidden>
+          <input type="search" class="picker-search" id="pickerSearch" placeholder="Buscar cliente…" autocomplete="off" />
+          <div class="picker-list" id="pickerList" role="listbox"></div>
+        </div>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Visões">
+        <button class="tab is-active" data-view="geral" role="tab" aria-selected="true">Visão geral</button>
+        <button class="tab" data-view="calendario" role="tab" aria-selected="false">Calendário</button>
+        <button class="tab" data-view="funcoes" role="tab" aria-selected="false">Funções</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app">
+    <div class="state state-loading" id="stateLoading">
+      <div class="pour" aria-hidden="true"></div>
+      <p>Enchendo os copos…</p>
+    </div>
+    <div class="state" id="stateError" hidden></div>
+
+    <section id="viewGeral" class="view" hidden></section>
+    <section id="viewCalendario" class="view" hidden></section>
+    <section id="viewFuncoes" class="view" hidden></section>
+  </main>
+
+  <footer class="foot">
+    <span id="footInfo"></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
