@@ -762,3 +762,26 @@ body::before {
 @media (max-width: 720px) {
   body.picker-open { overflow: hidden; }
 }
+
+
+/* --- mobile: seletor nativo do sistema no lugar do popover --- */
+.client-select { display: none; }
+@media (max-width: 720px) {
+  .picker-btn { display: none; }
+  .client-select {
+    display: block;
+    width: 100%;
+    padding: 11px 14px;
+    font: 500 14px var(--ui);
+    color: var(--creme);
+    background: var(--garrafa-2);
+    border: 1px solid var(--linha);
+    border-radius: var(--radius-sm);
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--creme-45) 50%), linear-gradient(135deg, var(--creme-45) 50%, transparent 50%);
+    background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+  }
+}

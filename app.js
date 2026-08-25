@@ -1,6 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
+  const VERSION = 8;
 
   const FN = {
     social:      { name: 'Social Media',  color: 'var(--fn-social)' },
@@ -99,8 +100,17 @@
         </button>`)
       .join('') || `<div class="picker-empty">Nenhum cliente com esse nome.</div>`;
   }
+  function buildSelect() {
+    const sel = $('#clientSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Todos os clientes</option>' +
+      state.data.clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    sel.value = state.cliente || '';
+  }
   function setCliente(id) {
     state.cliente = id || null;
+    const sel = $('#clientSelect');
+    if (sel) sel.value = state.cliente || '';
     const c = state.cliente ? clientById(state.cliente) : null;
     $('#pickerLabel').textContent = c ? c.name : 'Todos os clientes';
     $('#pickerGlass').innerHTML = c ? glass(c.flag, 13) : '';
@@ -361,6 +371,7 @@
       const b = e.target.closest('.picker-item');
       if (b) setCliente(b.dataset.id || null);
     });
+    $('#clientSelect').addEventListener('change', (e) => setCliente(e.target.value || null));
     $('#pickerClose').addEventListener('click', closePicker);
     $('#pickerBackdrop').addEventListener('click', closePicker);
     // rede de seguranca: fecha no X ou em qualquer toque fora do seletor
@@ -377,9 +388,10 @@
       const json = await res.json();
       if (!res.ok) throw json;
       state.data = json;
+      buildSelect();
       $('#stateLoading').hidden = true;
       const min = Math.max(0, Math.round((Date.now() - json.generatedAt) / 60000));
-      $('#footInfo').textContent = `Dados do ClickUp · atualizados ${min <= 0 ? 'agora' : `há ${min} min`} · cache de 5 min`;
+      $('#footInfo').textContent = `Dados do ClickUp · atualizados ${min <= 0 ? 'agora' : `há ${min} min`} · cache de 5 min · v${VERSION}`;
       render();
     } catch (err) {
       $('#stateLoading').hidden = true;
