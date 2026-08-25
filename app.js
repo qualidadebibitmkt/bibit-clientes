@@ -1,8 +1,8 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 10;
-  console.log('[bibit-clientes] v' + 10);
+  const VERSION = 11;
+  console.log('[bibit-clientes] v' + 11);
 
   const FN = {
     social:      { name: 'Social Media',  color: 'var(--fn-social)' },
@@ -180,17 +180,6 @@
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
-    el.addEventListener('click', onGeralClick);
-  }
-
-  function onGeralClick(e) {
-    const card = e.target.closest('.card');
-    if (card) { setCliente(card.dataset.id); return; }
-    const st = e.target.closest('.stat-btn');
-    if (st) {
-      state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag;
-      render();
-    }
   }
 
   function cardHTML(c) {
@@ -354,7 +343,6 @@
         ${sorted.length > 8 && !expanded ? `<button class="fn-more" data-fn="${k}">Mostrar todas (${sorted.length})</button>` : ''}
       </div>`;
     }).join('');
-    el.querySelectorAll('.fn-more').forEach((b) => b.addEventListener('click', () => { state.fnExpanded.add(b.dataset.fn); renderFuncoes(el); }));
   }
 
   // ---------- shell ----------
@@ -375,20 +363,26 @@
     document.querySelectorAll('.tab').forEach((t) =>
       t.addEventListener('click', () => { state.view = t.dataset.view; render(); }));
     $('#pickerSearch').addEventListener('input', buildPicker);
-    $('#pickerList').addEventListener('click', (e) => {
-      const b = e.target.closest('.picker-item');
-      if (b) setCliente(b.dataset.id || null);
-    });
     $('#clientSelect').addEventListener('change', (e) => setCliente(e.target.value || null));
-    // PONTO ÚNICO de abre/fecha do seletor: fase de captura, roda antes de qualquer
-    // outro handler da página e não depende de bubbling nem de listeners nos elementos.
+    // PONTO ÚNICO de interação: todas as ações de clique do dash passam por aqui,
+    // na fase de captura — o trilho que comprovadamente funciona em qualquer ambiente.
     document.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return; // só botão esquerdo / toque
       const pop = $('#pickerPop');
-      if (!pop) return;
-      const noBtn = e.target.closest('#pickerBtn');
-      if (pop.hidden) { if (noBtn) openPicker(); return; }
-      if (e.target.closest('#pickerClose')) { closePicker(); return; }
-      if (!e.target.closest('#pickerPop')) closePicker();
+      if (pop && !pop.hidden) {
+        const item = e.target.closest('.picker-item');
+        if (item) { setCliente(item.dataset.id || null); return; }
+        if (e.target.closest('#pickerClose')) { closePicker(); return; }
+        if (!e.target.closest('#pickerPop')) closePicker();
+        return; // com o seletor aberto, nada mais da página reage
+      }
+      if (e.target.closest('#pickerBtn')) { openPicker(); return; }
+      const card = e.target.closest('.card');
+      if (card && card.dataset.id) { setCliente(card.dataset.id); return; }
+      const st = e.target.closest('.stat-btn');
+      if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
+      const more = e.target.closest('.fn-more');
+      if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);
     window.addEventListener('resize', () => { const p = $('#pickerPop'); if (p && !p.hidden) closePicker(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
