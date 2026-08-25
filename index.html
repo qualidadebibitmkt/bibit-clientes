@@ -12,10 +12,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-name">BIBIT</span>
-      <span class="brand-tag">marketing para bebidas</span>
-    </div>
+    <a class="brand" href="/" aria-label="Bibit — marketing para bebidas"><span class="brand-fallback"></span></a>
 
     <div class="controls">
       <div class="client-picker" id="clientPicker">
@@ -24,8 +21,12 @@
           <span class="picker-label" id="pickerLabel">Todos os clientes</span>
           <span class="picker-caret" aria-hidden="true">▾</span>
         </button>
+        <div class="picker-backdrop" id="pickerBackdrop" hidden></div>
         <div class="picker-pop" id="pickerPop" hidden>
-          <input type="search" class="picker-search" id="pickerSearch" placeholder="Buscar cliente…" autocomplete="off" />
+          <div class="picker-top">
+            <input type="search" class="picker-search" id="pickerSearch" placeholder="Buscar cliente…" autocomplete="off" />
+            <button class="picker-close" id="pickerClose" aria-label="Fechar lista de clientes">✕</button>
+          </div>
           <div class="picker-list" id="pickerList" role="listbox"></div>
         </div>
       </div>

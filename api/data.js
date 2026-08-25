@@ -120,6 +120,9 @@ function shapeOperacaoTask(task, listKey) {
       : null,
     dueDate: task.due_date ? Number(task.due_date) : null,
     dataAgendamento: cfDate(getCF(task, CF_DATA_AGENDAMENTO)),
+    // data usada no calendário: agendamento explícito, ou vencimento quando é um post de social
+    calDate: cfDate(getCF(task, CF_DATA_AGENDAMENTO)) ||
+      (listKey === 'social' && /(^|\s)POST/i.test(task.name) && task.due_date ? Number(task.due_date) : null),
     clienteId: cliente ? cliente.id : null,
     clienteName: cliente ? cliente.name : null,
     assignees: (task.assignees || []).map(person).filter(Boolean),
@@ -156,6 +159,37 @@ function shapeCliente(task) {
   };
 }
 
+
+// ---------- matching de cliente por nome da task ----------
+const STOP = new Set(['BIBIT','MARKETING','SOCIAL','MEDIA','POST','POSTS','CALENDARIO','PLANO','DOSE','PRATA','OURO','DIAMANTE','PLATINA','PERSONALIZADO','ANTIGO','ONLINE','PARA','COM','DOS','DAS']);
+const tokens = (s) => norm(s).split(/[^A-Z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
+
+function buildClientMatcher(clients) {
+  // maiores nomes primeiro: match mais específico vence
+  const bySize = [...clients].sort((a, b) => b.matchName.length - a.matchName.length);
+  const withTokens = clients.map((c) => ({ c, toks: tokens(c.matchName) })).filter((x) => x.toks.length);
+  return (taskName) => {
+    const tn = norm(taskName);
+    // 1) nome do cliente contido no nome da task, com fronteira de palavra
+    for (const c of bySize) {
+      const re = new RegExp('(^|[^A-Z0-9])' + c.matchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Z0-9])');
+      if (re.test(tn)) return c;
+    }
+    // 2) interseção de tokens (cobre "Mythic" -> MYTHIC BEER, "Casa da Roça" -> CACHAÇA CASA DA ROÇA)
+    const tt = new Set(tokens(tn));
+    let best = null, bestScore = 0, bestHits = 0;
+    for (const { c, toks } of withTokens) {
+      const hits = toks.filter((t) => tt.has(t));
+      const score = hits.length / toks.length;
+      const strong = hits.some((t) => t.length >= 5) || hits.length >= 2 || (hits.length === toks.length && hits.length > 0);
+      if (score >= 0.5 && strong && (score > bestScore || (score === bestScore && hits.length > bestHits))) {
+        best = c; bestScore = score; bestHits = hits.length;
+      }
+    }
+    return best;
+  };
+}
+
 // ---------- handler ----------
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
@@ -185,18 +219,18 @@ module.exports = async (req, res) => {
       .map(({ _dataSaida, ...c }) => c)
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
-    const byName = new Map(clients.map((c) => [c.matchName, c]));
+    const matcher = buildClientMatcher(clients);
 
     const tasks = [];
     listKeys.forEach((k, i) => {
       for (const t of opResults[i]) {
         const shaped = shapeOperacaoTask(t, k);
         if (shaped.clienteId === TESTE_CLIENTE_OPTION) continue;
-        // fallback: tarefa sem dropdown, mas com nome de cliente conhecido no título
-        if (!shaped.clienteId && byName.has(norm(shaped.name))) {
-          const c = byName.get(norm(shaped.name));
-          shaped.clienteId = c.id;
-          shaped.clienteName = c.name;
+        // Nas tasks de post o dropdown Cliente costuma vir vazio:
+        // o cliente está no NOME da task ("Post 8 - Garrafaria Serra Negra - 08/26").
+        if (!shaped.clienteId) {
+          const c = matcher(shaped.name);
+          if (c) { shaped.clienteId = c.id; shaped.clienteName = c.name; }
         }
         tasks.push(shaped);
       }

@@ -20,6 +20,7 @@
     data: null,
     view: 'geral',
     cliente: null, // id da opção ou null = todos
+    flagFilter: null, // green|yellow|red|null
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -29,7 +30,8 @@
 
   // ---------- datas (BRT) ----------
   const keyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
-  const dayKey = (ms) => keyFmt.format(new Date(ms));
+  const utcKeyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dayKey = (ms) => (ms % 864e5 === 0 ? utcKeyFmt : keyFmt).format(new Date(ms));
   const todayKey = () => dayKey(Date.now());
   const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: 'short' });
   const fmtLongo = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -71,8 +73,8 @@
   function nextPost(tasks) {
     const tk = todayKey();
     return tasks
-      .filter((t) => t.dataAgendamento && dayKey(t.dataAgendamento) >= tk && isOpen(t))
-      .sort((a, b) => a.dataAgendamento - b.dataAgendamento)[0] || null;
+      .filter((t) => (t.calDate || t.dataAgendamento) && dayKey(t.calDate || t.dataAgendamento) >= tk && isOpen(t))
+      .sort((a, b) => (a.calDate || a.dataAgendamento) - (b.calDate || b.dataAgendamento))[0] || null;
   }
 
   // ---------- picker ----------
@@ -97,12 +99,15 @@
   }
   function openPicker() {
     $('#pickerPop').hidden = false;
+    $('#pickerBackdrop').hidden = false;
     $('#pickerBtn').setAttribute('aria-expanded', 'true');
     buildPicker();
-    $('#pickerSearch').focus();
+    // no celular, focar sobe o teclado e engole a tela — só foca no desktop
+    if (window.matchMedia('(min-width: 721px)').matches) $('#pickerSearch').focus();
   }
   function closePicker() {
     $('#pickerPop').hidden = true;
+    $('#pickerBackdrop').hidden = true;
     $('#pickerBtn').setAttribute('aria-expanded', 'false');
     $('#pickerSearch').value = '';
   }
@@ -114,25 +119,38 @@
     const all = state.data.tasks;
     const tk = todayKey();
     const in7 = all.filter((t) => {
-      if (!t.dataAgendamento || !isOpen(t)) return false;
-      const k = dayKey(t.dataAgendamento);
-      return k >= tk && (t.dataAgendamento - Date.now()) < 7 * 864e5;
+      const cd = t.calDate || t.dataAgendamento;
+      if (!cd || !isOpen(t)) return false;
+      return dayKey(cd) >= tk && (cd - Date.now()) < 7 * 864e5;
     }).length;
     const late = all.filter(isLate).length;
     const count = (f) => clients.filter((c) => c.flag === f).length;
 
+    const shown = state.flagFilter ? clients.filter((c) => c.flag === state.flagFilter) : clients;
+    const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes ativos</p>
       <div class="stats-row">
-        <div class="stat"><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div>
-        <div class="stat"><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div>
-        <div class="stat"><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div>
+        <button class="stat stat-btn${fsel('green')}" data-flag="green"><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></button>
+        <button class="stat stat-btn${fsel('yellow')}" data-flag="yellow"><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></button>
+        <button class="stat stat-btn${fsel('red')}" data-flag="red"><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></button>
         <div class="stat"><div class="stat-num ${late ? 'is-alert' : ''}">${late}</div><div class="stat-label">tarefas atrasadas</div></div>
         <div class="stat"><div class="stat-num is-amber">${in7}</div><div class="stat-label">posts nos próx. 7 dias</div></div>
       </div>
-      <div class="cards">${clients.map(cardHTML).join('')}</div>`;
+      <div class="cards">${shown.map(cardHTML).join('')}</div>
+      ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
-    el.querySelectorAll('.card').forEach((b) => b.addEventListener('click', () => setCliente(b.dataset.id)));
+    el.addEventListener('click', onGeralClick);
+  }
+
+  function onGeralClick(e) {
+    const card = e.target.closest('.card');
+    if (card) { setCliente(card.dataset.id); return; }
+    const st = e.target.closest('.stat-btn');
+    if (st) {
+      state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag;
+      render();
+    }
   }
 
   function cardHTML(c) {
@@ -147,7 +165,7 @@
       <div class="card-meta">
         <span><strong>${open}</strong> abertas</span>
         ${late ? `<span class="late"><strong>${late}</strong> atrasadas</span>` : ''}
-        ${np ? `<span class="next">post <strong>${fmtCurto(np.dataAgendamento)}</strong></span>` : ''}
+        ${np ? `<span class="next">post <strong>${fmtCurto(np.calDate || np.dataAgendamento)}</strong></span>` : ''}
       </div>
     </button>`;
   }
@@ -157,8 +175,8 @@
     const open = ts.filter(isOpen).length;
     const late = ts.filter(isLate).length;
     const posts = ts
-      .filter((t) => t.dataAgendamento && dayKey(t.dataAgendamento) >= todayKey() && isOpen(t))
-      .sort((a, b) => a.dataAgendamento - b.dataAgendamento)
+      .filter((t) => (t.calDate || t.dataAgendamento) && dayKey(t.calDate || t.dataAgendamento) >= todayKey() && isOpen(t))
+      .sort((a, b) => (a.calDate || a.dataAgendamento) - (b.calDate || b.dataAgendamento))
       .slice(0, 5);
 
     const item = (label, html) => (html ? `<div class="f-item"><div class="f-label">${label}</div><div class="f-value">${html}</div></div>` : '');
@@ -175,7 +193,7 @@
         <div class="ficha-glass">${glass(c.flag, 62, true)}${glassCaption(c.flag)}</div>
         <div>
           <h2 class="ficha-title">${esc(c.name)}</h2>
-          <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].dataAgendamento)}` : ''}</p>
+          <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
           <div class="ficha-grid">
             ${item('Plano', esc(c.plano))}
             ${item('Relatório', esc(c.tipoRelatorio))}
@@ -209,8 +227,9 @@
 
     const byDay = new Map();
     for (const t of filteredTasks()) {
-      if (!t.dataAgendamento) continue;
-      const k = dayKey(t.dataAgendamento);
+      const cd = t.calDate || t.dataAgendamento;
+      if (!cd) continue;
+      const k = dayKey(cd);
       if (!byDay.has(k)) byDay.set(k, []);
       byDay.get(k).push(t);
     }
@@ -221,7 +240,7 @@
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const pills = (byDay.get(k) || [])
         .sort((a, b) => FN_ORDER.indexOf(a.listKey) - FN_ORDER.indexOf(b.listKey))
-        .map((t) => `<a class="post-pill" style="--pill:${FN[t.listKey].color}" href="${esc(t.url)}" target="_blank" rel="noopener" title="${esc((t.clienteName ? t.clienteName + ' — ' : '') + t.name)}">
+        .map((t) => `<a class="post-pill${isOpen(t) ? '' : ' is-done'}" style="--pill:${FN[t.listKey].color}" href="${esc(t.url)}" target="_blank" rel="noopener" title="${esc((t.clienteName ? t.clienteName + ' — ' : '') + t.name)}">
             ${t.clienteName && !state.cliente ? `<span class="pill-client">${esc(t.clienteName)}</span>` : ''}<span class="pill-name">${esc(t.name)}</span>
           </a>`)
         .join('');
@@ -298,7 +317,8 @@
       const b = e.target.closest('.picker-item');
       if (b) setCliente(b.dataset.id || null);
     });
-    document.addEventListener('click', (e) => { if (!e.target.closest('.client-picker')) closePicker(); });
+    $('#pickerClose').addEventListener('click', closePicker);
+    $('#pickerBackdrop').addEventListener('click', closePicker);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     try {
