@@ -108,6 +108,7 @@
     render();
   }
   function openPicker() {
+    document.body.classList.add('picker-open');
     $('#pickerPop').hidden = false;
     $('#pickerBackdrop').hidden = false;
     $('#pickerBtn').setAttribute('aria-expanded', 'true');
@@ -116,6 +117,7 @@
     if (window.matchMedia('(min-width: 721px)').matches) $('#pickerSearch').focus();
   }
   function closePicker() {
+    document.body.classList.remove('picker-open');
     $('#pickerPop').hidden = true;
     $('#pickerBackdrop').hidden = true;
     $('#pickerBtn').setAttribute('aria-expanded', 'false');

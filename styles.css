@@ -104,7 +104,7 @@ a:hover { text-decoration: underline; }
 .picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 48;
+  z-index: 990;
   background: transparent;
 }
 .picker-top { display: flex; gap: 8px; align-items: center; padding: 10px 10px 0; }
@@ -125,7 +125,7 @@ a:hover { text-decoration: underline; }
   left: 0;
   width: 300px;
   max-height: 380px;
-  z-index: 49;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   background: var(--garrafa-2);
@@ -571,7 +571,8 @@ body::before {
     radial-gradient(120% 80% at 50% 40%, transparent 55%, rgba(0,0,0,0.42) 100%);
   mix-blend-mode: multiply;
 }
-.topbar, #app, .foot { position: relative; z-index: 1; }
+#app, .foot { position: relative; z-index: 1; }
+.topbar { z-index: 40; }
 
 /* --- barra superior: ripa de madeira embaixo --- */
 .topbar {
@@ -756,4 +757,10 @@ body::before {
 @media (max-width: 720px) {
   .metric { padding: 6px 10px; }
   .metric + .metric { border-left: 0; }
+}
+
+
+/* seletor aberto no mobile: trava o scroll do fundo */
+@media (max-width: 720px) {
+  body.picker-open { overflow: hidden; }
 }
