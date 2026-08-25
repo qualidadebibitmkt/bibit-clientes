@@ -1,8 +1,17 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 11;
-  console.log('[bibit-clientes] v' + 11);
+  const VERSION = 12;
+  console.log('[bibit-clientes] v' + 12);
+  // sensor de erros: qualquer falha de JS aparece escrita no rodapé
+  window.addEventListener('error', (e) => {
+    const f = document.querySelector('#footInfo');
+    if (f) f.textContent = '⚠ erro: ' + (e.message || 'desconhecido') + ' · v' + VERSION;
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const f = document.querySelector('#footInfo');
+    if (f) f.textContent = '⚠ erro: ' + (e.reason && e.reason.message ? e.reason.message : 'promessa rejeitada') + ' · v' + VERSION;
+  });
 
   const FN = {
     social:      { name: 'Social Media',  color: 'var(--fn-social)' },
@@ -89,21 +98,10 @@
       .sort((a, b) => (a.calDate || a.dataAgendamento) - (b.calDate || b.dataAgendamento))[0] || null;
   }
 
-  // ---------- picker ----------
-  function buildPicker() {
-    const list = $('#pickerList');
-    const items = [{ id: null, name: 'Todos os clientes', flag: null }, ...state.data.clients];
-    const q = ($('#pickerSearch').value || '').trim().toLowerCase();
-    list.innerHTML = items
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .map((c) => `<button class="picker-item${state.cliente === c.id ? ' is-current' : ''}" data-id="${c.id ?? ''}" role="option">
-          <span class="mini-glass">${c.id ? glass(c.flag, 13) : ''}</span><span>${esc(c.name)}</span>
-        </button>`)
-      .join('') || `<div class="picker-empty">Nenhum cliente com esse nome.</div>`;
-  }
+  // ---------- seletor de cliente (select nativo) ----------
   function buildSelect() {
     const sel = $('#clientSelect');
-    if (!sel) return;
+    if (!sel || !state.data) return;
     sel.innerHTML = '<option value="">Todos os clientes</option>' +
       state.data.clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
     sel.value = state.cliente || '';
@@ -112,45 +110,8 @@
     state.cliente = id || null;
     const sel = $('#clientSelect');
     if (sel) sel.value = state.cliente || '';
-    const c = state.cliente ? clientById(state.cliente) : null;
-    $('#pickerLabel').textContent = c ? c.name : 'Todos os clientes';
-    $('#pickerGlass').innerHTML = c ? glass(c.flag, 13) : '';
-    closePicker();
     render();
   }
-  function openPicker() {
-    const pop = $('#pickerPop');
-    if (!pop) return;
-    document.body.classList.add('picker-open');
-    const btn = $('#pickerBtn');
-    if (btn && window.matchMedia('(min-width: 721px)').matches) {
-      const r = btn.getBoundingClientRect();
-      pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - 312)) + 'px';
-      pop.style.top = (r.bottom + 8) + 'px';
-    } else {
-      pop.style.left = '';
-      pop.style.top = '';
-    }
-    pop.hidden = false;
-    const bd = $('#pickerBackdrop');
-    if (bd) bd.hidden = false;
-    if (btn) btn.setAttribute('aria-expanded', 'true');
-    buildPicker();
-    const s = $('#pickerSearch');
-    if (s && window.matchMedia('(min-width: 721px)').matches) s.focus();
-  }
-  function closePicker() {
-    document.body.classList.remove('picker-open');
-    const pop = $('#pickerPop');
-    if (pop) pop.hidden = true;
-    const bd = $('#pickerBackdrop');
-    if (bd) bd.hidden = true;
-    const btn = $('#pickerBtn');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-    const s = $('#pickerSearch');
-    if (s) s.value = '';
-  }
-  window.__fecharSeletor = () => closePicker();
 
   // ---------- visão geral ----------
   function renderGeral(el) {
@@ -362,21 +323,11 @@
   async function boot() {
     document.querySelectorAll('.tab').forEach((t) =>
       t.addEventListener('click', () => { state.view = t.dataset.view; render(); }));
-    $('#pickerSearch').addEventListener('input', buildPicker);
     $('#clientSelect').addEventListener('change', (e) => setCliente(e.target.value || null));
     // PONTO ÚNICO de interação: todas as ações de clique do dash passam por aqui,
     // na fase de captura — o trilho que comprovadamente funciona em qualquer ambiente.
     document.addEventListener('pointerdown', (e) => {
       if (e.button !== undefined && e.button !== 0) return; // só botão esquerdo / toque
-      const pop = $('#pickerPop');
-      if (pop && !pop.hidden) {
-        const item = e.target.closest('.picker-item');
-        if (item) { setCliente(item.dataset.id || null); return; }
-        if (e.target.closest('#pickerClose')) { closePicker(); return; }
-        if (!e.target.closest('#pickerPop')) closePicker();
-        return; // com o seletor aberto, nada mais da página reage
-      }
-      if (e.target.closest('#pickerBtn')) { openPicker(); return; }
       const card = e.target.closest('.card');
       if (card && card.dataset.id) { setCliente(card.dataset.id); return; }
       const st = e.target.closest('.stat-btn');
@@ -384,8 +335,6 @@
       const more = e.target.closest('.fn-more');
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);
-    window.addEventListener('resize', () => { const p = $('#pickerPop'); if (p && !p.hidden) closePicker(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     try {
       const res = await fetch('/api/data');

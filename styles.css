@@ -764,13 +764,10 @@ body::before {
 }
 
 
-/* --- mobile: seletor nativo do sistema no lugar do popover --- */
-.client-select { display: none; }
-@media (max-width: 720px) {
-  .picker-btn { display: none; }
-  .client-select {
+/* --- seletor nativo do navegador, em todas as telas --- */
+.client-select {
     display: block;
-    width: 100%;
+    min-width: 250px;
     padding: 11px 14px;
     font: 500 14px var(--ui);
     color: var(--creme);
@@ -783,7 +780,18 @@ body::before {
     background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
     background-size: 6px 6px;
     background-repeat: no-repeat;
-  }
+    padding: 11px 34px 11px 14px;
+    font: 500 14px var(--ui);
+    color: var(--creme);
+    background-color: var(--garrafa-2);
+    border: 1px solid var(--linha);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.client-select:hover { background-color: var(--garrafa-3); }
+.client-select option { background: #123324; color: #f3ecda; }
+@media (max-width: 720px) {
+  .client-select { width: 100%; min-width: 0; }
 }
 
 
