@@ -785,3 +785,11 @@ body::before {
     background-repeat: no-repeat;
   }
 }
+
+
+/* ==========================================================
+   ESCUDO: [hidden] SEMPRE esconde, mesmo quando o elemento
+   tem display definido em outra regra (causa raiz do seletor
+   que nunca fechava). Fica no fim do arquivo de propósito.
+   ========================================================== */
+[hidden] { display: none !important; }

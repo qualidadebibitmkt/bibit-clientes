@@ -1,8 +1,8 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 9;
-  console.log('[bibit-clientes] v' + 9);
+  const VERSION = 10;
+  console.log('[bibit-clientes] v' + 10);
 
   const FN = {
     social:      { name: 'Social Media',  color: 'var(--fn-social)' },
