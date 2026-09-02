@@ -229,7 +229,7 @@
         </div>
         <div class="metric${metaClass(c.nrr, 100)}">
           <div class="metric-num">${c.nrr != null ? c.nrr : '—'}${c.nrr != null ? '<span class="metric-unit">%</span>' : ''}</div>
-          <div class="metric-label">NRR · por upsells registrados</div>
+          <div class="metric-label">NRR · por expansões recorrentes</div>
         </div>
       </div>
       ${sinaisHTML(c, ts, m, prod, lateTasks, posts, diasSemResposta)}
