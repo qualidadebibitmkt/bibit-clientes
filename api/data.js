@@ -13,6 +13,11 @@ const LISTS = {
   webdesign:  { id: '901713153156', name: 'Web Designer' },
 };
 const GROWTH_LIST = '901712531318';
+const CROSS_LIST = '901713519081';   // vendas de expansão — só nome/mês saem ao navegador
+const UPSELL_LIST = '901713575176';
+// Valor recorrente (Growth e Upsell): LIDO SÓ NO SERVIDOR para calcular o NRR em %.
+// O valor em R$ nunca é enviado ao navegador (regra do painel: financeiro fora).
+const CF_VALOR_REC = '65f9eee2-b80d-4a6b-959f-61395ae91b02';
 const CSAT_LIST = '901713333681'; // CSAT - Envios
 
 // Custom fields — CSAT - Envios (mesmo campo Cliente do restante do workspace)
@@ -164,6 +169,7 @@ function shapeCliente(task) {
     briefing: cfText(getCF(task, CF_BRIEFING)),
     dataEntradaExec: cfDate(getCF(task, CF_DATA_EXEC)),
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
+    _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
     team: {
       social: cfUsers(getCF(task, CF_TEAM.social)),
       webdesign: cfUsers(getCF(task, CF_TEAM.webdesign)),
@@ -221,9 +227,12 @@ module.exports = async (req, res) => {
 
   try {
     const listKeys = Object.keys(LISTS);
-    const [growthTasks, csatTasks, ...opResults] = await Promise.all([
+    const safe = (p) => p.catch(() => []); // sem permissão nas listas de venda? painel segue vivo, sem expansões
+    const [growthTasks, csatTasks, crossTasks, upsellTasks, ...opResults] = await Promise.all([
       fetchAllTasks(token, GROWTH_LIST),
       fetchAllTasks(token, CSAT_LIST, true), // respostas fechadas também contam
+      safe(fetchAllTasks(token, CROSS_LIST, true)),
+      safe(fetchAllTasks(token, UPSELL_LIST, true)),
       ...listKeys.map((k) => fetchAllTasks(token, LISTS[k].id)),
     ]);
 
@@ -232,7 +241,7 @@ module.exports = async (req, res) => {
       .map(shapeCliente)
       .filter((c) => c.id !== TESTE_CLIENTE_OPTION && c.matchName !== 'TESTE CLIENTE')
       .filter((c) => !c._dataSaida || c._dataSaida > now)
-      .map(({ _dataSaida, ...c }) => c)
+      .map(({ _dataSaida, ...c }) => c)  // _valorRec sai adiante, depois do NRR
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
     const matcher = buildClientMatcher(clients);
@@ -267,13 +276,16 @@ module.exports = async (req, res) => {
       const notas = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id))).filter((n) => n != null && n > 0);
       const nps = cfNumber(getCF(t, CF_NPS));
       if (!notas.length && nps == null) continue; // envio sem resposta não conta
-      if (!agg.has(key)) agg.set(key, { soma: 0, n: 0, npsSoma: 0, npsN: 0, respostas: 0, ultima: 0 });
+      if (!agg.has(key)) agg.set(key, { soma: 0, n: 0, npsSoma: 0, npsN: 0, respostas: 0, ultima: 0, det: [] });
       const a = agg.get(key);
       for (const nota of notas) { a.soma += nota; a.n += 1; }
       if (nps != null) { a.npsSoma += nps; a.npsN += 1; }
       a.respostas += 1;
       const created = Number(t.date_created) || 0;
       if (created > a.ultima) a.ultima = created;
+      // detalhe da resposta: notas por papel, na ordem dos campos (tráfego, social, rp, av)
+      const [ntr, nso, nrp, nav] = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id)));
+      a.det.push({ q: created || null, tr: ntr, so: nso, rp: nrp, av: nav, nps: nps ?? null });
     }
     const round1 = (x) => Math.round(x * 10) / 10;
     for (const c of clients) {
@@ -283,12 +295,51 @@ module.exports = async (req, res) => {
         nps: a.npsN ? round1(a.npsSoma / a.npsN) : null,
         respostas: a.respostas,
         ultimaResposta: a.ultima || null,
-      } : { csat: null, nps: null, respostas: 0, ultimaResposta: null };
+        detalhe: a.det.sort((x, y) => (y.q || 0) - (x.q || 0)).slice(0, 12),
+      } : { csat: null, nps: null, respostas: 0, ultimaResposta: null, detalhe: [] };
+    }
+
+    // ---- Expansões (cross/upsell) e NRR % — SEM valores em R$ no navegador ----
+    // Unidade = a venda (card raiz; parcelas/subtarefas não duplicam). Cliente casado
+    // pelo campo Cliente quando existir, senão pelo nome do card (mesmo matcher).
+    const expMap = new Map();   // clientId -> [{nome, quando, origem}]
+    const upRecMap = new Map(); // clientId -> soma de valor RECORRENTE dos upsells (interno)
+    const addVenda = (t, origem) => {
+      if (t.parent) return; // parcela — a venda é o pai
+      const cli = cfDropdown(getCF(t, CF_CLIENTE));
+      let c = cli ? clients.find((x) => x.id === cli.id) : null;
+      if (!c) c = matcher(t.name);
+      if (!c) return;
+      if (!expMap.has(c.id)) expMap.set(c.id, []);
+      expMap.get(c.id).push({
+        nome: t.name,
+        quando: Number(t.due_date || t.date_created) || null,
+        origem,
+      });
+      if (origem === 'upsell') {
+        const vr = cfNumber(getCF(t, CF_VALOR_REC));
+        if (vr) upRecMap.set(c.id, (upRecMap.get(c.id) || 0) + vr);
+      }
+    };
+    for (const t of crossTasks) addVenda(t, 'cross');
+    for (const t of upsellTasks) addVenda(t, 'upsell');
+
+    for (const c of clients) {
+      c.expansoes = (expMap.get(c.id) || []).sort((a, b) => (b.quando || 0) - (a.quando || 0));
+      // NRR do cliente: mensalidade atual vs a reconstituída sem os upsells RECORRENTES
+      // registrados. Sem downsell rastreável por card, contrações não aparecem — por isso
+      // o rótulo no painel é "por upsells registrados". Sai só o percentual.
+      const atual = c._valorRec;
+      const upRec = upRecMap.get(c.id) || 0;
+      if (atual != null && atual > 0) {
+        const base = atual - upRec;
+        c.nrr = base > 0 ? Math.round((atual / base) * 100) : null;
+      } else c.nrr = null;
     }
 
     res.status(200).json({
       generatedAt: now,
-      clients: clients.map(({ matchName, ...c }) => c),
+      clients: clients.map(({ matchName, _valorRec, ...c }) => c),
       tasks,
     });
   } catch (err) {

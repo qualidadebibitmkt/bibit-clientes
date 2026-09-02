@@ -1,8 +1,8 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 12;
-  console.log('[bibit-clientes] v' + 12);
+  const VERSION = 13;
+  console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
     const f = document.querySelector('#footInfo');
@@ -182,6 +182,9 @@
 
     const m = c.metrics || {};
     const prod = prodOf(ts);
+    const tmpMeses = c.dataEntradaExec ? Math.max(1, Math.floor((Date.now() - c.dataEntradaExec) / 2629800000)) : null;
+    const lateTasks = ts.filter(isLate).sort((a, b) => (a.dueDate || 0) - (b.dueDate || 0));
+    const diasSemResposta = m.ultimaResposta ? Math.floor((Date.now() - m.ultimaResposta) / 864e5) : null;
     el.innerHTML = `
       <div class="ficha">
         <div class="ficha-glass">${glass(c.flag, 62, true)}${glassCaption(c.flag)}</div>
@@ -220,9 +223,80 @@
           <div class="metric-num">${m.respostas || 0}</div>
           <div class="metric-label">respostas CSAT${m.ultimaResposta ? ` · última ${fmtCurto(m.ultimaResposta)}` : ''}</div>
         </div>
+        <div class="metric">
+          <div class="metric-num">${tmpMeses != null ? tmpMeses : '—'}${tmpMeses != null ? '<span class="metric-unit">m</span>' : ''}</div>
+          <div class="metric-label">Tempo de casa${tmpMeses != null ? ' · meses' : ' · sem data de execução'}</div>
+        </div>
+        <div class="metric${metaClass(c.nrr, 100)}">
+          <div class="metric-num">${c.nrr != null ? c.nrr : '—'}${c.nrr != null ? '<span class="metric-unit">%</span>' : ''}</div>
+          <div class="metric-label">NRR · por upsells registrados</div>
+        </div>
       </div>
+      ${sinaisHTML(c, ts, m, prod, lateTasks, posts, diasSemResposta)}
+      ${atrasadasHTML(lateTasks)}
+      ${csatDetalheHTML(m, diasSemResposta)}
+      ${expansoesHTML(c)}
       <p class="eyebrow">Próximos posts</p>
       ${posts.length ? `<div class="task-rows">${posts.map(rowHTML).join('')}</div>` : `<div class="fn-empty">Nenhum post agendado daqui pra frente. O calendário agradece um brinde novo.</div>`}`;
+  }
+
+  // ---------- blocos da ficha ----------
+  function sinaisHTML(c, ts, m, prod, lateTasks, posts, diasSemResposta) {
+    const sin = [];
+    const add = (bad, txtBad, txtOk) => sin.push({ bad, txt: bad ? txtBad : txtOk });
+    add(lateTasks.length > 0, `${lateTasks.length} tarefa${lateTasks.length === 1 ? '' : 's'} atrasada${lateTasks.length === 1 ? '' : 's'}`, 'Nenhuma tarefa atrasada');
+    add(prod < 95, `Produtividade em ${prod.toLocaleString('pt-BR')}% (meta ≥ 95%)`, 'Produtividade na meta');
+    if (m.csat != null) add(m.csat < 9, `CSAT ${fmtNota(m.csat)} (meta ≥ 9)`, 'CSAT na meta');
+    if (m.nps != null) add(m.nps < 9, `NPS ${fmtNota(m.nps)} (meta ≥ 9)`, 'NPS na meta');
+    if (m.respostas === 0) sin.push({ bad: true, txt: 'Nunca respondeu CSAT' });
+    else if (diasSemResposta != null && diasSemResposta > 20) sin.push({ bad: true, txt: `Sem resposta de CSAT há ${diasSemResposta} dias` });
+    add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
+    return `<p class="eyebrow">Sinais do copo</p>
+      <div class="sinais">${sin.map((x) => `<span class="sinal ${x.bad ? 'is-bad' : 'is-ok'}">${x.bad ? '⚠' : '✓'} ${esc(x.txt)}</span>`).join('')}</div>
+      <p class="sinais-nota">A flag do copo é definida pela operação no Growth; os sinais acima são leitura automática das tarefas e do CSAT.</p>`;
+  }
+
+  function atrasadasHTML(lateTasks) {
+    if (!lateTasks.length) return '';
+    const rank = new Map();
+    for (const t of lateTasks) {
+      const who = t.assignees.length ? t.assignees : [{ name: 'Sem responsável', initials: '—', color: null }];
+      for (const p of who) {
+        if (!rank.has(p.name)) rank.set(p.name, { p, n: 0 });
+        rank.get(p.name).n += 1;
+      }
+    }
+    const chips = [...rank.values()].sort((a, b) => b.n - a.n)
+      .map(({ p, n }) => `<span class="rank-chip"><span class="avatar"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>${esc(p.name.split(' ')[0])}<strong>${n}</strong></span>`)
+      .join('');
+    const shown = lateTasks.slice(0, 8);
+    return `<p class="eyebrow">Tarefas atrasadas · quem segura o copo</p>
+      <div class="rank-chips">${chips}</div>
+      <div class="task-rows">${shown.map(rowHTML).join('')}</div>
+      ${lateTasks.length > shown.length ? `<p class="sinais-nota">+ ${lateTasks.length - shown.length} atrasadas na aba Funções.</p>` : ''}`;
+  }
+
+  function csatDetalheHTML(m, diasSemResposta) {
+    const det = m.detalhe || [];
+    const alerta = m.respostas === 0
+      ? '<span class="csat-alert">nunca respondeu</span>'
+      : (diasSemResposta != null && diasSemResposta > 20 ? `<span class="csat-alert">sem resposta há ${diasSemResposta}d</span>` : '');
+    if (!det.length) return `<p class="eyebrow">Respostas de satisfação ${alerta}</p><div class="fn-empty">Nenhuma resposta de CSAT registrada para este cliente.</div>`;
+    const nf = (n) => (n == null || n <= 0 ? '<span class="csat-nul">—</span>' : `<span class="csat-n${n >= 9 ? ' hit' : n < 7 ? ' low' : ''}">${fmtNota(n)}</span>`);
+    const rows = det.map((r) => `<tr><td>${r.q ? fmtCurto(r.q) : '—'}</td><td>${nf(r.tr)}</td><td>${nf(r.so)}</td><td>${nf(r.rp)}</td><td>${nf(r.av)}</td><td>${nf(r.nps)}</td></tr>`).join('');
+    return `<p class="eyebrow">Respostas de satisfação · ${m.respostas} no total ${alerta}</p>
+      <div class="csat-wrap"><table class="csat-table">
+        <thead><tr><th>Quando</th><th>Tráfego</th><th>Social</th><th>RP</th><th>AV</th><th>NPS</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  }
+
+  function expansoesHTML(c) {
+    const ex = c.expansoes || [];
+    if (!ex.length) return `<p class="eyebrow">Expansões · cross e upsell</p><div class="fn-empty">Nenhuma expansão registrada — copo com espaço pra mais uma dose.</div>`;
+    const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem}</span><span class="exp-nome">${esc(e.nome)}</span><span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
+    return `<p class="eyebrow">Expansões · ${ex.length} venda${ex.length === 1 ? '' : 's'} (cross/upsell)</p>
+      <div class="exp-rows">${rows}</div>`;
   }
 
   // ---------- calendário ----------

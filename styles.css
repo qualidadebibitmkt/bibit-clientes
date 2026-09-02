@@ -801,3 +801,50 @@ body::before {
    que nunca fechava). Fica no fim do arquivo de propósito.
    ========================================================== */
 [hidden] { display: none !important; }
+
+/* ---------- ficha v13: sinais, atrasadas, csat detalhado, expansões ---------- */
+.sinais { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.sinal {
+  font-size: 13px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid rgba(243, 236, 218, 0.14); background: var(--garrafa-2);
+}
+.sinal.is-ok  { color: var(--flag-green); border-color: color-mix(in srgb, var(--flag-green) 45%, transparent); }
+.sinal.is-bad { color: var(--flag-red);   border-color: color-mix(in srgb, var(--flag-red) 50%, transparent); background: color-mix(in srgb, var(--flag-red) 10%, var(--garrafa-2)); }
+.sinais-nota { color: var(--creme-45); font-size: 12px; margin: 2px 0 24px; }
+
+.rank-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.rank-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; padding: 4px 12px 4px 5px; border-radius: 999px;
+  background: var(--garrafa-2); border: 1px solid rgba(243, 236, 218, 0.14);
+}
+.rank-chip strong { color: var(--flag-red); }
+
+.csat-wrap { overflow-x: auto; margin-bottom: 24px; border-radius: var(--radius-sm); }
+.csat-table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--garrafa-2); }
+.csat-table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--creme-45); font-weight: 600; padding: 9px 14px;
+  border-bottom: 1px solid rgba(243, 236, 218, 0.12);
+}
+.csat-table td { padding: 8px 14px; border-bottom: 1px solid rgba(243, 236, 218, 0.06); }
+.csat-table tr:last-child td { border-bottom: 0; }
+.csat-n.hit { color: var(--flag-green); font-weight: 600; }
+.csat-n.low { color: var(--flag-red); font-weight: 600; }
+.csat-nul { color: var(--creme-45); }
+.csat-alert {
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--flag-red); border: 1px solid color-mix(in srgb, var(--flag-red) 55%, transparent);
+  border-radius: 999px; padding: 2px 10px; margin-left: 8px; vertical-align: 2px;
+}
+
+.exp-rows { margin-bottom: 24px; display: grid; gap: 6px; }
+.exp-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--garrafa-2); border: 1px solid rgba(243, 236, 218, 0.1);
+}
+.exp-cross  { color: var(--flag-green); }
+.exp-upsell { color: var(--flag-yellow); }
+.exp-nome { flex: 1; font-size: 14px; }
+.exp-quando { color: var(--creme-45); font-size: 12.5px; }
