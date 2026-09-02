@@ -316,17 +316,19 @@ module.exports = async (req, res) => {
         quando: Number(t.due_date || t.date_created) || null,
         origem,
       });
-      // NRR considera QUALQUER expansão recorrente — upsell ou cross-sell — desde que
-      // o card tenha o Valor Recorrente preenchido. Venda pontual (sem recorrente) fica fora.
-      const vr = cfNumber(getCF(t, CF_VALOR_REC));
-      if (vr) upRecMap.set(c.id, (upRecMap.get(c.id) || 0) + vr);
+      // REGRA DA CASA (Bruno, 01/09/26): cross-sell é SEMPRE venda pontual — nunca
+      // entra no NRR. Só UPSELL expande mensalidade (via campo Valor Recorrente).
+      if (origem === 'upsell') {
+        const vr = cfNumber(getCF(t, CF_VALOR_REC));
+        if (vr) upRecMap.set(c.id, (upRecMap.get(c.id) || 0) + vr);
+      }
     };
     for (const t of crossTasks) addVenda(t, 'cross');
     for (const t of upsellTasks) addVenda(t, 'upsell');
 
     for (const c of clients) {
       c.expansoes = (expMap.get(c.id) || []).sort((a, b) => (b.quando || 0) - (a.quando || 0));
-      // NRR do cliente: mensalidade atual vs a reconstituída sem as expansões RECORRENTES (upsell + cross)
+      // NRR do cliente: mensalidade atual vs a reconstituída sem os UPSELLS recorrentes
       // registrados. Sem downsell rastreável por card, contrações não aparecem — por isso
       // o rótulo no painel é "por upsells registrados". Sai só o percentual.
       const atual = c._valorRec;
