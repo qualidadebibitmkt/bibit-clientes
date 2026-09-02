@@ -853,3 +853,25 @@ body::before {
   border-top: 1px solid rgba(243, 236, 218, 0.18); border-bottom: 0;
   background: rgba(0, 0, 0, 0.18);
 }
+
+/* ---------- visão geral: cartões de flag em evidência ---------- */
+.stats-flags { gap: 14px; }
+.stat-flag {
+  display: inline-flex; align-items: center; gap: 14px;
+  padding: 14px 24px 14px 18px; cursor: pointer;
+  color: inherit; font-family: var(--ui); text-align: left;
+  border-radius: var(--radius); background: var(--garrafa-2);
+  border: 1px solid rgba(243, 236, 218, 0.12);
+  transition: background 0.15s, border-color 0.15s;
+}
+.stat-flag .stat-num { font-size: 42px; line-height: 1; }
+.stat-flag .stat-label { margin-top: 2px; }
+.stat-flag.f-green  { border-color: color-mix(in srgb, var(--flag-green) 45%, transparent); }
+.stat-flag.f-yellow { border-color: color-mix(in srgb, var(--flag-yellow) 45%, transparent); }
+.stat-flag.f-red    { border-color: color-mix(in srgb, var(--flag-red) 45%, transparent); }
+.stat-flag:hover { background: var(--garrafa-3); }
+.stat-flag.is-selected { background: var(--garrafa-3); box-shadow: 0 0 0 2px currentColor inset; }
+.stat-flag.f-green.is-selected  { color: var(--flag-green); }
+.stat-flag.f-yellow.is-selected { color: var(--flag-yellow); }
+.stat-flag.f-red.is-selected    { color: var(--flag-red); }
+.stat-flag.is-selected .stat-label, .stat-flag .stat-label { color: var(--creme-70); }

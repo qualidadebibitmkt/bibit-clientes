@@ -117,26 +117,16 @@
   function renderGeral(el) {
     if (state.cliente) { renderFicha(el, clientById(state.cliente)); return; }
     const { clients } = state.data;
-    const all = state.data.tasks;
-    const tk = todayKey();
-    const in7 = all.filter((t) => {
-      const cd = t.calDate || t.dataAgendamento;
-      if (!cd || !isOpen(t)) return false;
-      return dayKey(cd) >= tk && (cd - Date.now()) < 7 * 864e5;
-    }).length;
-    const late = all.filter(isLate).length;
     const count = (f) => clients.filter((c) => c.flag === f).length;
 
     const shown = state.flagFilter ? clients.filter((c) => c.flag === state.flagFilter) : clients;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes ativos</p>
-      <div class="stats-row">
-        <button class="stat stat-btn${fsel('green')}" data-flag="green"><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></button>
-        <button class="stat stat-btn${fsel('yellow')}" data-flag="yellow"><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></button>
-        <button class="stat stat-btn${fsel('red')}" data-flag="red"><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></button>
-        <div class="stat"><div class="stat-num ${late ? 'is-alert' : ''}">${late}</div><div class="stat-label">tarefas atrasadas</div></div>
-        <div class="stat"><div class="stat-num is-amber">${in7}</div><div class="stat-label">posts nos próx. 7 dias</div></div>
+      <div class="stats-row stats-flags">
+        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
+        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
+        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
       </div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
@@ -406,7 +396,7 @@
       if (e.button !== undefined && e.button !== 0) return; // só botão esquerdo / toque
       const card = e.target.closest('.card');
       if (card && card.dataset.id) { setCliente(card.dataset.id); return; }
-      const st = e.target.closest('.stat-btn');
+      const st = e.target.closest('.stat-btn, .stat-flag');
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
       const more = e.target.closest('.fn-more');
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
