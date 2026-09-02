@@ -848,3 +848,8 @@ body::before {
 .exp-upsell { color: var(--flag-yellow); }
 .exp-nome { flex: 1; font-size: 14px; }
 .exp-quando { color: var(--creme-45); font-size: 12.5px; }
+.csat-table tfoot td {
+  font-weight: 600; color: var(--creme);
+  border-top: 1px solid rgba(243, 236, 218, 0.18); border-bottom: 0;
+  background: rgba(0, 0, 0, 0.18);
+}

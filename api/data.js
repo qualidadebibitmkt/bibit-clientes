@@ -276,7 +276,7 @@ module.exports = async (req, res) => {
       const notas = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id))).filter((n) => n != null && n > 0);
       const nps = cfNumber(getCF(t, CF_NPS));
       if (!notas.length && nps == null) continue; // envio sem resposta não conta
-      if (!agg.has(key)) agg.set(key, { soma: 0, n: 0, npsSoma: 0, npsN: 0, respostas: 0, ultima: 0, det: [] });
+      if (!agg.has(key)) agg.set(key, { soma: 0, n: 0, npsSoma: 0, npsN: 0, respostas: 0, ultima: 0, det: [], pp: { tr: [0, 0], so: [0, 0], rp: [0, 0], av: [0, 0] } });
       const a = agg.get(key);
       for (const nota of notas) { a.soma += nota; a.n += 1; }
       if (nps != null) { a.npsSoma += nps; a.npsN += 1; }
@@ -286,6 +286,9 @@ module.exports = async (req, res) => {
       // detalhe da resposta: notas por papel, na ordem dos campos (tráfego, social, rp, av)
       const [ntr, nso, nrp, nav] = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id)));
       a.det.push({ q: created || null, tr: ntr, so: nso, rp: nrp, av: nav, nps: nps ?? null });
+      // médias individuais por função (todas as respostas, não só as 12 exibidas)
+      const acc = (k, v) => { if (v != null && v > 0) { a.pp[k][0] += v; a.pp[k][1] += 1; } };
+      acc('tr', ntr); acc('so', nso); acc('rp', nrp); acc('av', nav);
     }
     const round1 = (x) => Math.round(x * 10) / 10;
     for (const c of clients) {
@@ -296,7 +299,8 @@ module.exports = async (req, res) => {
         respostas: a.respostas,
         ultimaResposta: a.ultima || null,
         detalhe: a.det.sort((x, y) => (y.q || 0) - (x.q || 0)).slice(0, 12),
-      } : { csat: null, nps: null, respostas: 0, ultimaResposta: null, detalhe: [] };
+        porPapel: Object.fromEntries(Object.entries(a.pp).map(([k, [soma, n]]) => [k, n ? round1(soma / n) : null])),
+      } : { csat: null, nps: null, respostas: 0, ultimaResposta: null, detalhe: [], porPapel: { tr: null, so: null, rp: null, av: null } };
     }
 
     // ---- Expansões (cross/upsell) e NRR % — SEM valores em R$ no navegador ----
