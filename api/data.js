@@ -44,6 +44,13 @@ const CF_INSTAGRAM = 'b304b434-41fd-4a1a-9622-7cca5495491b';
 const CF_GRUPO_WA = '634d52ca-a2a9-477d-9c55-6089c0ef27b2';
 const CF_BRIEFING = 'fb0154b3-3c6c-4041-b193-79490bb7bad1';
 const CF_DATA_EXEC = 'db1abd50-bc00-4097-92b9-ec639fbe3b04';
+// Health Score — campos "HS ·" gravados pelo Make (cenário 6155088) toda segunda
+const CF_HS_CPM = '5b496091-9725-4dae-8cef-7dd468458105';
+const CF_HS_ROAS = 'f5a25347-e2d8-443f-9017-7bdc62af5814';
+const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
+const CF_HS_LEAD = '0cc186ba-9053-4266-9a2b-9c304c8e6e5d';
+const CF_HS_ATUALIZADO = '02aa0b63-6f5d-423d-b299-1cb0e181513d';
+const { calcularTodos } = require('./healthscore');
 const CF_DATA_SAIDA = 'b969da4a-8bae-4f4c-9f8b-2919620a98e0';
 const CF_TEAM = {
   social: 'b767dbfb-1371-4370-baee-508e67fa9ba7',
@@ -170,6 +177,12 @@ function shapeCliente(task) {
     dataEntradaExec: cfDate(getCF(task, CF_DATA_EXEC)),
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
     _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
+    hs: (() => {
+      const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0 ? v : null; }; // 0 = sem dado
+      const at = cfDate(getCF(task, CF_HS_ATUALIZADO));
+      const o = { cpm: n(CF_HS_CPM), roas: n(CF_HS_ROAS), custoConversa: n(CF_HS_CONVERSA), custoLead: n(CF_HS_LEAD), atualizadoEm: at };
+      return (o.cpm || o.roas || o.custoConversa || o.custoLead) ? o : null;
+    })(),
     team: {
       social: cfUsers(getCF(task, CF_TEAM.social)),
       webdesign: cfUsers(getCF(task, CF_TEAM.webdesign)),
@@ -342,6 +355,23 @@ module.exports = async (req, res) => {
         c.nrr = base > 0 ? Math.round((atual / base) * 100) : null;
       } else c.nrr = null;
     }
+
+    // ---- Health Score (3 pilares por enquanto) ----
+    // produtividade no servidor — mesma fórmula oficial do front: (abertas − atrasadas) ÷ abertas; sem abertas = 100
+    const hojeKey = new Date(now).toISOString().slice(0, 10);
+    const isOpenT = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
+    const isLateT = (t) => isOpenT(t) && t.dueDate && new Date(t.dueDate).toISOString().slice(0, 10) < hojeKey;
+    const prodDe = (cid) => {
+      const abertas = tasks.filter((t) => t.clienteId === cid && isOpenT(t));
+      if (!abertas.length) return 100;
+      const late = abertas.filter(isLateT).length;
+      return Math.round(((abertas.length - late) / abertas.length) * 1000) / 10;
+    };
+    const hsResultados = calcularTodos(clients.map((c) => ({
+      id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs,
+      csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
+    })));
+    for (const c of clients) c.healthScore = hsResultados[c.id] || null;
 
     res.status(200).json({
       generatedAt: now,

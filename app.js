@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 14;
+  const VERSION = 15;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -143,6 +143,7 @@
       <div class="card-head">${glass(c.flag, 26)}
         <div><div class="card-name">${esc(c.name)}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
       </div>
+      ${hsMiniHTML(c.healthScore)}
       <div class="card-meta">
         <span><strong>${open}</strong> abertas</span>
         ${late ? `<span class="late"><strong>${late}</strong> atrasadas</span>` : ''}
@@ -150,6 +151,44 @@
         ${m.csat != null ? `<span class="csat${m.csat >= 9 ? ' hit' : ' miss'}">CSAT <strong>${fmtNota(m.csat)}</strong></span>` : ''}
       </div>
     </button>`;
+  }
+
+  // ---------- health score ----------
+  const hsCls = (n) => (n == null ? 'na' : n >= 80 ? 'g' : n >= 50 ? 'y' : 'r');
+  const PILAR_LBL = { trafego: 'Tráfego', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Contato' };
+  const PILAR_SIGLA = { trafego: 'T', satisfacao: 'S', produtividade: 'P', contato: 'C' };
+
+  function hsMiniHTML(hs) {
+    if (!hs || hs.score == null) return `<div class="hs-mini"><span class="hs-score na">—</span><span class="hs-nota">sem dados pro score</span></div>`;
+    const pil = Object.entries(hs.pilares)
+      .filter(([k]) => k !== 'contato') // contato ainda sem fonte — entra quando ligar
+      .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
+    return `<div class="hs-mini"><span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura}</span></div>`;
+  }
+
+  function hsFichaHTML(hs, c) {
+    if (!hs || hs.score == null) return `<p class="eyebrow">Health Score</p><div class="fn-empty">Sem dados suficientes pra calcular o score deste cliente (sem tráfego coletado, CSAT ou tarefas).</div>`;
+    const diverge = c.flag && hs.flag && c.flag !== hs.flag;
+    const fmtV = (k, v) => (v == null ? '—' : k === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
+    const linhas = Object.entries(hs.pilares).map(([k, p]) => {
+      let det = '';
+      if (k === 'trafego' && p.detalhe?.length) det = p.detalhe.map((f) => `${f.rotulo} ${fmtV(f.rotulo, f.valor)} → ${f.nota != null ? f.nota : '—'} <span class="hs-regua">(${f.regua})</span>`).join(' · ');
+      else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
+      if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
+      if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} do mês`;
+      if (k === 'contato') det = '<span class="hs-regua">pilar desenhado, sem fonte ainda — não pesa no score</span>';
+      return `<div class="hs-row ${p.nota == null ? 'off' : ''}">
+        <span class="hs-row-l"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i></span>
+        <span class="hs-row-det">${det}</span>
+        <span class="hs-row-n ${hsCls(p.nota)}">${p.nota != null ? p.nota : '—'}</span>
+      </div>`;
+    }).join('');
+    return `<p class="eyebrow">Health Score · ${hs.cobertura} pilares</p>
+      <div class="hs-box">
+        <div class="hs-big ${hsCls(hs.score)}">${hs.score}<small>/100</small></div>
+        <div class="hs-rows">${linhas}</div>
+      </div>
+      ${diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o Make grava a sugerida na próxima segunda; se a operação discorda, é o caso de conversar.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
   }
 
   function renderFicha(el, c) {
@@ -222,6 +261,7 @@
           <div class="metric-label">NRR · por upsells registrados</div>
         </div>
       </div>
+      ${hsFichaHTML(c.healthScore, c)}
       ${sinaisHTML(c, ts, m, prod, lateTasks, posts, diasSemResposta)}
       ${atrasadasHTML(lateTasks)}
       ${csatDetalheHTML(m, diasSemResposta)}

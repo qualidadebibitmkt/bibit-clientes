@@ -875,3 +875,30 @@ body::before {
 .stat-flag.f-yellow.is-selected { color: var(--flag-yellow); }
 .stat-flag.f-red.is-selected    { color: var(--flag-red); }
 .stat-flag.is-selected .stat-label, .stat-flag .stat-label { color: var(--creme-70); }
+
+/* ---------- health score (v15) ---------- */
+.hs-mini { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; flex-wrap: wrap; }
+.hs-score { font-family: var(--serif, serif); font-size: 22px; font-weight: 700; line-height: 1; min-width: 34px; }
+.hs-pil { font-size: 11px; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px; border: 1px solid rgba(243,236,218,0.14); background: var(--garrafa-2); }
+.hs-cob, .hs-nota { font-size: 11px; color: var(--creme-45); margin-left: auto; }
+.hs-score.g, .hs-pil.g, .hs-row-n.g, .hs-big.g { color: var(--flag-green); }
+.hs-score.y, .hs-pil.y, .hs-row-n.y, .hs-big.y { color: var(--flag-yellow); }
+.hs-score.r, .hs-pil.r, .hs-row-n.r, .hs-big.r { color: var(--flag-red); }
+.hs-score.na, .hs-pil.na, .hs-row-n.na, .hs-big.na { color: var(--creme-45); }
+.hs-pil.g { border-color: color-mix(in srgb, var(--flag-green) 45%, transparent); }
+.hs-pil.y { border-color: color-mix(in srgb, var(--flag-yellow) 45%, transparent); }
+.hs-pil.r { border-color: color-mix(in srgb, var(--flag-red) 45%, transparent); }
+
+.hs-box { display: grid; grid-template-columns: 120px 1fr; gap: 18px; align-items: center; background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.1); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 8px; }
+.hs-big { font-family: var(--serif, serif); font-size: 56px; font-weight: 700; line-height: 1; text-align: center; }
+.hs-big small { font-size: 14px; color: var(--creme-45); font-family: var(--ui); margin-left: 2px; }
+.hs-rows { display: grid; gap: 8px; }
+.hs-row { display: grid; grid-template-columns: 150px 1fr 44px; gap: 12px; align-items: center; font-size: 13px; }
+.hs-row.off { opacity: 0.45; }
+.hs-row-l b { display: block; font-weight: 600; }
+.hs-row-l i { font-style: normal; font-size: 11px; color: var(--creme-45); }
+.hs-row-det { color: var(--creme-70); }
+.hs-regua { color: var(--creme-45); font-size: 12px; }
+.hs-row-n { font-weight: 700; font-size: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.hs-div { color: var(--flag-yellow); }
+@media (max-width: 640px) { .hs-box { grid-template-columns: 1fr; } .hs-row { grid-template-columns: 1fr 44px; } .hs-row-det { grid-column: 1 / -1; } }
