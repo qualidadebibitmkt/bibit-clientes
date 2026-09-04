@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 15;
+  const VERSION = 16;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -163,6 +163,7 @@
     const pil = Object.entries(hs.pilares)
       .filter(([k]) => k !== 'contato') // contato ainda sem fonte — entra quando ligar
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
+    if (hs.insuficiente) return `<div class="hs-mini"><span class="hs-score na">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura} · insuficiente</span></div>`;
     return `<div class="hs-mini"><span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura}</span></div>`;
   }
 
@@ -183,12 +184,12 @@
         <span class="hs-row-n ${hsCls(p.nota)}">${p.nota != null ? p.nota : '—'}</span>
       </div>`;
     }).join('');
-    return `<p class="eyebrow">Health Score · ${hs.cobertura} pilares</p>
+    return `<p class="eyebrow">Health Score · ${hs.cobertura} pilares${hs.insuficiente ? ' <span class="csat-alert">insuficiente — flag manual mantida</span>' : ''}</p>
       <div class="hs-box">
-        <div class="hs-big ${hsCls(hs.score)}">${hs.score}<small>/100</small></div>
+        <div class="hs-big ${hs.insuficiente ? 'na' : hsCls(hs.score)}">${hs.score}<small>/100</small></div>
         <div class="hs-rows">${linhas}</div>
       </div>
-      ${diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o Make grava a sugerida na próxima segunda; se a operação discorda, é o caso de conversar.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
+      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o Make grava a sugerida na próxima segunda; se a operação discorda, é o caso de conversar.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
   }
 
   function renderFicha(el, c) {

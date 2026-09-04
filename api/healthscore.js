@@ -21,12 +21,16 @@
 
 const PESOS = { trafego: 40, satisfacao: 30, contato: 15, produtividade: 15 };
 const MIN_PARES_PERCENTIL = 10;
+// Calibração 04/09/26 (1ª rodada): com 1 pilar só, o score inflava (cliente sem
+// tráfego e sem CSAT ganhava verde por não ter tarefa atrasada). Abaixo de 2
+// pilares o score é "insuficiente" e a flag do Growth NÃO é sobrescrita.
+const MIN_PILARES = 2;
 
 // Faixas de mercado (fallback quando não há base suficiente). Valores em R$ pra
 // custos são propositalmente conservadores — o percentil da carteira substitui.
 const FAIXAS = {
   roas: { ruim: 1.5, bom: 2.5 },          // ↑ melhor
-  cpm: { bom: 15, ruim: 40 },              // ↓ melhor (R$/mil)
+  cpm: { bom: 10, ruim: 30 },              // ↓ melhor (R$/mil) — apertado em 04/09: 15 deixava reconhecimento verde demais
   custoConversa: { bom: 8, ruim: 25 },     // ↓ melhor (R$)
   custoLead: { bom: 25, ruim: 80 },        // ↓ melhor (R$)
 };
@@ -89,8 +93,9 @@ function notaTrafego(tipo, hs, base) {
 }
 
 // ---- Pilar SATISFAÇÃO (CSAT + NPS, 0–10) --------------------------------
-// 8 → 0 pontos · 9 → 100 pontos (verde), linear entre; acima de 9 satura.
-const notaNota10 = (n) => (n == null ? null : round0(clamp(((n - 8) / 1) * 100, 0, 100)));
+// 7 → 0 pontos · 9 → 100 pontos (verde), linear entre; 8 = 50 (amarelo). Acima de 9 satura.
+// (calibração 04/09: piso em 8 zerava CSAT 8,5 — injusto; é amarelo, não vermelho)
+const notaNota10 = (n) => (n == null ? null : round0(clamp(((n - 7) / 2) * 100, 0, 100)));
 function notaSatisfacao(csat, nps) {
   const partes = [notaNota10(csat), notaNota10(nps)].filter((x) => x != null);
   if (!partes.length) return { nota: null, detalhe: { csat, nps } };
@@ -113,10 +118,11 @@ function compor(pilares) {
     if (v == null) continue;
     somaPeso += peso; soma += v * peso; n += 1;
   }
-  if (!somaPeso) return { score: null, flag: null, cobertura: `0/${Object.keys(PESOS).length}` };
+  if (!somaPeso) return { score: null, flag: null, cobertura: `0/${Object.keys(PESOS).length}`, insuficiente: true };
+  if (n < MIN_PILARES) return { score: round0(soma / somaPeso), flag: null, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: true };
   const score = round0(soma / somaPeso);
   const flag = score >= 80 ? 'green' : score >= 50 ? 'yellow' : 'red';
-  return { score, flag, cobertura: `${n}/${Object.keys(PESOS).length}` };
+  return { score, flag, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: false };
 }
 
 // Calcula o health score de todos os clientes de uma vez (precisa da base pro percentil).
