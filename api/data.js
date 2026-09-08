@@ -302,7 +302,10 @@ module.exports = async (req, res) => {
       for (const nota of notas) { a.soma += nota; a.n += 1; }
       if (nps != null) { a.npsSoma += nps; a.npsN += 1; }
       a.respostas += 1;
-      const created = Number(t.date_created) || 0;
+      // DATA DA RESPOSTA (fix 08/09/26, caso Venga Vino): o card de envio nasce dias/semanas
+      // antes de ser respondido — a resposta entra quando a automação preenche as notas e
+      // conclui o card. Usamos a conclusão; fallback: última atualização; nunca a criação.
+      const created = Number(t.date_closed) || Number(t.date_updated) || Number(t.date_created) || 0;
       if (created > a.ultima) a.ultima = created;
       // detalhe da resposta: notas por papel, na ordem dos campos (tráfego, social, rp, av)
       const [ntr, nso, nrp, nav] = CF_CSAT_NOTAS.map((id) => cfNumber(getCF(t, id)));
