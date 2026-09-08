@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 19;
+  const VERSION = 20;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -49,6 +49,10 @@
 
   const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
   const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < todayKey();
+
+  // flag EFETIVA (08/09/26): o copo segue o score AO VIVO quando ele é suficiente;
+  // a Flag do Growth é a foto semanal gravada pelo Make e só manda quando não há score.
+  const flagDe = (c) => (c.healthScore && c.healthScore.flag) ? c.healthScore.flag : c.flag;
 
   // ---------- o copo ----------
   let uid = 0;
@@ -117,9 +121,9 @@
   function renderGeral(el) {
     if (state.cliente) { renderFicha(el, clientById(state.cliente)); return; }
     const { clients } = state.data;
-    const count = (f) => clients.filter((c) => c.flag === f).length;
+    const count = (f) => clients.filter((c) => flagDe(c) === f).length;
 
-    const shown = state.flagFilter ? clients.filter((c) => c.flag === state.flagFilter) : clients;
+    const shown = state.flagFilter ? clients.filter((c) => flagDe(c) === state.flagFilter) : clients;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes ativos</p>
@@ -140,7 +144,7 @@
     const np = nextPost(ts);
     const m = c.metrics || {};
     return `<button class="card" data-id="${c.id}">
-      <div class="card-head">${glass(c.flag, 26)}
+      <div class="card-head">${glass(flagDe(c), 26)}
         <div><div class="card-name">${esc(c.name)}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
       </div>
       ${hsMiniHTML(c.healthScore)}
@@ -189,7 +193,7 @@
         <div class="hs-big ${hs.insuficiente ? 'na' : hsCls(hs.score)}">${hs.score}<small>/100</small></div>
         <div class="hs-rows">${linhas}</div>
       </div>
-      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o Make grava a sugerida na próxima segunda; se a operação discorda, é o caso de conversar.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
+      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o copo já mostra a do score; o Make sincroniza o ClickUp na próxima segunda.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
   }
 
   function renderFicha(el, c) {
@@ -217,7 +221,7 @@
     const diasSemResposta = m.ultimaResposta ? Math.floor((Date.now() - m.ultimaResposta) / 864e5) : null;
     el.innerHTML = `
       <div class="ficha">
-        <div class="ficha-glass">${glass(c.flag, 62, true)}${glassCaption(c.flag)}</div>
+        <div class="ficha-glass">${glass(flagDe(c), 62, true)}${glassCaption(flagDe(c))}</div>
         <div>
           <h2 class="ficha-title">${esc(c.name)}</h2>
           <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
