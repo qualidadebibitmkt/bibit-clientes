@@ -77,25 +77,30 @@ function notaTrafego(tipo, hs, base) {
     frentes.push({ rotulo, valor, nota, regua: p != null ? `percentil (${pares.length} pares)` : 'faixa de mercado' });
   };
   const t = (tipo || '').toLowerCase();
-  if (t === 'trafego')   add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
-  if (t === 'conversas') add('Custo por conversa', hs.custoConversa, 'custoConversa', true, FAIXAS.custoConversa);
-  if (t === 'ecommerce') add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
-  if (t === 'completo' || !t) {
+  const gastou = hs.cpm != null && hs.cpm > 0; // CPM presente = houve investimento na semana
+  // Régua ESTRITA por objetivo (08/09/26, correção após o caso Venga Vino):
+  // "custo por conversa" e "custo por lead" do Reportei são investimento TOTAL ÷ eventos,
+  // e conversas acontecem de forma incidental em qualquer campanha — só valem como régua
+  // quando são o OBJETIVO declarado. Objetivo com investimento mas sem resultado = nota 0
+  // (campanha rodou e não entregou), nunca "sem dado".
+  const zero = (rotulo) => frentes.push({ rotulo, valor: 0, nota: gastou ? 0 : null, regua: gastou ? 'investiu na semana e não gerou resultado' : 'sem investimento na semana' });
+  if (t === 'ecommerce') {
     add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
+    if (!frentes.length) zero('ROAS');
+  } else if (t === 'conversas') {
     add('Custo por conversa', hs.custoConversa, 'custoConversa', true, FAIXAS.custoConversa);
+    // LP de lead cadastrada como "conversas" (caso 18K) — enquanto não existir a opção "leads"
+    if (!frentes.length && hs.custoLead) { add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead); frentes[0].regua += ' · tipo "conversas" sem conversa; usando lead'; }
+    if (!frentes.length) zero('Custo por conversa');
+  } else if (t === 'leads' || t === 'lp') {
+    add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
+    if (!frentes.length) zero('Custo por lead');
+  } else if (t === 'trafego') {
+    add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
+  } else { // completo (ou sem tipo): resultado (ROAS/lead) quando houver + eficiência (CPM); conversa fica fora por ser incidental
+    add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
     add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
     add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
-  }
-  // Fallback (08/09/26, caso 18K Wine): tipo "conversas" mas a campanha gera LEAD na LP —
-  // a métrica do tipo vem vazia e a de lead vem cheia. Se nada do tipo tiver dado, usa o
-  // que existir, na ordem resultado → custo: ROAS, lead, conversa, CPM.
-  if (!frentes.some((f) => f.nota != null)) {
-    frentes.length = 0;
-    add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
-    if (!frentes.length) add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
-    if (!frentes.length) add('Custo por conversa', hs.custoConversa, 'custoConversa', true, FAIXAS.custoConversa);
-    if (!frentes.length) add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
-    for (const f of frentes) f.regua += ' · fallback (métrica do tipo vazia)';
   }
   const validas = frentes.filter((f) => f.nota != null);
   if (!validas.length) return { nota: null, detalhe: frentes };
