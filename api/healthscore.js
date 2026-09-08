@@ -86,6 +86,17 @@ function notaTrafego(tipo, hs, base) {
     add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
     add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
   }
+  // Fallback (08/09/26, caso 18K Wine): tipo "conversas" mas a campanha gera LEAD na LP —
+  // a métrica do tipo vem vazia e a de lead vem cheia. Se nada do tipo tiver dado, usa o
+  // que existir, na ordem resultado → custo: ROAS, lead, conversa, CPM.
+  if (!frentes.some((f) => f.nota != null)) {
+    frentes.length = 0;
+    add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
+    if (!frentes.length) add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
+    if (!frentes.length) add('Custo por conversa', hs.custoConversa, 'custoConversa', true, FAIXAS.custoConversa);
+    if (!frentes.length) add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
+    for (const f of frentes) f.regua += ' · fallback (métrica do tipo vazia)';
+  }
   const validas = frentes.filter((f) => f.nota != null);
   if (!validas.length) return { nota: null, detalhe: frentes };
   const nota = round0(validas.reduce((a, f) => a + f.nota, 0) / validas.length);
