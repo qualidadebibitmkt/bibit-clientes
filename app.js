@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 20;
+  const VERSION = 21;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -53,6 +53,8 @@
   // flag EFETIVA (08/09/26): o copo segue o score AO VIVO quando ele é suficiente;
   // a Flag do Growth é a foto semanal gravada pelo Make e só manda quando não há score.
   const flagDe = (c) => (c.healthScore && c.healthScore.flag) ? c.healthScore.flag : c.flag;
+  // Plano DOSE não tem calendário de social (regra do Bruno, 08/09/26): nada de "post agendado" pra ele
+  const temCalendario = (c) => String(c.plano || '').trim().toUpperCase() !== 'DOSE';
 
   // ---------- o copo ----------
   let uid = 0;
@@ -151,7 +153,7 @@
       <div class="card-meta">
         <span><strong>${open}</strong> abertas</span>
         ${late ? `<span class="late"><strong>${late}</strong> atrasadas</span>` : ''}
-        ${np ? `<span class="next">post <strong>${fmtCurto(np.calDate || np.dataAgendamento)}</strong></span>` : ''}
+        ${np && temCalendario(c) ? `<span class="next">post <strong>${fmtCurto(np.calDate || np.dataAgendamento)}</strong></span>` : ''}
         ${m.csat != null ? `<span class="csat${m.csat >= 9 ? ' hit' : ' miss'}">CSAT <strong>${fmtNota(m.csat)}</strong></span>` : ''}
       </div>
     </button>`;
@@ -271,8 +273,8 @@
       ${atrasadasHTML(lateTasks)}
       ${csatDetalheHTML(m, diasSemResposta)}
       ${expansoesHTML(c)}
-      <p class="eyebrow">Próximos posts</p>
-      ${posts.length ? `<div class="task-rows">${posts.map(rowHTML).join('')}</div>` : `<div class="fn-empty">Nenhum post agendado daqui pra frente. O calendário agradece um brinde novo.</div>`}`;
+      ${temCalendario(c) ? `<p class="eyebrow">Próximos posts</p>
+      ${posts.length ? `<div class="task-rows">${posts.map(rowHTML).join('')}</div>` : `<div class="fn-empty">Nenhum post agendado daqui pra frente. O calendário agradece um brinde novo.</div>`}` : `<p class="eyebrow">Calendário</p><div class="fn-empty">Plano Dose — sem calendário de social.</div>`}`;
   }
 
   // ---------- blocos da ficha ----------
@@ -285,7 +287,7 @@
     if (m.nps != null) add(m.nps < 9, `NPS ${fmtNota(m.nps)} (meta ≥ 9)`, 'NPS na meta');
     if (m.respostas === 0) sin.push({ bad: true, txt: 'Nunca respondeu CSAT' });
     else if (diasSemResposta != null && diasSemResposta > 20) sin.push({ bad: true, txt: `Sem resposta de CSAT há ${diasSemResposta} dias` });
-    add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
+    if (temCalendario(c)) add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
     if (!c.temReportei) sin.push({ bad: true, txt: 'Sem Reportei Project ID no card — tráfego não é coletado' });
     else if (!c.hs) sin.push({ bad: true, txt: 'Reportei ligado, mas sem métrica de Meta na última semana (integração inativa, sem Meta Ads ou sem coleta ainda)' });
     return `<p class="eyebrow">Sinais do copo</p>
