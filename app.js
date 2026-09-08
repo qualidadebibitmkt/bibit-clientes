@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 16;
+  const VERSION = 17;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -282,6 +282,8 @@
     if (m.respostas === 0) sin.push({ bad: true, txt: 'Nunca respondeu CSAT' });
     else if (diasSemResposta != null && diasSemResposta > 20) sin.push({ bad: true, txt: `Sem resposta de CSAT há ${diasSemResposta} dias` });
     add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
+    if (!c.temReportei) sin.push({ bad: true, txt: 'Sem Reportei Project ID no card — tráfego não é coletado' });
+    else if (!c.hs) sin.push({ bad: true, txt: 'Reportei ligado, mas sem métrica de Meta na última semana (integração inativa, sem Meta Ads ou sem coleta ainda)' });
     return `<p class="eyebrow">Sinais do copo</p>
       <div class="sinais">${sin.map((x) => `<span class="sinal ${x.bad ? 'is-bad' : 'is-ok'}">${x.bad ? '⚠' : '✓'} ${esc(x.txt)}</span>`).join('')}</div>
       <p class="sinais-nota">A flag do copo é definida pela operação no Growth; os sinais acima são leitura automática das tarefas e do CSAT.</p>`;

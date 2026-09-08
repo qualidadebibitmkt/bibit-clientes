@@ -45,6 +45,7 @@ const CF_GRUPO_WA = '634d52ca-a2a9-477d-9c55-6089c0ef27b2';
 const CF_BRIEFING = 'fb0154b3-3c6c-4041-b193-79490bb7bad1';
 const CF_DATA_EXEC = 'db1abd50-bc00-4097-92b9-ec639fbe3b04';
 // Health Score — campos "HS ·" gravados pelo Make (cenário 6155088) toda segunda
+const CF_REPORTEI_ID = '790eac6d-2df3-4d45-9151-4a68be61e4ff'; // só sim/não sai ao navegador (diagnóstico do tráfego)
 const CF_HS_CPM = '5b496091-9725-4dae-8cef-7dd468458105';
 const CF_HS_ROAS = 'f5a25347-e2d8-443f-9017-7bdc62af5814';
 const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
@@ -169,6 +170,7 @@ function shapeCliente(task) {
     plano: cfDropdown(getCF(task, CF_PLANO))?.name || null,
     produtos: cfLabels(getCF(task, CF_PRODUTOS)),
     tipoRelatorio: cfDropdown(getCF(task, CF_TIPO_RELATORIO))?.name || null,
+    status: (task.status && task.status.status) || null,
     cidade: cfText(getCF(task, CF_CIDADE)),
     site: cfText(getCF(task, CF_SITE)),
     instagram: cfText(getCF(task, CF_INSTAGRAM)),
@@ -177,6 +179,7 @@ function shapeCliente(task) {
     dataEntradaExec: cfDate(getCF(task, CF_DATA_EXEC)),
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
     _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
+    temReportei: !!cfText(getCF(task, CF_REPORTEI_ID)),
     hs: (() => {
       const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0 ? v : null; }; // 0 = sem dado
       const at = cfDate(getCF(task, CF_HS_ATUALIZADO));

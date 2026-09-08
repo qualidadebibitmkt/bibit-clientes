@@ -32,6 +32,8 @@ module.exports = async (req, res) => {
       id: c.id,
       cliente: c.name,
       tipoRelatorio: c.tipoRelatorio,
+      status: c.status || null,
+      temReportei: !!c.temReportei,
       flagAtual: c.flag,
       score: c.healthScore?.score ?? null,
       flagSugerida: c.healthScore?.flag ?? null,
