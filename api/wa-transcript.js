@@ -14,6 +14,31 @@ const fmt = (ms) => {
 module.exports = async (req, res) => {
   if (!tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
   if (!redisReady()) { res.status(503).json({ error: 'buffer não configurado (Redis)' }); return; }
+  // diagnóstico: ?all=1 lista os grupos com mensagem no buffer
+  if (req.query.all) {
+    try {
+      const keys = [];
+      let cursor = '0';
+      do {
+        const r = await redisPipeline([['SCAN', cursor, 'MATCH', 'wa:*', 'COUNT', '500']]);
+        const [next, ks] = r[0].result; cursor = String(next); keys.push(...ks);
+      } while (cursor !== '0' && keys.length < 5000);
+      const porGrupo = {};
+      for (const k of keys) { const g = k.split(':')[1]; (porGrupo[g] = porGrupo[g] || []).push(k); }
+      const grupos = [];
+      for (const [g, ks] of Object.entries(porGrupo)) {
+        const out = await redisPipeline(ks.map((k) => ['LRANGE', k, '0', '-1']));
+        const msgs = [];
+        for (const r of out) for (const raw of (r.result || [])) { try { msgs.push(JSON.parse(raw)); } catch {} }
+        msgs.sort((a, b) => a.t - b.t);
+        const u = msgs[msgs.length - 1];
+        grupos.push({ grupo: g, count: msgs.length, ultima: u ? `${fmt(u.t)} — ${u.s}: ${String(u.m).slice(0, 60)}` : null });
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200).json({ grupos: grupos.sort((a, b) => b.count - a.count) });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+    return;
+  }
   const grupo = normGrupo(req.query.grupo);
   if (!grupo) { res.status(400).json({ error: 'grupo obrigatório' }); return; }
   const days = Math.min(14, Math.max(1, Number(req.query.days) || 7));
