@@ -157,14 +157,15 @@ function calcularTodos(clientes) {
     const tr = notaTrafego(c.tipoRelatorio, c.hs, basePorTipo[t] || {});
     const sa = notaSatisfacao(c.csat, c.nps);
     const pr = notaProdutividade(c.prodPct);
-    const comp = compor({ trafego: tr.nota, satisfacao: sa.nota, produtividade: pr.nota, contato: null });
+    const ct = c.contato != null ? round0(clamp(c.contato, 0, 100)) : null; // nota 0–100 da análise do grupo
+    const comp = compor({ trafego: tr.nota, satisfacao: sa.nota, produtividade: pr.nota, contato: ct });
     out[c.id] = {
       ...comp,
       pilares: {
         trafego: { nota: tr.nota, peso: PESOS.trafego, detalhe: tr.detalhe },
         satisfacao: { nota: sa.nota, peso: PESOS.satisfacao, detalhe: sa.detalhe },
         produtividade: { nota: pr.nota, peso: PESOS.produtividade, detalhe: pr.detalhe },
-        contato: { nota: null, peso: PESOS.contato, detalhe: null },
+        contato: { nota: ct, peso: PESOS.contato, detalhe: null },
       },
     };
   }

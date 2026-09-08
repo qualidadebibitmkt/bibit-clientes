@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 17;
+  const VERSION = 18;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -161,7 +161,7 @@
   function hsMiniHTML(hs) {
     if (!hs || hs.score == null) return `<div class="hs-mini"><span class="hs-score na">—</span><span class="hs-nota">sem dados pro score</span></div>`;
     const pil = Object.entries(hs.pilares)
-      .filter(([k]) => k !== 'contato') // contato ainda sem fonte — entra quando ligar
+      .filter(([k, p]) => k !== 'contato' || p.nota != null) // contato aparece quando houver análise
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
     if (hs.insuficiente) return `<div class="hs-mini"><span class="hs-score na">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura} · insuficiente</span></div>`;
     return `<div class="hs-mini"><span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura}</span></div>`;
@@ -177,7 +177,7 @@
       else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
       if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
       if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} do mês`;
-      if (k === 'contato') det = '<span class="hs-regua">pilar desenhado, sem fonte ainda — não pesa no score</span>';
+      if (k === 'contato') det = p.nota != null ? esc(c.contato?.resumo || 'análise semanal do grupo de WhatsApp') : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>';
       return `<div class="hs-row ${p.nota == null ? 'off' : ''}">
         <span class="hs-row-l"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i></span>
         <span class="hs-row-det">${det}</span>

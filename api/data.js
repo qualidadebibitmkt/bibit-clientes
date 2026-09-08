@@ -180,6 +180,11 @@ function shapeCliente(task) {
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
     _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
     temReportei: !!cfText(getCF(task, CF_REPORTEI_ID)),
+    contato: (() => { // pilar de contato (análise semanal do grupo de WhatsApp) — lido pelo nome do campo
+      const byName = (n) => (task.custom_fields || []).find((f) => f.name === n);
+      const nota = cfNumber(byName('HS · Contato'));
+      return { nota: nota != null && nota >= 0 ? nota : null, resumo: cfText(byName('HS · Resumo WhatsApp')) || null };
+    })(),
     hs: (() => {
       const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0 ? v : null; }; // 0 = sem dado
       const at = cfDate(getCF(task, CF_HS_ATUALIZADO));
@@ -373,6 +378,7 @@ module.exports = async (req, res) => {
     const hsResultados = calcularTodos(clients.map((c) => ({
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs,
       csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
+      contato: c.contato?.nota ?? null,
     })));
     for (const c of clients) c.healthScore = hsResultados[c.id] || null;
 
