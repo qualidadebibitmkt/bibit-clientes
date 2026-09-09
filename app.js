@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 22;
+  const VERSION = 23;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -194,7 +194,9 @@
       else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
       if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
       if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} do mês`;
-      if (k === 'contato') det = p.nota != null ? esc(c.contato?.resumo || 'análise semanal do grupo de WhatsApp') : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>';
+      if (k === 'contato') det = p.nota != null
+        ? esc(c.contato?.resumo || 'análise semanal do grupo de WhatsApp')
+        : (c.contato?.resumo ? `<span class="hs-regua">prévia (sem nota até a análise semanal):</span> ${esc(c.contato.resumo)}` : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>');
       return `<div class="hs-row ${p.nota == null ? 'off' : ''}">
         <span class="hs-row-l"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i></span>
         <span class="hs-row-det">${det}</span>
