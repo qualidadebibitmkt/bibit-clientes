@@ -1068,3 +1068,18 @@ body::before {
 .card-sub { overflow: hidden; }
 .card-plan { overflow: hidden; text-overflow: ellipsis; }
 .stats-squad { margin-top: -10px; }
+
+/* ---------- v37: squads derivados da equipe ---------- */
+.stats-squads { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8px 0 18px; }
+.stat-squad {
+  font-family: var(--ui); font-size: 13px; color: var(--creme-70); cursor: pointer;
+  padding: 5px 8px 5px 14px; border-radius: 999px; background: transparent;
+  border: 1px solid rgba(243, 236, 218, 0.14); display: inline-flex; align-items: center; gap: 8px;
+}
+.stat-squad strong { color: var(--creme); }
+.stat-squad:hover { background: var(--garrafa-2); }
+.stat-squad.is-selected { background: var(--garrafa-3); color: var(--creme); border: 2px solid var(--creme); padding: 4px 7px 4px 13px; }
+.squad-avs { display: inline-flex; margin-left: 2px; }
+.squad-avs .avatar { margin-left: -7px; }
+.squad-avs .avatar:first-child { margin-left: 0; }
+.avatar.av-sm { width: 24px; height: 24px; font-size: 9px; border: 2px solid var(--garrafa); }
