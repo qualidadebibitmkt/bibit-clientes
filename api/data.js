@@ -390,6 +390,21 @@ module.exports = async (req, res) => {
     })));
     for (const c of clients) c.healthScore = hsResultados[c.id] || null;
 
+    // ---- Snapshot diário dos scores (tendência da aba Health Score) ----
+    // Grava 1 foto por dia no Redis (mesmo buffer do WhatsApp), expira em 120 dias.
+    // Best-effort: se o Redis não estiver configurado, o painel segue sem tendência.
+    try {
+      const wa = require('./_wa');
+      if (wa.redisReady()) {
+        const dia = new Date(now).toISOString().slice(0, 10);
+        const key = 'hs:snap:' + dia;
+        const foto = {};
+        for (const c of clients) if (c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente) foto[c.id] = { s: c.healthScore.score, f: c.healthScore.flag, p: Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, v]) => [k, v.nota])) };
+        const ja = await wa.redis(['EXISTS', key]);
+        if (!ja) await wa.redisPipeline([['SET', key, JSON.stringify(foto)], ['EXPIRE', key, String(120 * 86400)]]);
+      }
+    } catch (e) { /* snapshot é opcional */ }
+
     res.status(200).json({
       generatedAt: now,
       clients: clients.map(({ matchName, _valorRec, ...c }) => c),

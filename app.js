@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 50;
+  const VERSION = 51;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -572,9 +572,88 @@
     }).join('');
   }
 
+  // ---------- aba Health Score ----------
+  let hsHist = null; // { dias: [...] } carregado sob demanda
+  async function loadHist() {
+    if (hsHist) return hsHist;
+    try { const r = await fetch('/api/hs-history?days=56'); hsHist = await r.json(); } catch { hsHist = { dias: [] }; }
+    return hsHist;
+  }
+  // score de um cliente há ~N dias (foto mais próxima, até 3 dias de tolerância)
+  function scoreHa(hist, id, dias) {
+    if (!hist || !hist.dias.length) return null;
+    const alvo = Date.now() - dias * 864e5;
+    let melhor = null, dist = Infinity;
+    for (const d of hist.dias) { const t = new Date(d.dia + 'T12:00:00Z').getTime(); const dd = Math.abs(t - alvo); if (dd < dist && d.scores[id]) { dist = dd; melhor = d.scores[id]; } }
+    return dist <= 3 * 864e5 ? melhor : null;
+  }
+  const PILAR_META = { trafego: 'Tráfego', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Contato' };
+
+  function renderHealth(el) {
+    const { clients } = state.data;
+    const com = clients.filter((c) => c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente);
+    const sem = clients.filter((c) => !c.healthScore || c.healthScore.score == null || c.healthScore.insuficiente);
+    const media = com.length ? Math.round(com.reduce((s, c) => s + c.healthScore.score, 0) / com.length) : null;
+    const cnt = (f) => com.filter((c) => c.healthScore.flag === f).length;
+    const mediaPilar = (k) => { const v = com.map((c) => c.healthScore.pilares[k].nota).filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
+
+    const rank = [...com].sort((x, y) => x.healthScore.score - y.healthScore.score); // pior primeiro
+    const linha = (c) => {
+      const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
+      const d = prev ? hs.score - prev.s : null;
+      const delta = d == null ? '<span class="hs-delta na">—</span>' : d === 0 ? '<span class="hs-delta flat">= 0</span>' : `<span class="hs-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
+      const pil = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const n = hs.pilares[k].nota; return `<td class="hs-td ${hsCls(n)}">${n != null ? n : '—'}</td>`; }).join('');
+      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td>${pil}</tr>`;
+    };
+
+    const sangra = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => {
+      const ruins = com.filter((c) => c.healthScore.pilares[k].nota != null && c.healthScore.pilares[k].nota < 50).sort((x, y) => x.healthScore.pilares[k].nota - y.healthScore.pilares[k].nota);
+      const m = mediaPilar(k);
+      return `<div class="hs-pilar-box"><div class="hs-pilar-head"><span>${PILAR_META[k]}</span><span class="hs-pilar-media ${hsCls(m)}">${m != null ? m : '—'}<small>média</small></span></div>
+        ${ruins.length ? `<div class="hs-pilar-list">${ruins.slice(0, 8).map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="${hsCls(c.healthScore.pilares[k].nota)}">${c.healthScore.pilares[k].nota}</b></button>`).join('')}${ruins.length > 8 ? `<span class="hs-mais">+${ruins.length - 8}</span>` : ''}</div>` : `<div class="hs-pilar-ok">ninguém abaixo de 50${m == null ? ' · sem dado ainda' : ''}</div>`}</div>`;
+    }).join('');
+
+    const alertas = clients.filter((c) => c.contato && c.contato.resumo && /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i.test(c.contato.resumo));
+    const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ID'); else if (!c.hs) falta.push('sem métrica Meta'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
+
+    el.innerHTML = `
+      <p class="eyebrow">Health Score · termômetro da carteira</p>
+      <div class="hs-termo">
+        <div class="hs-termo-media"><div class="hs-big ${hsCls(media)}">${media != null ? media : '—'}<small>/100</small></div><div class="hs-termo-l">média da carteira<br><span>${com.length} clientes com score</span></div></div>
+        <div class="stats-donut">${donutSVG(cnt('green'), cnt('yellow'), cnt('red'))}</div>
+        <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
+      </div>
+
+      <p class="eyebrow">Ranking · do mais crítico ao mais saudável ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Score</th><th class="r">7d</th><th class="r">Tráfego</th><th class="r">Satisf.</th><th class="r">Produt.</th><th class="r">Contato</th></tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+
+      <p class="eyebrow">Onde a carteira sangra · clientes abaixo de 50 por pilar</p>
+      <div class="hs-pilares-grid">${sangra}</div>
+
+      <p class="eyebrow">Alertas do WhatsApp ${alertas.length ? `<span class="csat-alert">${alertas.length}</span>` : ''}</p>
+      ${alertas.length ? `<div class="hs-alertas">${alertas.map((c) => `<button class="hs-alerta" data-id="${c.id}"><b>${esc(c.name)}</b><span>${esc(c.contato.resumo)}</span></button>`).join('')}</div>` : '<div class="fn-empty">Nenhum resumo com sinal de risco esta semana.</div>'}
+
+      <p class="eyebrow">Sem score ainda · ${sem.length}</p>
+      ${sem.length ? `<div class="hs-pilar-list">${semDado}</div>` : '<div class="fn-empty">Todos os clientes têm score.</div>'}
+
+      <p class="eyebrow">Como é calculado</p>
+      <div class="hs-regras">
+        <div><b>Pesos</b> Tráfego 40 · Satisfação 30 · Contato 15 · Produtividade 15 — pilar sem dado não zera o cliente: os pesos redistribuem entre os disponíveis (mínimo 2 pilares pra emitir flag).</div>
+        <div><b>Tráfego</b> última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Objetivo com investimento e sem resultado = 0.</div>
+        <div><b>Satisfação</b> CSAT e NPS (0–10): 7 → 0 pontos · 9 → 100 · 8 = 50.</div>
+        <div><b>Produtividade</b> (abertas − atrasadas) ÷ abertas: 85% → 0 · 95% → 100.</div>
+        <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
+        <div><b>Flag</b> ≥ 80 verde · 50–79 amarelo · &lt; 50 vermelho. Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
+      </div>`;
+
+    // clique em cliente → ficha
+    el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
+    if (!hsHist) loadHist().then(() => { if (state.view === 'health') renderHealth(el); });
+  }
+
   // ---------- shell ----------
   function render() {
-    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes') };
+    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth') };
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     document.querySelectorAll('.tab').forEach((t) => {
       const on = t.dataset.view === state.view;
@@ -584,6 +663,7 @@
     if (state.view === 'geral') renderGeral(views.geral);
     if (state.view === 'calendario') renderCalendario(views.calendario);
     if (state.view === 'funcoes') renderFuncoes(views.funcoes);
+    if (state.view === 'health') renderHealth(views.health);
   }
 
   async function boot() {
