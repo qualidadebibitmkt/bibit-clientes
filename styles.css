@@ -1015,3 +1015,9 @@ body::before {
 .stats-flags { align-items: center; }
 .stats-status { align-items: center; }
 .stats-status-l { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45); margin-right: 6px; }
+
+/* ---------- v30: ícones de plano ---------- */
+.pl-ic { display: inline-block; vertical-align: -3px; flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+.stat-plano .pl-ic { margin-right: 2px; }
+.card-plan { display: inline-flex; align-items: center; gap: 6px; }
+.card-plan .pl-ic { vertical-align: 0; }

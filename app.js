@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 29;
+  const VERSION = 30;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -66,6 +66,34 @@
     if (!tot) return `<svg viewBox="0 0 110 110" class="donut"><circle cx="55" cy="55" r="${R}" fill="none" stroke="rgba(243,236,218,0.12)" stroke-width="14"/><text x="55" y="60" text-anchor="middle" class="donut-t">0</text></svg>`;
     let off = 0; const seg = (n, cls) => { if (!n) return ''; const len = (n / tot) * C; const s = `<circle cx="55" cy="55" r="${R}" fill="none" class="donut-seg ${cls}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return s; };
     return `<svg viewBox="0 0 110 110" class="donut"><g transform="rotate(-90 55 55)">${seg(g, 'dg')}${seg(y, 'dy')}${seg(r, 'dr')}</g><text x="55" y="52" text-anchor="middle" class="donut-t">${tot}</text><text x="55" y="68" text-anchor="middle" class="donut-s">copos</text></svg>`;
+  }
+
+  // ---------- ícones de plano (SVG inline, originais) ----------
+  function planoIcon(plano, size = 18) {
+    const k = String(plano || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const w = size, h = size;
+    const medal = (c1, c2, ring) => `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 2h4l1 5-3 1z" fill="#b83a3a"/><path d="M17 2h-4l-1 5 3 1z" fill="#d94a4a"/>
+      <circle cx="12" cy="15" r="6.6" fill="${c1}" stroke="${ring}" stroke-width="1.2"/>
+      <circle cx="12" cy="15" r="4" fill="none" stroke="${c2}" stroke-width="1.1" opacity="0.9"/>
+      <path d="M12 12.2l.9 1.8 2 .3-1.45 1.4.35 2-1.8-.95-1.8.95.35-2-1.45-1.4 2-.3z" fill="${c2}"/></svg>`;
+    if (k === 'prata') return medal('#c9d0d8', '#7f8a96', '#eef2f6');
+    if (k === 'ouro') return medal('#e6bd4a', '#9a7414', '#fff1b8');
+    if (k === 'ouro antigo') return medal('#b98a3c', '#6f4f12', '#e8c98a');
+    if (k === 'platina') return medal('#e8eef5', '#8aa0b8', '#ffffff');
+    if (k === 'diamante') return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 4h12l4 6-10 11L2 10z" fill="#9fe3f7" stroke="#3fb3d3" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M2 10h20M6 4l6 6 6-6M8 10l4 11 4-11" fill="none" stroke="#ffffff" stroke-width="0.9" opacity="0.9"/></svg>`;
+    if (k === 'dose') return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4h10l-1.4 15.2a1.5 1.5 0 0 1-1.5 1.3H9.9a1.5 1.5 0 0 1-1.5-1.3z" fill="rgba(243,236,218,0.12)" stroke="#e9dfc9" stroke-width="1.2" stroke-linejoin="round"/>
+      <path d="M8.2 12h7.6l-.6 7.2a.6.6 0 0 1-.6.5h-5.2a.6.6 0 0 1-.6-.5z" fill="#d9a441"/>
+      <path d="M8.6 12.6h6.8" stroke="#fff3c8" stroke-width="0.8" opacity="0.8"/></svg>`;
+    if (k === 'personalizado') return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 13l-2.5 8 5.5-3 5.5 3L15 13z" fill="#c26a5a"/>
+      <path d="M12 2.6l1.9 1.3 2.3-.2.9 2.1 2.1.9-.2 2.3 1.3 1.9-1.3 1.9.2 2.3-2.1.9-.9 2.1-2.3-.2L12 19.4l-1.9-1.3-2.3.2-.9-2.1-2.1-.9.2-2.3L3.7 11 5 9.1l-.2-2.3 2.1-.9.9-2.1 2.3.2z" fill="#e7cf8b" stroke="#a88338" stroke-width="0.9" stroke-linejoin="round"/>
+      <circle cx="12" cy="11" r="3.6" fill="#fff5d6" stroke="#a88338" stroke-width="0.8"/>
+      <path d="M12 8.9l.7 1.4 1.5.2-1.1 1 .3 1.5-1.4-.7-1.4.7.3-1.5-1.1-1 1.5-.2z" fill="#a88338"/></svg>`;
+    return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="none" stroke="rgba(243,236,218,0.45)" stroke-width="1.4"/></svg>`;
   }
 
   // ---------- o copo ----------
@@ -148,7 +176,7 @@
     const planos = [...byStatus.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
       .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR'));
     const planosRow = `<button class="stat-plano${state.planoFilter ? '' : ' is-selected'}" data-plano=""><span class="stat-plano-n">${byStatus.length}</span>todos</button>`
-      + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${esc(p.toLowerCase())}</button>`).join('');
+      + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${planoIcon(p, 18)}${esc(p.toLowerCase())}</button>`).join('');
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
@@ -175,7 +203,7 @@
     const m = c.metrics || {};
     return `<button class="card" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
-        <div><div class="card-name">${esc(c.name)}${(() => { const k = stKeyOf(c); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
+        <div><div class="card-name">${esc(c.name)}${(() => { const k = stKeyOf(c); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${planoIcon(c.plano, 16)}${esc(c.plano)}</div>` : ''}</div>
       </div>
       ${hsMiniHTML(c.healthScore)}
       <div class="card-meta">
@@ -258,7 +286,7 @@
           <h2 class="ficha-title">${esc(c.name)}</h2>
           <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
           <div class="ficha-grid">
-            ${item('Plano', esc(c.plano))}
+            ${item('Plano', c.plano ? `${planoIcon(c.plano, 18)} ${esc(c.plano)}` : null)}
             ${item('Relatório', esc(c.tipoRelatorio))}
             ${item('Cidade/UF', esc(c.cidade))}
             ${item('Em execução desde', c.dataEntradaExec ? fmtLongo(c.dataEntradaExec) : '')}
