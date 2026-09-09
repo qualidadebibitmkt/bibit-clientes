@@ -1004,3 +1004,12 @@ body::before {
   .stats-flags { grid-template-columns: 1fr 1fr; }
   .stats-donut { grid-column: 1 / -1; }
 }
+
+/* ---------- v28: seleção de plano por borda; cartões sem esticar ---------- */
+.stat-plano.is-selected {
+  background: var(--garrafa-3); color: var(--creme);
+  border: 2px solid var(--creme); padding: 5px 13px 5px 6px;
+}
+.stat-plano.is-selected .stat-plano-n { background: var(--creme); color: #0f1f16; }
+.stat-flag { height: auto; min-height: 0; }
+.stats-flags { align-items: center; }
