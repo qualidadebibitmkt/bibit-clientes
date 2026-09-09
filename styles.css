@@ -1092,3 +1092,4 @@ body::before {
 .squad-avs { display: inline-flex; gap: 4px; margin-left: 6px; }
 .squad-avs .avatar { margin-left: 0; }
 .avatar.av-sm { width: 26px; height: 26px; }
+.stat-status.st-execucao strong, .stat-status.st-execucao.is-selected { color: var(--flag-green); }
