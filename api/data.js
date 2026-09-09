@@ -116,7 +116,7 @@ function person(u) {
       .slice(0, 2)
       .join('')
       .toUpperCase();
-  return { name, initials, color: u.color || null };
+  return { name, initials, color: u.color || null, foto: u.profilePicture || null };
 }
 
 // ---------- ClickUp fetch ----------

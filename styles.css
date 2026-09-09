@@ -1029,3 +1029,14 @@ body::before {
 .card-team-p { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--creme-70); }
 .card-team-p .avatar { width: 24px; height: 24px; font-size: 10px; }
 .card-team-empty { font-size: 12px; color: var(--creme-45); font-style: italic; }
+
+/* ---------- v33: equipe com fotos no card ---------- */
+.avatar.has-foto { padding: 0; overflow: hidden; background: var(--garrafa-3); }
+.avatar.has-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.av-lg { width: 34px; height: 34px; font-size: 12px; border: 2px solid var(--garrafa); }
+.card-team { display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+.card-team-l { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45); }
+.card-team-avs { display: inline-flex; }
+.card-team-avs .avatar { margin-left: -8px; }
+.card-team-avs .avatar:first-child { margin-left: 0; }
+.card-team-empty { font-size: 12px; color: var(--creme-45); }
