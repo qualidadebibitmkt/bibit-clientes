@@ -1021,3 +1021,4 @@ body::before {
 .stat-plano .pl-ic { margin-right: 2px; }
 .card-plan { display: inline-flex; align-items: center; gap: 6px; }
 .card-plan .pl-ic { vertical-align: 0; }
+.pl-platina { filter: drop-shadow(0 0 3px rgba(190, 215, 255, 0.75)) drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }

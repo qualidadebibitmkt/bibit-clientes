@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 30;
+  const VERSION = 31;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -80,7 +80,13 @@
     if (k === 'prata') return medal('#c9d0d8', '#7f8a96', '#eef2f6');
     if (k === 'ouro') return medal('#e6bd4a', '#9a7414', '#fff1b8');
     if (k === 'ouro antigo') return medal('#b98a3c', '#6f4f12', '#e8c98a');
-    if (k === 'platina') return medal('#e8eef5', '#8aa0b8', '#ffffff');
+    if (k === 'platina') return `<svg class="pl-ic pl-platina" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+      <defs><linearGradient id="plg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#cfe3ff"/><stop offset="0.75" stop-color="#e9d8ff"/><stop offset="1" stop-color="#9fbde6"/></linearGradient></defs>
+      <path d="M5 3l2.5 3L12 2l4.5 4L19 3v5H5z" fill="#ffe8a3" stroke="#c9a23a" stroke-width="0.9" stroke-linejoin="round"/>
+      <circle cx="12" cy="15.2" r="7.2" fill="url(#plg)" stroke="#ffffff" stroke-width="1.3"/>
+      <circle cx="12" cy="15.2" r="4.6" fill="none" stroke="#7fa6d8" stroke-width="1"/>
+      <path d="M12 11.6l1.1 2.3 2.5.3-1.85 1.75.5 2.5L12 17.2l-2.25 1.25.5-2.5L8.4 14.2l2.5-.3z" fill="#5f86bd"/>
+      <path d="M3.2 12.5l.6 1.2 1.2.6-1.2.6-.6 1.2-.6-1.2-1.2-.6 1.2-.6zM20.8 9.5l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5z" fill="#ffffff"/></svg>`;
     if (k === 'diamante') return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M6 4h12l4 6-10 11L2 10z" fill="#9fe3f7" stroke="#3fb3d3" stroke-width="1.1" stroke-linejoin="round"/>
       <path d="M2 10h20M6 4l6 6 6-6M8 10l4 11 4-11" fill="none" stroke="#ffffff" stroke-width="0.9" opacity="0.9"/></svg>`;
@@ -89,10 +95,10 @@
       <path d="M8.2 12h7.6l-.6 7.2a.6.6 0 0 1-.6.5h-5.2a.6.6 0 0 1-.6-.5z" fill="#d9a441"/>
       <path d="M8.6 12.6h6.8" stroke="#fff3c8" stroke-width="0.8" opacity="0.8"/></svg>`;
     if (k === 'personalizado') return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 13l-2.5 8 5.5-3 5.5 3L15 13z" fill="#c26a5a"/>
-      <path d="M12 2.6l1.9 1.3 2.3-.2.9 2.1 2.1.9-.2 2.3 1.3 1.9-1.3 1.9.2 2.3-2.1.9-.9 2.1-2.3-.2L12 19.4l-1.9-1.3-2.3.2-.9-2.1-2.1-.9.2-2.3L3.7 11 5 9.1l-.2-2.3 2.1-.9.9-2.1 2.3.2z" fill="#e7cf8b" stroke="#a88338" stroke-width="0.9" stroke-linejoin="round"/>
-      <circle cx="12" cy="11" r="3.6" fill="#fff5d6" stroke="#a88338" stroke-width="0.8"/>
-      <path d="M12 8.9l.7 1.4 1.5.2-1.1 1 .3 1.5-1.4-.7-1.4.7.3-1.5-1.1-1 1.5-.2z" fill="#a88338"/></svg>`;
+      <path d="M4 7h16M4 12h16M4 17h16" stroke="rgba(243,236,218,0.55)" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="9" cy="7" r="2.4" fill="#e6bd4a" stroke="#7a5a12" stroke-width="0.9"/>
+      <circle cx="15" cy="12" r="2.4" fill="#e6bd4a" stroke="#7a5a12" stroke-width="0.9"/>
+      <circle cx="7" cy="17" r="2.4" fill="#e6bd4a" stroke="#7a5a12" stroke-width="0.9"/></svg>`;
     return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="none" stroke="rgba(243,236,218,0.45)" stroke-width="1.4"/></svg>`;
   }
 
