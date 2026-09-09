@@ -1233,3 +1233,5 @@ body::before {
 .hs-regras { display: grid; gap: 8px; font-size: 13px; color: var(--creme-70); margin-bottom: 30px; }
 .hs-regras b { color: var(--rolha); margin-right: 6px; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
 @media (max-width: 900px) { .hs-termo { grid-template-columns: 1fr; } .hs-termo-pilares { grid-template-columns: repeat(2, 1fr); } .hs-pilares-grid { grid-template-columns: 1fr; } .hs-alerta { grid-template-columns: 1fr; } }
+.tab { display: inline-flex; align-items: center; gap: 7px; }
+.tab-ic { width: 15px; height: 15px; flex-shrink: 0; }
