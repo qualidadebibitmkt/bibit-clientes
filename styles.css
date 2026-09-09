@@ -1150,3 +1150,8 @@ body::before {
 @media (max-width: 720px) { .hero { grid-template-columns: 1fr 1fr; } .balcao-right { margin-left: 0; } }
 .comanda-l { display: inline-flex; align-items: center; gap: 6px; font-family: var(--ui); font-size: 12.5px; font-weight: 700; letter-spacing: 0; text-transform: none; color: #2c1f14; margin-left: 12px; }
 .cm-ic { width: 14px; height: 14px; color: #6a4e1e; }
+
+/* ---------- v45: logo maior, com folga no topo ---------- */
+.brand-img { height: 98px; image-rendering: auto; }
+.topbar { padding-top: 18px; padding-bottom: 16px; }
+@media (max-width: 720px) { .brand-img { height: 64px; } }
