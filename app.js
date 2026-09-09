@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 34;
+  const VERSION = 35;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -227,9 +227,14 @@
     const late = ts.filter(isLate).length;
     const np = nextPost(ts);
     const m = c.metrics || {};
+    const k = stKeyOf(c);
+    const statusBadge = k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : '';
     return `<button class="card" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
-        <div><div class="card-name">${esc(c.name)}${(() => { const k = stKeyOf(c); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${planoIcon(c.plano, 16)}${esc(c.plano)}</div>` : ''}</div>
+        <div class="card-titles">
+          <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(c.plano)}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}${statusBadge}</div>
+        </div>
       </div>
       ${hsMiniHTML(c.healthScore)}
       ${equipeMiniHTML(c)}
@@ -246,7 +251,7 @@
     const pil = Object.entries(hs.pilares)
       .filter(([k, p]) => k !== 'contato' || p.nota != null) // contato aparece quando houver análise
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
-    if (hs.insuficiente) return `<div class="hs-mini"><span class="hs-score na">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura} · insuficiente</span></div>`;
+    if (hs.insuficiente) return `<div class="hs-mini"><span class="hs-score na">${hs.score}</span>${pil}<span class="hs-cob" title="menos de 2 pilares com dado — flag manual mantida">${hs.cobertura} · insuf.</span></div>`;
     return `<div class="hs-mini"><span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura}</span></div>`;
   }
 
