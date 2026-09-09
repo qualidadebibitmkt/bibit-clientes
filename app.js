@@ -56,6 +56,8 @@
   const flagDe = (c) => (c.healthScore && c.healthScore.flag) ? c.healthScore.flag : c.flag;
   // Plano DOSE não tem calendário de social (regra do Bruno, 08/09/26): nada de "post agendado" pra ele
   const temCalendario = (c) => String(c.plano || '').trim().toUpperCase() !== 'DOSE';
+  // chave de status sem acento (execução → execucao)
+  const stKeyOf = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
 
   // ---------- o copo ----------
   let uid = 0;
@@ -124,7 +126,7 @@
   function renderGeral(el) {
     if (state.cliente) { renderFicha(el, clientById(state.cliente)); return; }
     const { clients } = state.data;
-    const stKey = (c) => norm(c.status || '').toLowerCase().replace(/[^a-z]/g, '');
+    const stKey = stKeyOf;
     const STATUS = [['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento'], ['briefing', 'Briefing']];
     const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
     const count = (f) => byStatus.filter((c) => flagDe(c) === f).length;
@@ -156,7 +158,7 @@
     const m = c.metrics || {};
     return `<button class="card" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
-        <div><div class="card-name">${esc(c.name)}${(() => { const k = norm(c.status || '').toLowerCase().replace(/[^a-z]/g, ''); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
+        <div><div class="card-name">${esc(c.name)}${(() => { const k = stKeyOf(c); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
       </div>
       ${hsMiniHTML(c.healthScore)}
       <div class="card-meta">
