@@ -261,7 +261,8 @@ module.exports = async (req, res) => {
     const clients = growthTasks
       .map(shapeCliente)
       .filter((c) => c.id !== TESTE_CLIENTE_OPTION && c.matchName !== 'TESTE CLIENTE')
-      .filter((c) => !c._dataSaida || c._dataSaida > now)
+      // (09/09/26) quem decide presença na adega é o STATUS, não a Data de Saída:
+      // encerramento aparece mesmo com saída passada; churn nunca aparece.
       .filter((c) => !/churn/i.test(c.status || '')) // churn nunca entra na adega (regra do Bruno, 09/09/26)
       .map(({ _dataSaida, ...c }) => c)  // _valorRec sai adiante, depois do NRR
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
