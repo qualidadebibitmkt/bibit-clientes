@@ -1056,3 +1056,14 @@ body::before {
 .hs-cob { margin-left: auto; white-space: nowrap; font-size: 11px; }
 .card-team { margin-top: auto; min-height: 44px; padding-top: 10px; }
 .card-team-avs .avatar { margin-left: -8px; }
+
+/* ---------- v36: selo de status no canto superior direito, sem vazar ---------- */
+.card { overflow: hidden; }
+.card-head { align-items: flex-start; }
+.card-head .card-status {
+  flex-shrink: 0; align-self: flex-start; margin-top: 2px;
+  font-size: 9px; letter-spacing: 0.06em; padding: 3px 8px; max-width: 46%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card-sub { overflow: hidden; }
+.card-plan { overflow: hidden; text-overflow: ellipsis; }
