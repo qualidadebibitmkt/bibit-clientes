@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 25;
+  const VERSION = 26;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -59,6 +59,14 @@
   const temCalendario = (c) => String(c.plano || '').trim().toUpperCase() !== 'DOSE';
   // chave de status sem acento (execução → execucao)
   const stKeyOf = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+
+  // rosca verde/amarelo/vermelho da adega (reage a status e plano)
+  function donutSVG(g, y, r) {
+    const tot = g + y + r, R = 44, C = 2 * Math.PI * R;
+    if (!tot) return `<svg viewBox="0 0 110 110" class="donut"><circle cx="55" cy="55" r="${R}" fill="none" stroke="rgba(243,236,218,0.12)" stroke-width="14"/><text x="55" y="60" text-anchor="middle" class="donut-t">0</text></svg>`;
+    let off = 0; const seg = (n, cls) => { if (!n) return ''; const len = (n / tot) * C; const s = `<circle cx="55" cy="55" r="${R}" fill="none" class="donut-seg ${cls}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return s; };
+    return `<svg viewBox="0 0 110 110" class="donut"><g transform="rotate(-90 55 55)">${seg(g, 'dg')}${seg(y, 'dy')}${seg(r, 'dr')}</g><text x="55" y="52" text-anchor="middle" class="donut-t">${tot}</text><text x="55" y="68" text-anchor="middle" class="donut-s">copos</text></svg>`;
+  }
 
   // ---------- o copo ----------
   let uid = 0;
@@ -150,6 +158,7 @@
         <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
         <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
+        <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
         <div class="stats-planos"><span class="stats-planos-l">por plano</span>${planosRow}</div>
       </div>
       <div class="stats-status">${statusRow}</div>

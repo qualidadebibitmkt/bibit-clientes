@@ -945,3 +945,13 @@ body::before {
 .stat-plano:hover { background: var(--garrafa-2); }
 .stat-plano.is-selected { background: var(--garrafa-3); color: var(--creme); border-color: var(--creme-45); }
 @media (max-width: 900px) { .stats-planos { margin-left: 0; border-left: 0; padding-left: 0; flex-basis: 100%; max-width: none; } }
+
+/* ---------- v26: rosca das flags no bloco ---------- */
+.stats-donut { display: flex; align-items: center; padding: 0 6px 0 14px; }
+.donut { width: 96px; height: 96px; display: block; }
+.donut-seg { stroke-linecap: butt; transition: stroke-dasharray 0.3s; }
+.donut-seg.dg { stroke: var(--flag-green); }
+.donut-seg.dy { stroke: var(--flag-yellow); }
+.donut-seg.dr { stroke: var(--flag-red); }
+.donut-t { font-family: var(--serif, serif); font-size: 26px; font-weight: 700; fill: var(--creme); }
+.donut-s { font-family: var(--ui); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; fill: var(--creme-45); }
