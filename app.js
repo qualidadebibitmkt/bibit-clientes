@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 24;
+  const VERSION = 25;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -139,7 +139,8 @@
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...byStatus.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
       .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR'));
-    const planosRow = planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${esc(p.toLowerCase())}</button>`).join('');
+    const planosRow = `<button class="stat-plano${state.planoFilter ? '' : ' is-selected'}" data-plano=""><span class="stat-plano-n">${byStatus.length}</span>todos</button>`
+      + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${esc(p.toLowerCase())}</button>`).join('');
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
@@ -470,7 +471,7 @@
       const ss = e.target.closest('.stat-status');
       if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
       const sp = e.target.closest('.stat-plano');
-      if (sp) { state.planoFilter = state.planoFilter === sp.dataset.plano ? null : sp.dataset.plano; render(); return; }
+      if (sp) { const p = sp.dataset.plano || null; state.planoFilter = (!p || state.planoFilter === p) ? null : p; render(); return; }
       const more = e.target.closest('.fn-more');
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);
