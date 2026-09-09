@@ -1155,3 +1155,11 @@ body::before {
 .brand-img { height: 98px; image-rendering: auto; }
 .topbar { padding-top: 18px; padding-bottom: 16px; }
 @media (max-width: 720px) { .brand-img { height: 64px; } }
+
+/* ---------- v46: rótulo "Filtro" como pílula ---------- */
+.comanda-l {
+  margin-left: 10px; padding: 3px 11px 3px 8px; border-radius: 999px;
+  background: rgba(44, 31, 20, 0.08); border: 1.5px solid #2c1f14; color: #2c1f14;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+}
+.comanda-l .cm-ic { color: #2c1f14; }
