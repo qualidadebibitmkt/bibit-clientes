@@ -955,3 +955,52 @@ body::before {
 .donut-seg.dr { stroke: var(--flag-red); }
 .donut-t { font-family: var(--serif, serif); font-size: 26px; font-weight: 700; fill: var(--creme); }
 .donut-s { font-family: var(--ui); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; fill: var(--creme-45); }
+
+/* ---------- v27: bloco de estatísticas harmônico ---------- */
+.brand-img { height: 76px; }
+@media (max-width: 720px) { .brand-img { height: 54px; } }
+
+.stats-flags {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto minmax(300px, 1.3fr);
+  gap: 18px; align-items: center;
+  padding: 22px 26px;
+}
+.stat-flag {
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 20px; min-height: 104px; height: 100%;
+  border-radius: 16px; background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(243, 236, 218, 0.12);
+}
+.stat-flag svg { width: 40px; height: auto; flex-shrink: 0; }
+.stat-flag .stat-num { font-size: 50px; line-height: 0.95; }
+.stat-flag .stat-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 6px; color: var(--creme-45); }
+.stat-flag.f-green  { border-color: color-mix(in srgb, var(--flag-green) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--flag-green) 12%, transparent); }
+.stat-flag.f-yellow { border-color: color-mix(in srgb, var(--flag-yellow) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--flag-yellow) 12%, transparent); }
+.stat-flag.f-red    { border-color: color-mix(in srgb, var(--flag-red) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--flag-red) 12%, transparent); }
+
+.stats-donut { padding: 0 10px; justify-content: center; }
+.donut { width: 128px; height: 128px; }
+.donut-t { font-size: 30px; }
+.donut-s { font-size: 8.5px; }
+
+.stats-planos {
+  margin-left: 0; max-width: none; padding-left: 24px; align-self: stretch;
+  display: flex; flex-direction: column; justify-content: center; gap: 10px;
+  border-left: 1px solid rgba(243, 236, 218, 0.12);
+}
+.stats-planos-l { flex-basis: auto; margin-bottom: 2px; }
+.stats-planos .planos-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat-plano { font-size: 13px; padding: 6px 14px 6px 7px; gap: 8px; }
+.stat-plano-n { min-width: 26px; height: 26px; font-size: 13px; }
+.stat-plano.is-selected { background: var(--creme); color: var(--garrafa); border-color: var(--creme); }
+.stat-plano.is-selected .stat-plano-n { background: var(--garrafa); color: var(--creme); }
+
+@media (max-width: 1100px) {
+  .stats-flags { grid-template-columns: repeat(3, 1fr) auto; }
+  .stats-planos { grid-column: 1 / -1; border-left: 0; padding-left: 0; padding-top: 14px; border-top: 1px solid rgba(243, 236, 218, 0.12); }
+}
+@media (max-width: 720px) {
+  .stats-flags { grid-template-columns: 1fr 1fr; }
+  .stats-donut { grid-column: 1 / -1; }
+}

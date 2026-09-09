@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 26;
+  const VERSION = 27;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -159,7 +159,7 @@
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
         <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
-        <div class="stats-planos"><span class="stats-planos-l">por plano</span>${planosRow}</div>
+        <div class="stats-planos"><span class="stats-planos-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
       </div>
       <div class="stats-status">${statusRow}</div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
