@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 23;
+  const VERSION = 24;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -33,6 +33,7 @@
     cliente: null, // id da opção ou null = todos
     flagFilter: null, // green|yellow|red|null
     statusFilter: null, // execução|atrasado|encerramento|briefing|null
+    planoFilter: null,  // nome do plano ou null
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -129,20 +130,26 @@
     const stKey = stKeyOf;
     const STATUS = [['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento'], ['briefing', 'Briefing']];
     const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
-    const count = (f) => byStatus.filter((c) => flagDe(c) === f).length;
+    const count = (f) => (state.planoFilter ? byStatus.filter((c) => (String(c.plano || '').trim().toUpperCase() || 'SEM PLANO') === state.planoFilter) : byStatus).filter((c) => flagDe(c) === f).length;
     const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
 
-    const shown = state.flagFilter ? byStatus.filter((c) => flagDe(c) === state.flagFilter) : byStatus;
+    const planoDe = (c) => String(c.plano || '').trim().toUpperCase() || 'SEM PLANO';
+    const byPlano = state.planoFilter ? byStatus.filter((c) => planoDe(c) === state.planoFilter) : byStatus;
+    const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
+    const planos = [...byStatus.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
+      .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR'));
+    const planosRow = planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${esc(p.toLowerCase())}</button>`).join('');
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
     el.innerHTML = `
-      <p class="eyebrow">A adega · ${clients.length} clientes ativos</p>
+      <p class="eyebrow">A adega · ${clients.length} clientes</p>
       <div class="stats-row stats-flags">
         <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
         <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
+        <div class="stats-planos"><span class="stats-planos-l">por plano</span>${planosRow}</div>
       </div>
       <div class="stats-status">${statusRow}</div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
@@ -462,6 +469,8 @@
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
       const ss = e.target.closest('.stat-status');
       if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
+      const sp = e.target.closest('.stat-plano');
+      if (sp) { state.planoFilter = state.planoFilter === sp.dataset.plano ? null : sp.dataset.plano; render(); return; }
       const more = e.target.closest('.fn-more');
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);

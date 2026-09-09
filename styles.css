@@ -923,3 +923,25 @@ body::before {
 .card-status.st-atrasado { color: var(--flag-red); border-color: color-mix(in srgb, var(--flag-red) 55%, transparent); }
 .card-status.st-encerramento { color: var(--flag-yellow); border-color: color-mix(in srgb, var(--flag-yellow) 55%, transparent); }
 .card-status.st-briefing { color: var(--creme-45); border-color: rgba(243, 236, 218, 0.2); }
+
+/* ---------- v24: contagem por plano dentro do bloco de flags ---------- */
+.stats-flags { align-items: stretch; }
+.stats-planos {
+  margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: center;
+  max-width: 420px; padding-left: 18px; border-left: 1px solid rgba(243, 236, 218, 0.1);
+}
+.stats-planos-l {
+  flex-basis: 100%; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45);
+}
+.stat-plano {
+  font-family: var(--ui); font-size: 12px; color: var(--creme-70); cursor: pointer; text-transform: capitalize;
+  padding: 4px 11px 4px 6px; border-radius: 999px; background: transparent;
+  border: 1px solid rgba(243, 236, 218, 0.14); display: inline-flex; align-items: center; gap: 6px;
+}
+.stat-plano-n {
+  font-weight: 700; color: var(--creme); background: var(--garrafa-3); border-radius: 999px;
+  min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.stat-plano:hover { background: var(--garrafa-2); }
+.stat-plano.is-selected { background: var(--garrafa-3); color: var(--creme); border-color: var(--creme-45); }
+@media (max-width: 900px) { .stats-planos { margin-left: 0; border-left: 0; padding-left: 0; flex-basis: 100%; max-width: none; } }
