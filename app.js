@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 42;
+  const VERSION = 43;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -116,6 +116,12 @@
     return `<div class="card-team"><span class="card-team-l">equipe</span><span class="card-team-avs">${eq.map((p) => avatarHTML(p, 'avatar av-lg')).join('')}</span></div>`;
   }
 
+  // rótulo de exibição do plano (regra 09/09/26: "Platina" aparece como "Platinum" em todo o painel)
+  const planoLabel = (p) => { const k = String(p || '').trim().toUpperCase(); return k === 'PLATINA' ? 'PLATINUM' : k; };
+  // ordem fixa dos planos no balcão (Bruno, 09/09/26); o que não estiver aqui vai pro fim, em ordem alfabética
+  const PLANO_ORDEM = ['DOSE', 'PRATA', 'OURO', 'OURO ANTIGO', 'DIAMANTE', 'PLATINUM', 'PERSONALIZADO'];
+  const planoRank = (p) => { const i = PLANO_ORDEM.indexOf(planoLabel(p)); return i < 0 ? 99 : i; };
+
   // ---------- ícones de plano (SVG inline, originais) ----------
   function planoIcon(plano, size = 18) {
     const k = String(plano || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -128,7 +134,7 @@
     if (k === 'prata') return medal('#c9d0d8', '#7f8a96', '#eef2f6');
     if (k === 'ouro') return medal('#e6bd4a', '#9a7414', '#fff1b8');
     if (k === 'ouro antigo') return medal('#b98a3c', '#6f4f12', '#e8c98a');
-    if (k === 'platina') return `<svg class="pl-ic pl-platina" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
+    if (k === 'platina' || k === 'platinum') return `<svg class="pl-ic pl-platina" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true">
       <defs><linearGradient id="plg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#cfe3ff"/><stop offset="0.75" stop-color="#e9d8ff"/><stop offset="1" stop-color="#9fbde6"/></linearGradient></defs>
       <path d="M5 3l2.5 3L12 2l4.5 4L19 3v5H5z" fill="#ffe8a3" stroke="#c9a23a" stroke-width="0.9" stroke-linejoin="round"/>
       <circle cx="12" cy="15.2" r="7.2" fill="url(#plg)" stroke="#ffffff" stroke-width="1.3"/>
@@ -156,7 +162,7 @@
     const FLAG_LBL = { green: 'copos cheios', yellow: 'em atenção', red: 'críticos' };
     if (state.flagFilter) itens.push(`<span class="comanda-it c-${state.flagFilter}">${esc(FLAG_LBL[state.flagFilter])}</span>`);
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
-    if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(state.planoFilter.toLowerCase())}</span>`);
+    if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
     if (state.squadFilter) { const s = computeSquads(state.data.clients).find((q) => q.key === state.squadFilter); itens.push(`<span class="comanda-it">${esc(s ? s.nome.toLowerCase() : 'squad')}</span>`); }
     if (!itens.length) return `<div class="comanda vazia"><span class="comanda-l">comanda</span><span class="comanda-dica">nenhum filtro — a casa toda</span></div>`;
     return `<div class="comanda"><span class="comanda-l">comanda</span>${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
@@ -252,9 +258,9 @@
     const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
-      .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR'));
+      .sort((x, y) => planoRank(x[0]) - planoRank(y[0]) || x[0].localeCompare(y[0], 'pt-BR'));
     const planosRow = `<button class="stat-plano${state.planoFilter ? '' : ' is-selected'}" data-plano=""><span class="stat-plano-n">${bySquad.length}</span>todos</button>`
-      + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${planoIcon(p, 18)}${esc(p.toLowerCase())}</button>`).join('');
+      + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${planoIcon(p, 18)}${esc(planoLabel(p).toLowerCase())}</button>`).join('');
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
@@ -269,9 +275,9 @@
       <section class="balcao">
         <div class="balcao-rail"></div>
         ${comandaHTML()}
-        <div class="balcao-row"><span class="balcao-l">${icoBalcao('plano')}por plano</span><div class="planos-grid">${planosRow}</div></div>
-        <div class="balcao-row"><span class="balcao-l">${icoBalcao('status')}por status</span><div class="chips">${statusRow}</div></div>
-        ${temSquad ? `<div class="balcao-row"><span class="balcao-l">${icoBalcao('squad')}por squad</span><div class="chips">${squadChips}</div></div>` : ''}
+        <div class="balcao-row"><span class="balcao-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
+        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}</div></div>
+        ${temSquad ? `<div class="balcao-row"><span class="balcao-l">por squad</span><div class="chips">${squadChips}</div></div>` : ''}
       </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
@@ -290,7 +296,7 @@
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(c.plano)}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
         </div>
         ${statusBadge}
       </div>
@@ -370,7 +376,7 @@
           <h2 class="ficha-title">${esc(c.name)}</h2>
           <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
           <div class="ficha-grid">
-            ${item('Plano', c.plano ? `${planoIcon(c.plano, 18)} ${esc(c.plano)}` : null)}
+            ${item('Plano', c.plano ? `${planoIcon(c.plano, 18)} ${esc(planoLabel(c.plano))}` : null)}
             ${item('Relatório', esc(c.tipoRelatorio))}
             ${item('Cidade/UF', esc(c.cidade))}
             ${item('Em execução desde', c.dataEntradaExec ? fmtLongo(c.dataEntradaExec) : '')}
