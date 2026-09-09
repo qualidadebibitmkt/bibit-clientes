@@ -1167,3 +1167,6 @@ body::before {
 /* ---------- v47: logo real do painel (embutido em .brand-fallback) ---------- */
 .brand-fallback { height: 92px; width: 172px; }
 @media (max-width: 720px) { .brand-fallback { height: 60px; width: 112px; } }
+/* v48: logo — força o tamanho independente de cascata/cache */
+.topbar .brand .brand-fallback { height: 92px !important; width: 172px !important; }
+@media (max-width: 720px) { .topbar .brand .brand-fallback { height: 60px !important; width: 112px !important; } }
