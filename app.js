@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 31;
+  const VERSION = 32;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -170,7 +170,7 @@
     if (state.cliente) { renderFicha(el, clientById(state.cliente)); return; }
     const { clients } = state.data;
     const stKey = stKeyOf;
-    const STATUS = [['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento'], ['briefing', 'Briefing']];
+    const STATUS = [['briefing', 'Briefing'], ['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento']];
     const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
     const count = (f) => (state.planoFilter ? byStatus.filter((c) => (String(c.plano || '').trim().toUpperCase() || 'SEM PLANO') === state.planoFilter) : byStatus).filter((c) => flagDe(c) === f).length;
     const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
