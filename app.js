@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 43;
+  const VERSION = 44;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -164,9 +164,11 @@
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
     if (state.squadFilter) { const s = computeSquads(state.data.clients).find((q) => q.key === state.squadFilter); itens.push(`<span class="comanda-it">${esc(s ? s.nome.toLowerCase() : 'squad')}</span>`); }
-    if (!itens.length) return `<div class="comanda vazia"><span class="comanda-l">comanda</span><span class="comanda-dica">nenhum filtro — a casa toda</span></div>`;
-    return `<div class="comanda"><span class="comanda-l">comanda</span>${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
+    const lbl = `<span class="comanda-l">${icoFiltro()}Filtro</span>`;
+    if (!itens.length) return `<div class="comanda vazia">${lbl}<span class="comanda-dica">nenhum — a casa toda</span></div>`;
+    return `<div class="comanda">${lbl}${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
   }
+  const icoFiltro = () => `<svg class="cm-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
   function icoBalcao(k) {
     if (k === 'plano') return `<svg class="bl-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2h4v4l2 3v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9l2-3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 13h8" stroke="currentColor" stroke-width="1.5"/></svg>`;
     if (k === 'status') return `<svg class="bl-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10a3 3 0 0 1 3 3v1h3v3h-3v7H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 11h13M8 6V3" stroke="currentColor" stroke-width="1.5"/></svg>`;
