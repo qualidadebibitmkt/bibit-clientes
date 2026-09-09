@@ -1170,3 +1170,13 @@ body::before {
 /* v48: logo — força o tamanho independente de cascata/cache */
 .topbar .brand .brand-fallback { height: 92px !important; width: 172px !important; }
 @media (max-width: 720px) { .topbar .brand .brand-fallback { height: 60px !important; width: 112px !important; } }
+
+/* ---------- v49: rótulo "Health Score" no card ---------- */
+.hs-tag {
+  font-size: 8.5px; line-height: 1.05; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--rolha); font-weight: 700; text-align: right;
+  padding-right: 8px; margin-right: 2px; border-right: 1px solid rgba(243,236,218,0.16);
+  flex-shrink: 0;
+}
+.hs-mini { gap: 8px; }
+.hs-mini .hs-score { font-size: 24px; min-width: 30px; }
