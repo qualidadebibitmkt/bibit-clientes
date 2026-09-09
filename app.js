@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 40;
+  const VERSION = 41;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -150,6 +150,23 @@
     return `<svg class="pl-ic" width="${w}" height="${h}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="none" stroke="rgba(243,236,218,0.45)" stroke-width="1.4"/></svg>`;
   }
 
+  // ---------- balcão: comanda de filtros ativos ----------
+  function comandaHTML() {
+    const itens = [];
+    const FLAG_LBL = { green: 'copos cheios', yellow: 'em atenção', red: 'críticos' };
+    if (state.flagFilter) itens.push(`<span class="comanda-it c-${state.flagFilter}">${esc(FLAG_LBL[state.flagFilter])}</span>`);
+    if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
+    if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(state.planoFilter.toLowerCase())}</span>`);
+    if (state.squadFilter) { const s = computeSquads(state.data.clients).find((q) => q.key === state.squadFilter); itens.push(`<span class="comanda-it">${esc(s ? s.nome.toLowerCase() : 'squad')}</span>`); }
+    if (!itens.length) return `<div class="comanda vazia"><span class="comanda-l">comanda</span><span class="comanda-dica">nenhum filtro — a casa toda</span></div>`;
+    return `<div class="comanda"><span class="comanda-l">comanda</span>${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
+  }
+  function icoBalcao(k) {
+    if (k === 'plano') return `<svg class="bl-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2h4v4l2 3v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9l2-3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 13h8" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    if (k === 'status') return `<svg class="bl-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10a3 3 0 0 1 3 3v1h3v3h-3v7H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 11h13M8 6V3" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    return `<svg class="bl-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="9" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0M13 18.5a4 4 0 0 1 8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  }
+
   // ---------- o copo ----------
   let uid = 0;
   function glass(flag, size = 22, big = false) {
@@ -230,9 +247,8 @@
     const byPlano = state.planoFilter ? bySquad.filter((c) => planoDe(c) === state.planoFilter) : bySquad;
     const temSquad = squadsAll.length > 0;
     const nSq = (s) => byStatus.filter((c) => s.byClient.has(c.id)).length;
-    const squadRow = temSquad ? `<div class="stats-status stats-squad"><span class="stats-status-l">por squad</span>`
-      + `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
-      + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('') + `</div>` : '';
+    const squadChips = `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
+      + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('');
     const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
@@ -244,17 +260,21 @@
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes</p>
-      <div class="stats-row stats-flags">
+      <div class="hero">
         <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
         <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
-        <div class="stats-planos"><span class="stats-planos-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
       </div>
-      <div class="stats-line">
-        <div class="stats-status"><span class="stats-status-l">por status</span>${statusRow}</div>
-        ${squadRow}
-      </div>
+      <section class="balcao">
+        <div class="balcao-rail"></div>
+        ${comandaHTML()}
+        <div class="balcao-row"><span class="balcao-l">${icoBalcao('plano')}por plano</span><div class="planos-grid">${planosRow}</div></div>
+        <div class="balcao-row balcao-split">
+          <div class="balcao-half"><span class="balcao-l">${icoBalcao('status')}por status</span><div class="chips">${statusRow}</div></div>
+          ${temSquad ? `<div class="balcao-half balcao-right"><span class="balcao-l">${icoBalcao('squad')}por squad</span><div class="chips">${squadChips}</div></div>` : ''}
+        </div>
+      </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
@@ -573,6 +593,7 @@
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
       const ss = e.target.closest('.stat-status');
       if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
+      if (e.target.closest('.comanda-limpar')) { state.flagFilter = null; state.statusFilter = null; state.planoFilter = null; state.squadFilter = null; render(); return; }
       const sq = e.target.closest('[data-squad]');
       if (sq) { const q = sq.dataset.squad || null; state.squadFilter = (!q || state.squadFilter === q) ? null : q; render(); return; }
       const sp = e.target.closest('.stat-plano');
