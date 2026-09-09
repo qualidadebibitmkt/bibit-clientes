@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 38;
+  const VERSION = 39;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -100,7 +100,10 @@
     const merged = [];
     for (const g of list) {
       const host = merged.find((m) => [...g.set].every((i) => m.set.has(i)) || [...m.set].every((i) => g.set.has(i)));
-      if (host) host.clients.push(...g.clients); else merged.push(g);
+      if (host) {
+        host.clients.push(...g.clients);
+        for (const p of g.members) if (!host.members.some((m) => pid(m) === pid(p))) host.members.push(p); // todo mundo do squad
+      } else merged.push(g);
     }
     merged.sort((x, y) => y.clients.length - x.clients.length);
     merged.forEach((s, i) => { s.nome = 'Squad ' + (i + 1); s.byClient = new Set(s.clients); });
@@ -248,8 +251,10 @@
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
         <div class="stats-planos"><span class="stats-planos-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
       </div>
-      <div class="stats-status"><span class="stats-status-l">por status</span>${statusRow}</div>
-      ${squadRow}
+      <div class="stats-line">
+        <div class="stats-status"><span class="stats-status-l">por status</span>${statusRow}</div>
+        ${squadRow}
+      </div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 

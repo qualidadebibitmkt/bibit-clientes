@@ -1084,3 +1084,11 @@ body::before {
 .squad-avs .avatar:first-child { margin-left: 0; }
 .avatar.av-sm { width: 24px; height: 24px; font-size: 9px; border: 2px solid var(--garrafa); }
 .stat-squad { padding-right: 8px; }
+
+/* ---------- v39: status à esquerda, squad à direita; avatares do squad sem sobreposição ---------- */
+.stats-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: -6px 0 18px; }
+.stats-line .stats-status, .stats-line .stats-squad { margin: 0; }
+.stats-squad { margin-left: auto; justify-content: flex-end; }
+.squad-avs { display: inline-flex; gap: 4px; margin-left: 6px; }
+.squad-avs .avatar { margin-left: 0; }
+.avatar.av-sm { width: 26px; height: 26px; }
