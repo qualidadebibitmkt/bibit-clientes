@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 37;
+  const VERSION = 38;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -83,6 +83,30 @@
     if (!p.foto) return fb;
     return `<span class="${cls} has-foto" title="${esc(p.name)}"${p.color ? ` style="background:${esc(p.color)}"` : ''}><img src="${esc(p.foto)}" alt="${esc(p.name)}" loading="lazy" onerror="this.parentNode.textContent='${esc(p.initials)}'" /></span>`;
   }
+  // ---------- squads = composição da equipe (regra do Bruno, 09/09/26) ----------
+  // Mesma equipe = mesmo squad. Equipe incompleta ou com alguém a mais é absorvida pelo
+  // squad maior que a contém / está contido nela. Nome = "Squad N" por nº de clientes.
+  const pid = (p) => String(p.id || p.name);
+  function computeSquads(clients) {
+    const groups = new Map();
+    for (const c of clients) {
+      const ids = [...new Set(equipeDe(c).map(pid))].sort();
+      if (!ids.length) continue;
+      const key = ids.join('|');
+      if (!groups.has(key)) groups.set(key, { key, set: new Set(ids), members: equipeDe(c), clients: [] });
+      groups.get(key).clients.push(c.id);
+    }
+    const list = [...groups.values()].sort((x, y) => y.clients.length - x.clients.length || y.set.size - x.set.size);
+    const merged = [];
+    for (const g of list) {
+      const host = merged.find((m) => [...g.set].every((i) => m.set.has(i)) || [...m.set].every((i) => g.set.has(i)));
+      if (host) host.clients.push(...g.clients); else merged.push(g);
+    }
+    merged.sort((x, y) => y.clients.length - x.clients.length);
+    merged.forEach((s, i) => { s.nome = 'Squad ' + (i + 1); s.byClient = new Set(s.clients); });
+    return merged;
+  }
+
   function equipeMiniHTML(c) {
     const eq = equipeDe(c);
     if (!eq.length) return `<div class="card-team"><span class="card-team-l">equipe</span><span class="card-team-empty">sem equipe definida</span></div>`;
@@ -196,16 +220,16 @@
     const count = (f) => byPlano.filter((c) => flagDe(c) === f).length;
     const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
 
-    const squadDe = (c) => String(c.squad || '').trim() || 'Sem squad';
+    const squadsAll = computeSquads(clients);
+    const squadDe = (c) => { const s = squadsAll.find((q) => q.byClient.has(c.id)); return s ? s.key : 'Sem squad'; };
     const bySquad = state.squadFilter ? byStatus.filter((c) => squadDe(c) === state.squadFilter) : byStatus;
     const planoDe = (c) => String(c.plano || '').trim().toUpperCase() || 'SEM PLANO';
     const byPlano = state.planoFilter ? bySquad.filter((c) => planoDe(c) === state.planoFilter) : bySquad;
-    const temSquad = clients.some((c) => c.squad);
-    const squads = [...bySquad.length ? byStatus.reduce((m, c) => m.set(squadDe(c), (m.get(squadDe(c)) || 0) + 1), new Map()) : new Map()]
-      .sort((x, y) => x[0].localeCompare(y[0], 'pt-BR'));
+    const temSquad = squadsAll.length > 0;
+    const nSq = (s) => byStatus.filter((c) => s.byClient.has(c.id)).length;
     const squadRow = temSquad ? `<div class="stats-status stats-squad"><span class="stats-status-l">por squad</span>`
       + `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
-      + squads.map(([q, n]) => `<button class="stat-status${state.squadFilter === q ? ' is-selected' : ''}" data-squad="${esc(q)}"><strong>${n}</strong> ${esc(q)}</button>`).join('') + `</div>` : '';
+      + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('') + `</div>` : '';
     const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
