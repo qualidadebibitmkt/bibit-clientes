@@ -1067,3 +1067,4 @@ body::before {
 }
 .card-sub { overflow: hidden; }
 .card-plan { overflow: hidden; text-overflow: ellipsis; }
+.stats-squad { margin-top: -10px; }

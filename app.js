@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 36;
+  const VERSION = 37;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -34,6 +34,7 @@
     flagFilter: null, // green|yellow|red|null
     statusFilter: null, // execução|atrasado|encerramento|briefing|null
     planoFilter: null,  // nome do plano ou null
+    squadFilter: null,  // nome do squad ou null
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -192,16 +193,24 @@
     const stKey = stKeyOf;
     const STATUS = [['briefing', 'Briefing'], ['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento']];
     const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
-    const count = (f) => (state.planoFilter ? byStatus.filter((c) => (String(c.plano || '').trim().toUpperCase() || 'SEM PLANO') === state.planoFilter) : byStatus).filter((c) => flagDe(c) === f).length;
+    const count = (f) => byPlano.filter((c) => flagDe(c) === f).length;
     const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
 
+    const squadDe = (c) => String(c.squad || '').trim() || 'Sem squad';
+    const bySquad = state.squadFilter ? byStatus.filter((c) => squadDe(c) === state.squadFilter) : byStatus;
     const planoDe = (c) => String(c.plano || '').trim().toUpperCase() || 'SEM PLANO';
-    const byPlano = state.planoFilter ? byStatus.filter((c) => planoDe(c) === state.planoFilter) : byStatus;
+    const byPlano = state.planoFilter ? bySquad.filter((c) => planoDe(c) === state.planoFilter) : bySquad;
+    const temSquad = clients.some((c) => c.squad);
+    const squads = [...bySquad.length ? byStatus.reduce((m, c) => m.set(squadDe(c), (m.get(squadDe(c)) || 0) + 1), new Map()) : new Map()]
+      .sort((x, y) => x[0].localeCompare(y[0], 'pt-BR'));
+    const squadRow = temSquad ? `<div class="stats-status stats-squad"><span class="stats-status-l">por squad</span>`
+      + `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
+      + squads.map(([q, n]) => `<button class="stat-status${state.squadFilter === q ? ' is-selected' : ''}" data-squad="${esc(q)}"><strong>${n}</strong> ${esc(q)}</button>`).join('') + `</div>` : '';
     const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
-    const planos = [...byStatus.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
+    const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
       .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR'));
-    const planosRow = `<button class="stat-plano${state.planoFilter ? '' : ' is-selected'}" data-plano=""><span class="stat-plano-n">${byStatus.length}</span>todos</button>`
+    const planosRow = `<button class="stat-plano${state.planoFilter ? '' : ' is-selected'}" data-plano=""><span class="stat-plano-n">${bySquad.length}</span>todos</button>`
       + planos.map(([p, n]) => `<button class="stat-plano${state.planoFilter === p ? ' is-selected' : ''}" data-plano="${esc(p)}"><span class="stat-plano-n">${n}</span>${planoIcon(p, 18)}${esc(p.toLowerCase())}</button>`).join('');
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
@@ -216,6 +225,7 @@
         <div class="stats-planos"><span class="stats-planos-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
       </div>
       <div class="stats-status"><span class="stats-status-l">por status</span>${statusRow}</div>
+      ${squadRow}
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
@@ -534,6 +544,8 @@
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
       const ss = e.target.closest('.stat-status');
       if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
+      const sq = e.target.closest('[data-squad]');
+      if (sq) { const q = sq.dataset.squad || null; state.squadFilter = (!q || state.squadFilter === q) ? null : q; render(); return; }
       const sp = e.target.closest('.stat-plano');
       if (sp) { const p = sp.dataset.plano || null; state.planoFilter = (!p || state.planoFilter === p) ? null : p; render(); return; }
       const more = e.target.closest('.fn-more');
