@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 49;
+  const VERSION = 50;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -294,7 +294,7 @@
     const m = c.metrics || {};
     const k = stKeyOf(c);
     const statusBadge = k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : '';
-    return `<button class="card" data-id="${c.id}">
+    return `<button class="card${statusBadge ? ' has-status' : ''}" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
@@ -318,8 +318,8 @@
     const pil = Object.entries(hs.pilares)
       .filter(([k, p]) => k !== 'contato' || p.nota != null) // contato aparece quando houver análise
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
-    if (hs.insuficiente) return `<div class="hs-mini">${tag}<span class="hs-score na">${hs.score}</span>${pil}<span class="hs-cob" title="menos de 2 pilares com dado — flag manual mantida">${hs.cobertura} · insuf.</span></div>`;
-    return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}<span class="hs-cob">${hs.cobertura}</span></div>`;
+    if (hs.insuficiente) return `<div class="hs-mini" title="menos de 2 pilares com dado — flag manual mantida">${tag}<span class="hs-score na">${hs.score}</span>${pil}</div>`;
+    return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}</div>`;
   }
 
   function hsFichaHTML(hs, c) {

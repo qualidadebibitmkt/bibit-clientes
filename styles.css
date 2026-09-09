@@ -1180,3 +1180,9 @@ body::before {
 }
 .hs-mini { gap: 8px; }
 .hs-mini .hs-score { font-size: 24px; min-width: 30px; }
+
+/* ---------- v50: sem cobertura no card; selo de status absoluto (plano com largura total) ---------- */
+.card { position: relative; }
+.card-head .card-status { position: absolute; top: 12px; right: 12px; margin: 0; max-width: 44%; }
+.card.has-status .card-name { padding-right: 42%; }
+.card-sub, .card-plan { overflow: visible; text-overflow: clip; }
