@@ -902,3 +902,24 @@ body::before {
 .hs-row-n { font-weight: 700; font-size: 18px; text-align: right; font-variant-numeric: tabular-nums; }
 .hs-div { color: var(--flag-yellow); }
 @media (max-width: 640px) { .hs-box { grid-template-columns: 1fr; } .hs-row { grid-template-columns: 1fr 44px; } .hs-row-det { grid-column: 1 / -1; } }
+
+/* ---------- v22: status dos clientes na visão geral ---------- */
+.stats-status { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 18px; }
+.stat-status {
+  font-family: var(--ui); font-size: 13px; color: var(--creme-70); cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; background: transparent;
+  border: 1px solid rgba(243, 236, 218, 0.14); transition: background 0.15s, border-color 0.15s;
+}
+.stat-status strong { color: var(--creme); margin-right: 2px; }
+.stat-status:hover { background: var(--garrafa-2); }
+.stat-status.is-selected { background: var(--garrafa-3); color: var(--creme); }
+.stat-status.st-atrasado.is-selected, .stat-status.st-atrasado strong { color: var(--flag-red); }
+.stat-status.st-encerramento.is-selected, .stat-status.st-encerramento strong { color: var(--flag-yellow); }
+.card-status {
+  display: inline-block; margin-left: 8px; vertical-align: 2px;
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid;
+}
+.card-status.st-atrasado { color: var(--flag-red); border-color: color-mix(in srgb, var(--flag-red) 55%, transparent); }
+.card-status.st-encerramento { color: var(--flag-yellow); border-color: color-mix(in srgb, var(--flag-yellow) 55%, transparent); }
+.card-status.st-briefing { color: var(--creme-45); border-color: rgba(243, 236, 218, 0.2); }

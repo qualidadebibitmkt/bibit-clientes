@@ -262,6 +262,7 @@ module.exports = async (req, res) => {
       .map(shapeCliente)
       .filter((c) => c.id !== TESTE_CLIENTE_OPTION && c.matchName !== 'TESTE CLIENTE')
       .filter((c) => !c._dataSaida || c._dataSaida > now)
+      .filter((c) => !/churn/i.test(c.status || '')) // churn nunca entra na adega (regra do Bruno, 09/09/26)
       .map(({ _dataSaida, ...c }) => c)  // _valorRec sai adiante, depois do NRR
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 

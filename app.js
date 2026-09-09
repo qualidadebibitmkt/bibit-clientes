@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 21;
+  const VERSION = 22;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -32,6 +32,7 @@
     view: 'geral',
     cliente: null, // id da opção ou null = todos
     flagFilter: null, // green|yellow|red|null
+    statusFilter: null, // execução|atrasado|encerramento|briefing|null
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -123,10 +124,17 @@
   function renderGeral(el) {
     if (state.cliente) { renderFicha(el, clientById(state.cliente)); return; }
     const { clients } = state.data;
-    const count = (f) => clients.filter((c) => flagDe(c) === f).length;
+    const stKey = (c) => norm(c.status || '').toLowerCase().replace(/[^a-z]/g, '');
+    const STATUS = [['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento'], ['briefing', 'Briefing']];
+    const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
+    const count = (f) => byStatus.filter((c) => flagDe(c) === f).length;
+    const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
 
-    const shown = state.flagFilter ? clients.filter((c) => flagDe(c) === state.flagFilter) : clients;
+    const shown = state.flagFilter ? byStatus.filter((c) => flagDe(c) === state.flagFilter) : byStatus;
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
+    const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
+    const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
+      .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes ativos</p>
       <div class="stats-row stats-flags">
@@ -134,6 +142,7 @@
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
         <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
       </div>
+      <div class="stats-status">${statusRow}</div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
@@ -147,7 +156,7 @@
     const m = c.metrics || {};
     return `<button class="card" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
-        <div><div class="card-name">${esc(c.name)}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
+        <div><div class="card-name">${esc(c.name)}${(() => { const k = norm(c.status || '').toLowerCase().replace(/[^a-z]/g, ''); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${esc(c.plano)}</div>` : ''}</div>
       </div>
       ${hsMiniHTML(c.healthScore)}
       <div class="card-meta">
@@ -447,6 +456,8 @@
       if (card && card.dataset.id) { setCliente(card.dataset.id); return; }
       const st = e.target.closest('.stat-btn, .stat-flag');
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
+      const ss = e.target.closest('.stat-status');
+      if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
       const more = e.target.closest('.fn-more');
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);
