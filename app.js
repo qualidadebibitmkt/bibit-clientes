@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 28;
+  const VERSION = 29;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -161,7 +161,7 @@
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
         <div class="stats-planos"><span class="stats-planos-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
       </div>
-      <div class="stats-status">${statusRow}</div>
+      <div class="stats-status"><span class="stats-status-l">por status</span>${statusRow}</div>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 

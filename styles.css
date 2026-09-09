@@ -1013,3 +1013,5 @@ body::before {
 .stat-plano.is-selected .stat-plano-n { background: var(--creme); color: #0f1f16; }
 .stat-flag { height: auto; min-height: 0; }
 .stats-flags { align-items: center; }
+.stats-status { align-items: center; }
+.stats-status-l { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45); margin-right: 6px; }
