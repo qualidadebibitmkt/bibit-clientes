@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 33;
+  const VERSION = 34;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -75,10 +75,17 @@
     for (const k of Object.keys(c.team || {})) for (const p of c.team[k]) if (!seen.has(p.id || p.name)) { seen.add(p.id || p.name); out.push(p); }
     return out;
   }
+  // avatar: foto do ClickUp quando houver; senão iniciais na cor do usuário
+  function avatarHTML(p, cls = 'avatar') {
+    if (!p) return '';
+    const fb = `<span class="${cls}" title="${esc(p.name)}"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>`;
+    if (!p.foto) return fb;
+    return `<span class="${cls} has-foto" title="${esc(p.name)}"${p.color ? ` style="background:${esc(p.color)}"` : ''}><img src="${esc(p.foto)}" alt="${esc(p.name)}" loading="lazy" onerror="this.parentNode.textContent='${esc(p.initials)}'" /></span>`;
+  }
   function equipeMiniHTML(c) {
     const eq = equipeDe(c);
     if (!eq.length) return `<div class="card-team"><span class="card-team-l">equipe</span><span class="card-team-empty">sem equipe definida</span></div>`;
-    return `<div class="card-team"><span class="card-team-l">equipe</span>${eq.map((p) => `<span class="card-team-p" title="${esc(p.name)}"><span class="avatar"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>${esc(p.name.split(' ')[0])}</span>`).join('')}</div>`;
+    return `<div class="card-team"><span class="card-team-l">equipe</span><span class="card-team-avs">${eq.map((p) => avatarHTML(p, 'avatar av-lg')).join('')}</span></div>`;
   }
 
   // ---------- ícones de plano (SVG inline, originais) ----------
@@ -285,7 +292,7 @@
     const roles = [['social', 'Social'], ['webdesign', 'Web'], ['trafego', 'Tráfego'], ['rp', 'RP'], ['audiovisual', 'AV']];
     const team = roles
       .filter(([k]) => c.team[k].length)
-      .map(([k, r]) => `<span class="team-cell"><span class="role">${r}</span>${c.team[k].map((p) => `<span class="avatar" title="${esc(p.name)}"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>`).join('')}<span>${esc(c.team[k].map((p) => p.name.split(' ')[0]).join(', '))}</span></span>`)
+      .map(([k, r]) => `<span class="team-cell"><span class="role">${r}</span>${c.team[k].map((p) => avatarHTML(p)).join('')}<span>${esc(c.team[k].map((p) => p.name.split(' ')[0]).join(', '))}</span></span>`)
       .join('');
 
     const m = c.metrics || {};
@@ -378,7 +385,7 @@
       }
     }
     const chips = [...rank.values()].sort((a, b) => b.n - a.n)
-      .map(({ p, n }) => `<span class="rank-chip"><span class="avatar"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>${esc(p.name.split(' ')[0])}<strong>${n}</strong></span>`)
+      .map(({ p, n }) => `<span class="rank-chip">${avatarHTML(p)}${esc(p.name.split(' ')[0])}<strong>${n}</strong></span>`)
       .join('');
     const shown = lateTasks.slice(0, 8);
     return `<p class="eyebrow">Tarefas atrasadas · quem segura o copo</p>
@@ -466,7 +473,7 @@
   function rowHTML(t) {
     const due = t.dueDate ? `<span class="task-due${isLate(t) ? ' is-late' : ''}">${isLate(t) ? 'atrasada · ' : ''}${fmtCurto(t.dueDate)}</span>` : '<span class="task-due"></span>';
     const a = t.assignees[0];
-    const av = a ? `<span class="avatar task-assignee" title="${esc(a.name)}"${a.color ? ` style="background:${esc(a.color)};color:#fff"` : ''}>${esc(a.initials)}</span>` : '<span class="task-assignee"></span>';
+    const av = a ? avatarHTML(a, 'avatar task-assignee') : '<span class="task-assignee"></span>';
     const st = t.status ? `<span class="status-pill"${t.status.color ? ` style="color:${esc(t.status.color)}"` : ''}>${esc(t.status.label)}</span>` : '';
     return `<a class="task-row" href="${esc(t.url)}" target="_blank" rel="noopener">
       <span class="task-main">${t.clienteName ? `<span class="task-client">${esc(t.clienteName)}</span><br/>` : ''}<span class="task-name">${esc(t.name)}</span></span>
