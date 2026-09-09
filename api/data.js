@@ -180,6 +180,7 @@ function shapeCliente(task) {
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
     _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
     temReportei: !!cfText(getCF(task, CF_REPORTEI_ID)),
+    equipe: cfUsers((task.custom_fields || []).find((f) => f.name === 'Equipe')), // campo "Equipe" do Growth (lido pelo nome)
     contato: (() => { // pilar de contato (análise semanal do grupo de WhatsApp) — lido pelo nome do campo
       const byName = (n) => (task.custom_fields || []).find((f) => f.name === n);
       const nota = cfNumber(byName('HS · Contato'));

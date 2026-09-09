@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 32;
+  const VERSION = 33;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -66,6 +66,19 @@
     if (!tot) return `<svg viewBox="0 0 110 110" class="donut"><circle cx="55" cy="55" r="${R}" fill="none" stroke="rgba(243,236,218,0.12)" stroke-width="14"/><text x="55" y="60" text-anchor="middle" class="donut-t">0</text></svg>`;
     let off = 0; const seg = (n, cls) => { if (!n) return ''; const len = (n / tot) * C; const s = `<circle cx="55" cy="55" r="${R}" fill="none" class="donut-seg ${cls}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return s; };
     return `<svg viewBox="0 0 110 110" class="donut"><g transform="rotate(-90 55 55)">${seg(g, 'dg')}${seg(y, 'dy')}${seg(r, 'dr')}</g><text x="55" y="52" text-anchor="middle" class="donut-t">${tot}</text><text x="55" y="68" text-anchor="middle" class="donut-s">copos</text></svg>`;
+  }
+
+  // equipe no card: campo "Equipe" do Growth; reserva = união dos papéis (sem repetir pessoa)
+  function equipeDe(c) {
+    if (c.equipe && c.equipe.length) return c.equipe;
+    const seen = new Set(); const out = [];
+    for (const k of Object.keys(c.team || {})) for (const p of c.team[k]) if (!seen.has(p.id || p.name)) { seen.add(p.id || p.name); out.push(p); }
+    return out;
+  }
+  function equipeMiniHTML(c) {
+    const eq = equipeDe(c);
+    if (!eq.length) return `<div class="card-team"><span class="card-team-l">equipe</span><span class="card-team-empty">sem equipe definida</span></div>`;
+    return `<div class="card-team"><span class="card-team-l">equipe</span>${eq.map((p) => `<span class="card-team-p" title="${esc(p.name)}"><span class="avatar"${p.color ? ` style="background:${esc(p.color)};color:#fff"` : ''}>${esc(p.initials)}</span>${esc(p.name.split(' ')[0])}</span>`).join('')}</div>`;
   }
 
   // ---------- ícones de plano (SVG inline, originais) ----------
@@ -212,12 +225,7 @@
         <div><div class="card-name">${esc(c.name)}${(() => { const k = stKeyOf(c); return k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : ''; })()}</div>${c.plano ? `<div class="card-plan">${planoIcon(c.plano, 16)}${esc(c.plano)}</div>` : ''}</div>
       </div>
       ${hsMiniHTML(c.healthScore)}
-      <div class="card-meta">
-        <span><strong>${open}</strong> abertas</span>
-        ${late ? `<span class="late"><strong>${late}</strong> atrasadas</span>` : ''}
-        ${np && temCalendario(c) ? `<span class="next">post <strong>${fmtCurto(np.calDate || np.dataAgendamento)}</strong></span>` : ''}
-        ${m.csat != null ? `<span class="csat${m.csat >= 9 ? ' hit' : ' miss'}">CSAT <strong>${fmtNota(m.csat)}</strong></span>` : ''}
-      </div>
+      ${equipeMiniHTML(c)}
     </button>`;
   }
 
