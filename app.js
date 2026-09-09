@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 41;
+  const VERSION = 42;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -270,10 +270,8 @@
         <div class="balcao-rail"></div>
         ${comandaHTML()}
         <div class="balcao-row"><span class="balcao-l">${icoBalcao('plano')}por plano</span><div class="planos-grid">${planosRow}</div></div>
-        <div class="balcao-row balcao-split">
-          <div class="balcao-half"><span class="balcao-l">${icoBalcao('status')}por status</span><div class="chips">${statusRow}</div></div>
-          ${temSquad ? `<div class="balcao-half balcao-right"><span class="balcao-l">${icoBalcao('squad')}por squad</span><div class="chips">${squadChips}</div></div>` : ''}
-        </div>
+        <div class="balcao-row"><span class="balcao-l">${icoBalcao('status')}por status</span><div class="chips">${statusRow}</div></div>
+        ${temSquad ? `<div class="balcao-row"><span class="balcao-l">${icoBalcao('squad')}por squad</span><div class="chips">${squadChips}</div></div>` : ''}
       </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
