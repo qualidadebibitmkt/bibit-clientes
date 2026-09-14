@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 53;
+  const VERSION = 54;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -316,10 +316,9 @@
     const tag = `<span class="hs-tag">Health<br>Score</span>`;
     if (!hs || hs.score == null) return `<div class="hs-mini">${tag}<span class="hs-score na">—</span><span class="hs-nota">sem dados</span></div>`;
     const pil = Object.entries(hs.pilares)
-      .filter(([k, p]) => k !== 'contato' || p.nota != null) // contato aparece quando houver análise
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
-    if (hs.insuficiente) return `<div class="hs-mini" title="menos de 2 pilares com dado — flag manual mantida">${tag}<span class="hs-score na">${hs.score}</span>${pil}</div>`;
-    return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span>${pil}</div>`;
+    if (hs.insuficiente) return `<div class="hs-mini" title="menos de 2 pilares com dado — flag manual mantida">${tag}<span class="hs-score na">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
+    return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
   }
 
   function hsFichaHTML(hs, c) {

@@ -1235,3 +1235,12 @@ body::before {
 @media (max-width: 900px) { .hs-termo { grid-template-columns: 1fr; } .hs-termo-pilares { grid-template-columns: repeat(2, 1fr); } .hs-pilares-grid { grid-template-columns: 1fr; } .hs-alerta { grid-template-columns: 1fr; } }
 .tab { display: inline-flex; align-items: center; gap: 7px; }
 .tab-ic { width: 15px; height: 15px; flex-shrink: 0; }
+
+/* ---------- v54: bloco HS do card com 4 pilares sem cortar ---------- */
+.hs-mini { display: grid; grid-template-columns: auto auto 1fr; align-items: center; column-gap: 10px; min-height: 0; overflow: visible; }
+.hs-mini .hs-tag { padding-right: 10px; }
+.hs-mini .hs-score { font-size: 26px; min-width: 0; }
+.hs-pils { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; min-width: 0; }
+.hs-pils .hs-pil { font-size: 10.5px; padding: 3px 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: clip; letter-spacing: 0.02em; }
+.card { min-height: 204px; }
+@media (max-width: 560px) { .hs-mini { grid-template-columns: auto auto; } .hs-pils { grid-column: 1 / -1; } }
