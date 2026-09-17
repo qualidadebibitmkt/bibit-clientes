@@ -1250,7 +1250,7 @@ body::before {
 .card-ltv-l { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--creme-45); font-weight: 600; }
 .card-ltv.na { color: var(--creme-45); font-weight: 500; }
 .metric-num-ltv { font-size: 22px; letter-spacing: -0.01em; }
-.stat-status.st-ltv.is-selected { color: var(--flag-green); }
+.stat-status.st-ord.is-selected { color: var(--flag-green); }
 .hs-td-ltv { font-variant-numeric: tabular-nums; color: var(--creme); white-space: nowrap; }
 .hs-td-ltv.na { color: var(--creme-45); }
 .hs-th-sort { cursor: pointer; user-select: none; } .hs-th-sort:hover, .hs-th-sort.is-on { color: var(--creme); }

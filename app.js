@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 56;
+  const VERSION = 57;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -169,7 +169,7 @@
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
     if (state.squadFilter) { const s = computeSquads(state.data.clients).find((q) => q.key === state.squadFilter); itens.push(`<span class="comanda-it">${esc(s ? s.nome.toLowerCase() : 'squad')}</span>`); }
-    if (state.ordem) itens.push(`<span class="comanda-it">${state.ordem === 'ltv-desc' ? 'maior LTV primeiro' : 'menor LTV primeiro'}</span>`);
+    if (state.ordem) itens.push(`<span class="comanda-it">ordem: ${esc(({ 'ltv-desc': 'maior LTV', 'ltv-asc': 'menor LTV', 'hs-desc': 'melhor score', 'hs-asc': 'pior score', 'casa-desc': 'mais antigo', 'casa-asc': 'mais novo', 'atraso-desc': 'mais atrasadas', 'csat-asc': 'pior CSAT', 'nome': 'nome A–Z' })[state.ordem] || state.ordem)}</span>`);
     const lbl = `<span class="comanda-l">${icoFiltro()}Filtro</span>`;
     if (!itens.length) return `<div class="comanda vazia">${lbl}<span class="comanda-dica">nenhum — a casa toda</span></div>`;
     return `<div class="comanda">${lbl}${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
@@ -264,13 +264,27 @@
     const squadChips = `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
       + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('');
     const shownBase = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
-    const shown = state.ordem
-      ? [...shownBase].sort((a, b) => (state.ordem === 'ltv-desc' ? (b.ltv || 0) - (a.ltv || 0) : (a.ltv || 0) - (b.ltv || 0)) || a.name.localeCompare(b.name, 'pt-BR'))
-      : shownBase;
+    const scoreDe = (c) => (c.healthScore && c.healthScore.score != null ? c.healthScore.score : null);
+    const lateDe = (c) => tasksOf(c.id).filter(isLate).length;
+    const nul = (v) => v == null; // sem dado vai pro fim em qualquer ordem
+    const cmpNum = (get, desc) => (a, b) => { const x = get(a), y = get(b); if (nul(x) && nul(y)) return 0; if (nul(x)) return 1; if (nul(y)) return -1; return desc ? y - x : x - y; };
+    const ORDENS = [
+      ['ltv-desc', 'LTV ▼ maior', cmpNum((c) => c.ltv, true)],
+      ['ltv-asc', 'LTV ▲ menor', cmpNum((c) => c.ltv, false)],
+      ['hs-desc', 'Score ▼ melhor', cmpNum(scoreDe, true)],
+      ['hs-asc', 'Score ▲ pior', cmpNum(scoreDe, false)],
+      ['casa-desc', 'Tempo de casa ▼ antigo', cmpNum((c) => (c.dataEntradaExec ? -c.dataEntradaExec : null), true)],
+      ['casa-asc', 'Tempo de casa ▲ novo', cmpNum((c) => (c.dataEntradaExec ? -c.dataEntradaExec : null), false)],
+      ['atraso-desc', 'Atrasadas ▼ mais', cmpNum(lateDe, true)],
+      ['csat-asc', 'CSAT ▲ pior', cmpNum((c) => (c.metrics ? c.metrics.csat : null), false)],
+      ['nome', 'Nome A–Z', (a, b) => a.name.localeCompare(b.name, 'pt-BR')],
+    ];
+    const ORDEM_LBL = Object.fromEntries(ORDENS.map(([k, l]) => [k, l]));
+    const ordemAtual = ORDENS.find(([k]) => k === state.ordem);
+    const shown = ordemAtual ? [...shownBase].sort((a, b) => ordemAtual[2](a, b) || a.name.localeCompare(b.name, 'pt-BR')) : shownBase;
     const osel = (k) => (state.ordem === k ? ' is-selected' : '');
     const ordemRow = `<button class="stat-status${state.ordem ? '' : ' is-selected'}" data-ordem="">ordem da casa</button>`
-      + `<button class="stat-status st-ltv${osel('ltv-desc')}" data-ordem="ltv-desc">LTV ▼ maior primeiro</button>`
-      + `<button class="stat-status st-ltv${osel('ltv-asc')}" data-ordem="ltv-asc">LTV ▲ menor primeiro</button>`;
+      + ORDENS.map(([k, l]) => `<button class="stat-status st-ord${osel(k)}" data-ordem="${k}">${l}</button>`).join('');
     const ltvShown = somaLTV(shown);
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
