@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 54;
+  const VERSION = 55;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -35,6 +35,8 @@
     statusFilter: null, // execução|atrasado|encerramento|briefing|null
     planoFilter: null,  // nome do plano ou null
     squadFilter: null,  // nome do squad ou null
+    ordem: null,        // null = ordem da casa | 'ltv-desc' | 'ltv-asc' (adega)
+    hsOrdem: 'score',   // ranking do Health Score: 'score' (pior primeiro) | 'ltv'
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -49,6 +51,9 @@
   const todayKey = () => dayKey(Date.now());
   const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: 'short' });
   const fmtLongo = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const fmtBRL = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
+  const somaLTV = (arr) => arr.reduce((a, c) => a + (c.ltv || 0), 0);
 
   const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
   const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < todayKey();
@@ -164,6 +169,7 @@
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
     if (state.squadFilter) { const s = computeSquads(state.data.clients).find((q) => q.key === state.squadFilter); itens.push(`<span class="comanda-it">${esc(s ? s.nome.toLowerCase() : 'squad')}</span>`); }
+    if (state.ordem) itens.push(`<span class="comanda-it">${state.ordem === 'ltv-desc' ? 'maior LTV primeiro' : 'menor LTV primeiro'}</span>`);
     const lbl = `<span class="comanda-l">${icoFiltro()}Filtro</span>`;
     if (!itens.length) return `<div class="comanda vazia">${lbl}<span class="comanda-dica">nenhum — a casa toda</span></div>`;
     return `<div class="comanda">${lbl}${itens.join('<span class="comanda-sep">·</span>')}<button class="comanda-limpar" data-limpar="1">✕ limpar</button></div>`;
@@ -257,7 +263,15 @@
     const nSq = (s) => byStatus.filter((c) => s.byClient.has(c.id)).length;
     const squadChips = `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
       + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('');
-    const shown = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
+    const shownBase = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
+    const shown = state.ordem
+      ? [...shownBase].sort((a, b) => (state.ordem === 'ltv-desc' ? (b.ltv || 0) - (a.ltv || 0) : (a.ltv || 0) - (b.ltv || 0)) || a.name.localeCompare(b.name, 'pt-BR'))
+      : shownBase;
+    const osel = (k) => (state.ordem === k ? ' is-selected' : '');
+    const ordemRow = `<button class="stat-status${state.ordem ? '' : ' is-selected'}" data-ordem="">ordem da casa</button>`
+      + `<button class="stat-status st-ltv${osel('ltv-desc')}" data-ordem="ltv-desc">LTV ▼ maior primeiro</button>`
+      + `<button class="stat-status st-ltv${osel('ltv-asc')}" data-ordem="ltv-asc">LTV ▲ menor primeiro</button>`;
+    const ltvShown = somaLTV(shown);
     const fsel = (f) => (state.flagFilter === f ? ' is-selected' : '');
     const planos = [...bySquad.reduce((m, c) => m.set(planoDe(c), (m.get(planoDe(c)) || 0) + 1), new Map())]
       .sort((x, y) => planoRank(x[0]) - planoRank(y[0]) || x[0].localeCompare(y[0], 'pt-BR'));
@@ -267,7 +281,7 @@
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
     el.innerHTML = `
-      <p class="eyebrow">A adega · ${clients.length} clientes</p>
+      <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
       <div class="hero">
         <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
         <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
@@ -280,6 +294,7 @@
         <div class="balcao-row"><span class="balcao-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
         <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}</div></div>
         ${temSquad ? `<div class="balcao-row"><span class="balcao-l">por squad</span><div class="chips">${squadChips}</div></div>` : ''}
+        <div class="balcao-row"><span class="balcao-l">ordenar</span><div class="chips">${ordemRow}</div></div>
       </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
       ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
@@ -298,7 +313,7 @@
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}<span class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (Growth)">LTV ${fmtBRL(c.ltv)}</span></div>
         </div>
         ${statusBadge}
       </div>
@@ -416,6 +431,10 @@
         <div class="metric${metaClass(c.nrr, 100)}">
           <div class="metric-num">${c.nrr != null ? c.nrr : '—'}${c.nrr != null ? '<span class="metric-unit">%</span>' : ''}</div>
           <div class="metric-label">NRR · por upsells registrados</div>
+        </div>
+        <div class="metric metric-ltv">
+          <div class="metric-num metric-num-ltv">${c.ltv != null ? fmtBRL(c.ltv) : '—'}</div>
+          <div class="metric-label">LTV${c.ltv != null ? ' · campo da Growth' : ' · sem LTV na Growth'}</div>
         </div>
       </div>
       ${hsFichaHTML(c.healthScore, c)}
@@ -596,13 +615,16 @@
     const cnt = (f) => com.filter((c) => c.healthScore.flag === f).length;
     const mediaPilar = (k) => { const v = com.map((c) => c.healthScore.pilares[k].nota).filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
 
-    const rank = [...com].sort((x, y) => x.healthScore.score - y.healthScore.score); // pior primeiro
+    const rank = state.hsOrdem === 'ltv'
+      ? [...com].sort((x, y) => (y.ltv || 0) - (x.ltv || 0) || x.healthScore.score - y.healthScore.score) // maior LTV primeiro; empate: pior score
+      : [...com].sort((x, y) => x.healthScore.score - y.healthScore.score); // pior primeiro
+    const ltvRank = somaLTV(com);
     const linha = (c) => {
       const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
       const d = prev ? hs.score - prev.s : null;
       const delta = d == null ? '<span class="hs-delta na">—</span>' : d === 0 ? '<span class="hs-delta flat">= 0</span>' : `<span class="hs-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
       const pil = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const n = hs.pilares[k].nota; return `<td class="hs-td ${hsCls(n)}">${n != null ? n : '—'}</td>`; }).join('');
-      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td>${pil}</tr>`;
+      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td>${pil}<td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     };
 
     const sangra = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => {
@@ -623,8 +645,9 @@
         <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
       </div>
 
-      <p class="eyebrow">Ranking · do mais crítico ao mais saudável ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Score</th><th class="r">7d</th><th class="r">Tráfego</th><th class="r">Satisf.</th><th class="r">Produt.</th><th class="r">Contato</th></tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <p class="eyebrow">Ranking · ${state.hsOrdem === 'ltv' ? 'do maior ao menor LTV' : 'do mais crítico ao mais saudável'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Score</th><th class="r">7d</th><th class="r">Tráfego</th><th class="r">Satisf.</th><th class="r">Produt.</th><th class="r">Contato</th><th class="r hs-th-sort${state.hsOrdem === 'ltv' ? ' is-on' : ''}" data-hs-ordem="ltv" title="ordenar por LTV">LTV ${state.hsOrdem === 'ltv' ? '▼' : ''}</th></tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <p class="hs-ordem-dica">${state.hsOrdem === 'ltv' ? '<button class="hs-ordem-btn" data-hs-ordem="score">voltar à ordem por score</button>' : '<button class="hs-ordem-btn" data-hs-ordem="ltv">ordenar por LTV — quem vale mais e está mal sobe</button>'}</p>
 
       <p class="eyebrow">Onde a carteira sangra · clientes abaixo de 50 por pilar</p>
       <div class="hs-pilares-grid">${sangra}</div>
@@ -647,6 +670,7 @@
 
     // clique em cliente → ficha
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
+    el.querySelectorAll('[data-hs-ordem]').forEach((n) => n.addEventListener('click', () => { state.hsOrdem = n.dataset.hsOrdem === 'ltv' && state.hsOrdem !== 'ltv' ? 'ltv' : 'score'; renderHealth(el); }));
     if (!hsHist) loadHist().then(() => { if (state.view === 'health') renderHealth(el); });
   }
 
@@ -677,9 +701,11 @@
       if (card && card.dataset.id) { setCliente(card.dataset.id); return; }
       const st = e.target.closest('.stat-btn, .stat-flag');
       if (st) { state.flagFilter = state.flagFilter === st.dataset.flag ? null : st.dataset.flag; render(); return; }
+      const od0 = e.target.closest('[data-ordem]');
+      if (od0) { const o = od0.dataset.ordem || null; state.ordem = (!o || state.ordem === o) ? null : o; render(); return; }
       const ss = e.target.closest('.stat-status');
       if (ss) { state.statusFilter = state.statusFilter === ss.dataset.status ? null : ss.dataset.status; render(); return; }
-      if (e.target.closest('.comanda-limpar')) { state.flagFilter = null; state.statusFilter = null; state.planoFilter = null; state.squadFilter = null; render(); return; }
+      if (e.target.closest('.comanda-limpar')) { state.flagFilter = null; state.statusFilter = null; state.planoFilter = null; state.squadFilter = null; state.ordem = null; render(); return; }
       const sq = e.target.closest('[data-squad]');
       if (sq) { const q = sq.dataset.squad || null; state.squadFilter = (!q || state.squadFilter === q) ? null : q; render(); return; }
       const sp = e.target.closest('.stat-plano');

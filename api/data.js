@@ -1,7 +1,9 @@
 // bibit-clientes — proxy agregador ClickUp
 // Segurança: whitelist explícita de campos. Campos financeiros/contratuais do
-// Growth (LTV, valores, cobranças, CNPJ, closer etc.) NÃO são extraídos aqui,
+// Growth (valores, cobranças, CNPJ, closer etc.) NÃO são extraídos aqui,
 // portanto nunca chegam ao navegador, mesmo em chamada direta a /api/data.
+// EXCEÇÃO (Bruno, 17/09/26): o campo LTV da Growth (R$) SAI ao navegador — único
+// valor em R$ exposto; entra na ficha, na adega (card + ordenação) e no ranking do HS.
 
 const CLICKUP = 'https://api.clickup.com/api/v2';
 
@@ -44,6 +46,7 @@ const CF_INSTAGRAM = 'b304b434-41fd-4a1a-9622-7cca5495491b';
 const CF_GRUPO_WA = '634d52ca-a2a9-477d-9c55-6089c0ef27b2';
 const CF_BRIEFING = 'fb0154b3-3c6c-4041-b193-79490bb7bad1';
 const CF_DATA_EXEC = 'db1abd50-bc00-4097-92b9-ec639fbe3b04';
+const CF_LTV = '0da302e9-b65c-4453-84b8-07bbec61ab62'; // LTV (R$) — exposto por decisão do Bruno (17/09/26)
 // Health Score — campos "HS ·" gravados pelo Make (cenário 6155088) toda segunda
 const CF_REPORTEI_ID = '790eac6d-2df3-4d45-9151-4a68be61e4ff'; // só sim/não sai ao navegador (diagnóstico do tráfego)
 const CF_HS_CPM = '5b496091-9725-4dae-8cef-7dd468458105';
@@ -177,6 +180,7 @@ function shapeCliente(task) {
     grupoWhatsApp: cfText(getCF(task, CF_GRUPO_WA)),
     briefing: cfText(getCF(task, CF_BRIEFING)),
     dataEntradaExec: cfDate(getCF(task, CF_DATA_EXEC)),
+    ltv: (() => { const v = cfNumber(getCF(task, CF_LTV)); return v != null && v > 0 ? v : null; })(), // 0 = campo limpo
     _dataSaida: cfDate(getCF(task, CF_DATA_SAIDA)),
     _valorRec: cfNumber(getCF(task, CF_VALOR_REC)),
     temReportei: !!cfText(getCF(task, CF_REPORTEI_ID)),
