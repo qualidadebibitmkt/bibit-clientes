@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 55;
+  const VERSION = 56;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -313,7 +313,8 @@
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}<span class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (Growth)">LTV ${fmtBRL(c.ltv)}</span></div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
+          <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
         </div>
         ${statusBadge}
       </div>

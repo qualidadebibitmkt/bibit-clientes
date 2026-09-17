@@ -1246,7 +1246,8 @@ body::before {
 @media (max-width: 560px) { .hs-mini { grid-template-columns: auto auto; } .hs-pils { grid-column: 1 / -1; } }
 
 /* v55 — LTV (R$) exposto por decisão do Bruno, 17/09/26 */
-.card-ltv { margin-left: auto; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--creme); background: rgba(243,236,218,0.08); border: 1px solid rgba(243,236,218,0.14); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.card-ltv { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--creme); white-space: nowrap; }
+.card-ltv-l { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--creme-45); font-weight: 600; }
 .card-ltv.na { color: var(--creme-45); font-weight: 500; }
 .metric-num-ltv { font-size: 22px; letter-spacing: -0.01em; }
 .stat-status.st-ltv.is-selected { color: var(--flag-green); }
