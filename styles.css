@@ -1257,3 +1257,32 @@ body::before {
 .hs-ordem-dica { margin: -18px 0 26px; font-size: 12px; }
 .hs-ordem-btn { background: none; border: 1px solid rgba(243,236,218,0.18); color: var(--creme-45); border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; font-size: 12px; }
 .hs-ordem-btn:hover { color: var(--creme); background: var(--garrafa-3); }
+
+/* v58 — linha "ordenar" em metal escovado (placa de aço do balcão) + chips de latão */
+.balcao-ordem {
+  margin: 8px -8px 0; padding: 12px 14px; border-radius: 10px; border-top: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #4a4d52 0%, #34373b 38%, #2b2e32 62%, #3c3f44 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.6), 0 4px 14px rgba(0,0,0,0.45);
+  position: relative;
+}
+.balcao-ordem::before, .balcao-ordem::after { /* parafusos */
+  content: ''; position: absolute; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #9a9ea4, #3a3d41 70%); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.15);
+}
+.balcao-ordem::before { left: 6px; } .balcao-ordem::after { right: 6px; }
+.balcao-ordem .balcao-l { color: #cfd3d8; text-shadow: 0 1px 0 rgba(0,0,0,0.6); }
+.balcao-ordem .stat-status {
+  color: #1f1a12; font-weight: 600; border: 1px solid #6b4f1e;
+  background: linear-gradient(180deg, #e8c777 0%, #c9a24d 45%, #a67f2f 55%, #d8b55d 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.45);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+}
+.balcao-ordem .stat-status:hover { background: linear-gradient(180deg, #f3d98d 0%, #d8b55d 45%, #b58d38 55%, #e4c46c 100%); }
+.balcao-ordem .stat-status.is-selected {
+  color: #fff3d6; border: 1px solid #2b1d08;
+  background: linear-gradient(180deg, #7a5a1e 0%, #5b4013 50%, #4a330e 100%);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(233,207,139,0.35);
+  text-shadow: 0 -1px 0 rgba(0,0,0,0.6);
+}
