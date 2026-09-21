@@ -53,6 +53,8 @@ module.exports = async (req, res) => {
     for (const r of out) for (const raw of (r.result || [])) { try { msgs.push(JSON.parse(raw)); } catch {} }
     msgs.sort((a, b) => a.t - b.t);
 
+    // mark=1 (só o Make usa): registra quando a análise semanal leu este grupo → "atualizado em" no painel
+    if (req.query.mark) { try { await redisPipeline([['SET', 'wa:last:' + grupo, String(Date.now())], ['EXPIRE', 'wa:last:' + grupo, String(180 * 86400)]]); } catch {} }
     const linhas = msgs.map((m) => `${fmt(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`);
     const remetentes = [...new Set(msgs.map((m) => m.s).filter(Boolean))];
     res.setHeader('Cache-Control', 'no-store');
