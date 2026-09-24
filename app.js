@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 59;
+  const VERSION = 60;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -36,7 +36,8 @@
     planoFilter: null,  // nome do plano ou null
     squadFilter: null,  // nome do squad ou null
     ordem: null,        // null = ordem da casa | 'ltv-desc' | 'ltv-asc' (adega)
-    hsOrdem: 'score',   // ranking do Health Score: 'score' (pior primeiro) | 'ltv'
+    hsOrdem: 'score',   // coluna do ranking do Health Score: nome|score|delta|trafego|satisfacao|produtividade|contato|ltv
+    hsDir: 'asc',       // 'asc' | 'desc' (padrão: score asc = pior primeiro)
     cal: null,     // { y, m }
     fnExpanded: new Set(),
   };
@@ -631,9 +632,27 @@
     const cnt = (f) => com.filter((c) => c.healthScore.flag === f).length;
     const mediaPilar = (k) => { const v = com.map((c) => c.healthScore.pilares[k].nota).filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
 
-    const rank = state.hsOrdem === 'ltv'
-      ? [...com].sort((x, y) => (y.ltv || 0) - (x.ltv || 0) || x.healthScore.score - y.healthScore.score) // maior LTV primeiro; empate: pior score
-      : [...com].sort((x, y) => x.healthScore.score - y.healthScore.score); // pior primeiro
+    // ordenação por qualquer coluna, asc/desc; sem dado vai pro fim nos dois sentidos
+    const valorDe = (c) => {
+      const hs = c.healthScore;
+      switch (state.hsOrdem) {
+        case 'nome': return c.name.toLowerCase();
+        case 'delta': { const p = scoreHa(hsHist, c.id, 7); return p ? hs.score - p.s : null; }
+        case 'trafego': case 'satisfacao': case 'produtividade': case 'contato': return hs.pilares[state.hsOrdem].nota;
+        case 'ltv': return c.ltv ?? null;
+        default: return hs.score;
+      }
+    };
+    const dir = state.hsDir === 'desc' ? -1 : 1;
+    const rank = [...com].sort((x, y) => {
+      const a = valorDe(x), b = valorDe(y);
+      if (a == null && b == null) return x.healthScore.score - y.healthScore.score;
+      if (a == null) return 1; if (b == null) return -1;
+      const cmp = typeof a === 'string' ? a.localeCompare(b, 'pt-BR') : a - b;
+      return cmp * dir || x.healthScore.score - y.healthScore.score;
+    });
+    const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
+    const ORDEM_LBL = { nome: 'nome A–Z', score: 'score', delta: 'variação 7d', trafego: 'tráfego', satisfacao: 'satisfação', produtividade: 'produtividade', contato: 'contato', ltv: 'LTV' };
     const ltvRank = somaLTV(com);
     const linha = (c) => {
       const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
@@ -661,9 +680,9 @@
         <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
       </div>
 
-      <p class="eyebrow">Ranking · ${state.hsOrdem === 'ltv' ? 'do maior ao menor LTV' : 'do mais crítico ao mais saudável'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Score</th><th class="r">7d</th><th class="r">Tráfego</th><th class="r">Satisf.</th><th class="r">Produt.</th><th class="r">Contato</th><th class="r hs-th-sort${state.hsOrdem === 'ltv' ? ' is-on' : ''}" data-hs-ordem="ltv" title="ordenar por LTV">LTV ${state.hsOrdem === 'ltv' ? '▼' : ''}</th></tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
-      <p class="hs-ordem-dica">${state.hsOrdem === 'ltv' ? '<button class="hs-ordem-btn" data-hs-ordem="score">voltar à ordem por score</button>' : '<button class="hs-ordem-btn" data-hs-ordem="ltv">ordenar por LTV — quem vale mais e está mal sobe</button>'}</p>
+      <p class="eyebrow">Ranking · por ${ORDEM_LBL[state.hsOrdem] || 'score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7d')}${th('trafego', 'Tráfego')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Contato')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
 
       <p class="eyebrow">Onde a carteira sangra · clientes abaixo de 50 por pilar</p>
       <div class="hs-pilares-grid">${sangra}</div>
@@ -686,7 +705,12 @@
 
     // clique em cliente → ficha
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
-    el.querySelectorAll('[data-hs-ordem]').forEach((n) => n.addEventListener('click', () => { state.hsOrdem = n.dataset.hsOrdem === 'ltv' && state.hsOrdem !== 'ltv' ? 'ltv' : 'score'; renderHealth(el); }));
+    el.querySelectorAll('[data-hs-ordem]').forEach((n) => n.addEventListener('click', () => {
+      const k = n.dataset.hsOrdem;
+      if (state.hsOrdem === k) state.hsDir = state.hsDir === 'asc' ? 'desc' : 'asc';
+      else { state.hsOrdem = k; state.hsDir = (k === 'ltv' || k === 'delta') ? 'desc' : 'asc'; } // LTV e variação: maior primeiro por padrão
+      renderHealth(el);
+    }));
     if (!hsHist) loadHist().then(() => { if (state.view === 'health') renderHealth(el); });
   }
 
