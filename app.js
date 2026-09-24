@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 60;
+  const VERSION = 61;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -22,9 +22,9 @@
   };
   const FN_ORDER = ['social', 'audiovisual', 'rp', 'trafego', 'webdesign'];
   const FLAG = {
-    green:  { level: 0.82, word: 'Saudável', sub: 'flag verde',    css: 'green',  color: 'var(--flag-green)' },
-    yellow: { level: 0.50, word: 'Atenção',  sub: 'flag amarela',  css: 'yellow', color: 'var(--flag-yellow)' },
-    red:    { level: 0.16, word: 'Crítico',  sub: 'flag vermelha', css: 'red',    color: 'var(--flag-red)' },
+    green:  { level: 0.82, word: 'Green Flag',  sub: 'saudável', css: 'green',  color: 'var(--flag-green)' },
+    yellow: { level: 0.50, word: 'Yellow Flag', sub: 'atenção',  css: 'yellow', color: 'var(--flag-yellow)' },
+    red:    { level: 0.16, word: 'Red Flag',    sub: 'crítico',  css: 'red',    color: 'var(--flag-red)' },
   };
 
   const state = {
@@ -165,7 +165,7 @@
   // ---------- balcão: comanda de filtros ativos ----------
   function comandaHTML() {
     const itens = [];
-    const FLAG_LBL = { green: 'copos cheios', yellow: 'em atenção', red: 'críticos' };
+    const FLAG_LBL = { green: 'Green Flag', yellow: 'Yellow Flag', red: 'Red Flag' };
     if (state.flagFilter) itens.push(`<span class="comanda-it c-${state.flagFilter}">${esc(FLAG_LBL[state.flagFilter])}</span>`);
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
@@ -298,9 +298,9 @@
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
       <div class="hero">
-        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">copos cheios</div></div></button>
-        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">em atenção</div></div></button>
-        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">críticos</div></div></button>
+        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div></div></button>
+        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div></div></button>
+        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div></div></button>
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
       </div>
       <section class="balcao">
@@ -377,7 +377,7 @@
         <div class="hs-big ${hs.insuficiente ? 'na' : hsCls(hs.score)}">${hs.score}<small>/100</small></div>
         <div class="hs-rows">${linhas}</div>
       </div>
-      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${c.flag}</b>, score sugere <b>${hs.flag}</b> — o copo já mostra a do score; o Make sincroniza o ClickUp na próxima segunda.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
+      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${FLAG[c.flag] ? FLAG[c.flag].word : c.flag}</b>, score sugere <b>${FLAG[hs.flag] ? FLAG[hs.flag].word : hs.flag}</b> — o copo já mostra a do score; o Make sincroniza o ClickUp na próxima segunda.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
   }
 
   function renderFicha(el, c) {
