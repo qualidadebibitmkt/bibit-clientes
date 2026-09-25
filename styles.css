@@ -937,6 +937,11 @@ body::before {
 .stat-status.st-expansao.is-selected { border-color: color-mix(in srgb, var(--flag-green) 55%, transparent); }
 .ficha-title .ficha-tag { margin-left: 12px; vertical-align: middle; font-family: var(--ui); font-weight: 600; }
 .comanda-it.c-expansao { color: var(--flag-green); }
+/* nunca respondeu CSAT (v66) */
+.stat-status.st-semcsat strong, .stat-status.st-semcsat.is-selected { color: var(--flag-red); }
+.stat-status.st-semcsat.is-selected { border-color: color-mix(in srgb, var(--flag-red) 55%, transparent); }
+.comanda-it.c-semcsat { color: var(--flag-red); }
+.card-nocsat { display: inline-block; margin-left: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--flag-red); border: 1px solid color-mix(in srgb, var(--flag-red) 45%, transparent); border-radius: 999px; padding: 1px 7px; vertical-align: 1px; }
 
 /* ---------- v24: contagem por plano dentro do bloco de flags ---------- */
 .stats-flags { align-items: stretch; }

@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 65;
+  const VERSION = 66;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -109,6 +109,8 @@
   // maduro pra expandir: Green Flag há ≥ 28 dias + CSAT ≥ 9 + sem sinal de risco no WhatsApp
   const ALERTA_RX = /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i;
   const temAlertaWA = (c) => !!(c.contato && c.contato.resumo && ALERTA_RX.test(c.contato.resumo));
+  // nunca respondeu CSAT (Bruno, 25/09/26): cliente sem nenhuma resposta na lista de CSAT; quem ainda está em briefing não conta
+  const nuncaCSAT = (c) => (!c.metrics || !c.metrics.respostas) && stKeyOf(c) !== 'briefing';
   function maduroDe(c) {
     const st = streakDe(c);
     const csat = c.metrics ? c.metrics.csat : null;
@@ -222,7 +224,7 @@
   // ---------- balcão: comanda de filtros ativos ----------
   function comandaHTML() {
     const itens = [];
-    const FLAG_LBL = { green: 'Green Flag', yellow: 'Yellow Flag', red: 'Red Flag', expansao: 'possibilidade de expansão' };
+    const FLAG_LBL = { green: 'Green Flag', yellow: 'Yellow Flag', red: 'Red Flag', expansao: 'possibilidade de expansão', semcsat: 'nunca respondeu CSAT' };
     if (state.flagFilter) itens.push(`<span class="comanda-it c-${state.flagFilter}">${esc(FLAG_LBL[state.flagFilter])}</span>`);
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
@@ -322,8 +324,9 @@
     const nSq = (s) => byStatus.filter((c) => s.byClient.has(c.id)).length;
     const squadChips = `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
       + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('');
-    const shownBase = state.flagFilter === 'expansao' ? byPlano.filter((c) => maduroDe(c).ok) : state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
+    const shownBase = state.flagFilter === 'expansao' ? byPlano.filter((c) => maduroDe(c).ok) : state.flagFilter === 'semcsat' ? byPlano.filter(nuncaCSAT) : state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
     const nExp = byPlano.filter((c) => maduroDe(c).ok).length;
+    const nSemCsat = byPlano.filter(nuncaCSAT).length;
     const scoreDe = (c) => (c.healthScore && c.healthScore.score != null ? c.healthScore.score : null);
     const lateDe = (c) => tasksOf(c.id).filter(isLate).length;
     const nul = (v) => v == null; // sem dado vai pro fim em qualquer ordem
@@ -366,12 +369,12 @@
         <div class="balcao-rail"></div>
         ${comandaHTML()}
         <div class="balcao-row"><span class="balcao-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
-        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}<button class="stat-status stat-btn st-expansao${state.flagFilter === 'expansao' ? ' is-selected' : ''}" data-flag="expansao" title="Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp"><strong>${nExp}</strong> Possibilidade de expansão</button></div></div>
+        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}<button class="stat-status stat-btn st-expansao${state.flagFilter === 'expansao' ? ' is-selected' : ''}" data-flag="expansao" title="Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp"><strong>${nExp}</strong> Possibilidade de expansão</button><button class="stat-status stat-btn st-semcsat${state.flagFilter === 'semcsat' ? ' is-selected' : ''}" data-flag="semcsat" title="clientes sem nenhuma resposta de CSAT (quem está em briefing não conta)"><strong>${nSemCsat}</strong> Nunca respondeu CSAT</button></div></div>
         ${temSquad ? `<div class="balcao-row"><span class="balcao-l">por squad</span><div class="chips">${squadChips}</div></div>` : ''}
         <div class="balcao-row balcao-ordem"><span class="balcao-l">ordenar</span><div class="chips chips-metal">${ordemRow}</div></div>
       </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
-      ${shown.length ? '' : state.flagFilter === 'expansao' ? `<div class="fn-empty">Ninguém com possibilidade de expansão ainda — precisa de Green Flag há ≥ ${MADURO_DIAS} dias, CSAT ≥ 9 e sem alerta no WhatsApp. A fila está na aba Health Score.</div>` : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
+      ${shown.length ? '' : state.flagFilter === 'semcsat' ? `<div class="fn-empty">Todo mundo já respondeu pelo menos um CSAT.</div>` : state.flagFilter === 'expansao' ? `<div class="fn-empty">Ninguém com possibilidade de expansão ainda — precisa de Green Flag há ≥ ${MADURO_DIAS} dias, CSAT ≥ 9 e sem alerta no WhatsApp. A fila está na aba Health Score.</div>` : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
   }
 
@@ -392,7 +395,7 @@
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}${nuncaCSAT(c) ? '<span class="card-nocsat" title="nenhuma resposta de CSAT até hoje">sem CSAT</span>' : ''}</div>
           <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
           ${maduro}
         </div>
