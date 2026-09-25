@@ -17,7 +17,7 @@
 //    sem nenhum dos dois → faixa de mercado.
 //  - CSAT e NPS na escala 0–10 do Typeform: verde ≥9 · amarelo 8–8,9 · vermelho <8.
 //  - Produtividade: verde ≥95% · amarelo 85–94 · vermelho <85.
-//  - Score ≥80 verde · 50–79 amarelo · <50 vermelho.
+//  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
 
 const PESOS = { trafego: 40, satisfacao: 30, contato: 15, produtividade: 15 };
 const MIN_PARES_PERCENTIL = 10;
@@ -25,6 +25,10 @@ const MIN_PARES_PERCENTIL = 10;
 // tráfego e sem CSAT ganhava verde por não ter tarefa atrasada). Abaixo de 2
 // pilares o score é "insuficiente" e a flag do Growth NÃO é sobrescrita.
 const MIN_PILARES = 2;
+
+// Faixas da flag (Bruno, 25/09/26): ≥90 verde · 70–89 amarelo · <70 vermelho
+const FLAG_FAIXAS = { green: 90, yellow: 70 };
+const flagDoScore = (s) => (s == null ? null : s >= FLAG_FAIXAS.green ? 'green' : s >= FLAG_FAIXAS.yellow ? 'yellow' : 'red');
 
 // Faixas de mercado (fallback quando não há base suficiente). Valores em R$ pra
 // custos são propositalmente conservadores — o percentil da carteira substitui.
@@ -137,7 +141,7 @@ function compor(pilares) {
   if (!somaPeso) return { score: null, flag: null, cobertura: `0/${Object.keys(PESOS).length}`, insuficiente: true };
   if (n < MIN_PILARES) return { score: round0(soma / somaPeso), flag: null, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: true };
   const score = round0(soma / somaPeso);
-  const flag = score >= 80 ? 'green' : score >= 50 ? 'yellow' : 'red';
+  const flag = flagDoScore(score);
   return { score, flag, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: false };
 }
 
@@ -172,4 +176,4 @@ function calcularTodos(clientes) {
   return out;
 }
 
-module.exports = { calcularTodos, PESOS, FAIXAS };
+module.exports = { calcularTodos, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore };

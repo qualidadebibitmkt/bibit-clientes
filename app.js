@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 64;
+  const VERSION = 65;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -95,7 +95,8 @@
       const f = fotos[i].scores[c.id];
       if (!f) continue;
       viu = true;
-      if (f.f !== flag) { piso = false; break; }
+      const fFoto = f.s != null ? flagDoScore(f.s) : f.f; // régua atual sobre o score da foto (não a flag gravada na época)
+      if (fFoto !== flag) { piso = false; break; }
       desde = fotos[i].dia;
     }
     if (!viu) return null; // cliente sem nenhuma foto ainda (novo no score)
@@ -403,7 +404,11 @@
   }
 
   // ---------- health score ----------
-  const hsCls = (n) => (n == null ? 'na' : n >= 80 ? 'g' : n >= 50 ? 'y' : 'r');
+  // faixas da flag (Bruno, 25/09/26): ≥90 verde · 70–89 amarelo · <70 vermelho — mesma régua do api/healthscore.js
+  const FLAG_FAIXAS = { green: 90, yellow: 70 };
+  const flagDoScore = (n) => (n == null ? null : n >= FLAG_FAIXAS.green ? 'green' : n >= FLAG_FAIXAS.yellow ? 'yellow' : 'red');
+  const hsCls = (n) => (n == null ? 'na' : n >= FLAG_FAIXAS.green ? 'g' : n >= FLAG_FAIXAS.yellow ? 'y' : 'r');
+  const flagCls = (f) => (f === 'green' ? 'g' : f === 'yellow' ? 'y' : f === 'red' ? 'r' : 'na');
   const PILAR_LBL = { trafego: 'Tráfego', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Contato' };
   const PILAR_SIGLA = { trafego: 'T', satisfacao: 'S', produtividade: 'P', contato: 'C' };
 
@@ -725,15 +730,15 @@
       const delta = d == null ? '<span class="hs-delta na">—</span>' : d === 0 ? '<span class="hs-delta flat">= 0</span>' : `<span class="hs-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
       const pil = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const n = hs.pilares[k].nota; return `<td class="hs-td ${hsCls(n)}">${n != null ? n : '—'}</td>`; }).join('');
       const st = streakDe(c);
-      const streak = !st ? '<span class="hs-streak na">—</span>' : st.dias === 0 ? '<span class="hs-streak na" title="a flag mudou hoje">hoje</span>' : `<span class="hs-streak ${hsCls(st.flag === 'green' ? 100 : st.flag === 'yellow' ? 60 : 0)}${st.flag === 'green' && st.dias >= MADURO_DIAS ? ' maduro' : ''}" title="${FLAG[st.flag].word} ${streakLabel(st)}${st.piso ? ' (pelo menos — histórico começou em ' + fmtCurto(new Date(st.desde + 'T12:00:00Z').getTime()) + ')' : ''}">${st.piso ? '≥' : ''}${st.dias}d</span>`;
+      const streak = !st ? '<span class="hs-streak na">—</span>' : st.dias === 0 ? '<span class="hs-streak na" title="a flag mudou hoje">hoje</span>' : `<span class="hs-streak ${flagCls(st.flag)}${st.flag === 'green' && st.dias >= MADURO_DIAS ? ' maduro' : ''}" title="${FLAG[st.flag].word} ${streakLabel(st)}${st.piso ? ' (pelo menos — histórico começou em ' + fmtCurto(new Date(st.desde + 'T12:00:00Z').getTime()) + ')' : ''}">${st.piso ? '≥' : ''}${st.dias}d</span>`;
       return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td><td class="hs-td">${streak}</td>${pil}<td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     };
 
     const sangra = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => {
-      const ruins = com.filter((c) => c.healthScore.pilares[k].nota != null && c.healthScore.pilares[k].nota < 50).sort((x, y) => x.healthScore.pilares[k].nota - y.healthScore.pilares[k].nota);
+      const ruins = com.filter((c) => c.healthScore.pilares[k].nota != null && c.healthScore.pilares[k].nota < FLAG_FAIXAS.yellow).sort((x, y) => x.healthScore.pilares[k].nota - y.healthScore.pilares[k].nota);
       const m = mediaPilar(k);
       return `<div class="hs-pilar-box"><div class="hs-pilar-head"><span>${PILAR_META[k]}</span><span class="hs-pilar-media ${hsCls(m)}">${m != null ? m : '—'}<small>média</small></span></div>
-        ${ruins.length ? `<div class="hs-pilar-list">${ruins.slice(0, 8).map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="${hsCls(c.healthScore.pilares[k].nota)}">${c.healthScore.pilares[k].nota}</b></button>`).join('')}${ruins.length > 8 ? `<span class="hs-mais">+${ruins.length - 8}</span>` : ''}</div>` : `<div class="hs-pilar-ok">ninguém abaixo de 50${m == null ? ' · sem dado ainda' : ''}</div>`}</div>`;
+        ${ruins.length ? `<div class="hs-pilar-list">${ruins.slice(0, 8).map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="${hsCls(c.healthScore.pilares[k].nota)}">${c.healthScore.pilares[k].nota}</b></button>`).join('')}${ruins.length > 8 ? `<span class="hs-mais">+${ruins.length - 8}</span>` : ''}</div>` : `<div class="hs-pilar-ok">ninguém abaixo de ${FLAG_FAIXAS.yellow}${m == null ? ' · sem dado ainda' : ''}</div>`}</div>`;
     }).join('');
 
     const alertas = clients.filter(temAlertaWA);
@@ -769,7 +774,7 @@
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
       ${expandir}
 
-      <p class="eyebrow">Onde a carteira sangra · clientes abaixo de 50 por pilar</p>
+      <p class="eyebrow">Onde a carteira sangra · clientes com pilar abaixo de ${FLAG_FAIXAS.yellow} (faixa vermelha)</p>
       <div class="hs-pilares-grid">${sangra}</div>
 
       <p class="eyebrow">Alertas do WhatsApp ${alertas.length ? `<span class="csat-alert">${alertas.length}</span>` : ''}</p>
@@ -785,7 +790,7 @@
         <div><b>Satisfação</b> CSAT e NPS (0–10): 7 → 0 pontos · 9 → 100 · 8 = 50.</div>
         <div><b>Produtividade</b> (abertas − atrasadas) ÷ abertas: 85% → 0 · 95% → 100.</div>
         <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
-        <div><b>Flag</b> ≥ 80 verde · 50–79 amarelo · &lt; 50 vermelho. Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
+        <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow · &lt; ${FLAG_FAIXAS.yellow} Red (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
         <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
         <div><b>Flag há</b> dias seguidos na flag atual, pelas fotos diárias do score (desde 14/09/26; "≥" quando a sequência encosta no início do histórico). Dia sem foto não quebra a sequência.</div>
         <div><b>Expandir</b> Green Flag há ≥ ${MADURO_DIAS} dias + CSAT ≥ 9 + sem sinal de risco no resumo do WhatsApp = candidato a cross-sell/upsell, apresentado pela operação na reunião semanal.</div>
