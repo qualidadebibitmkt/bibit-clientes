@@ -872,6 +872,9 @@ body::before {
 }
 .stat-flag .stat-num { font-size: 42px; line-height: 1; }
 .stat-flag .stat-label { margin-top: 2px; }
+.stat-flag .stat-meta { margin-top: 4px; font-size: 11px; letter-spacing: 0.04em; color: var(--creme-45); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat-flag .stat-meta.off { color: var(--flag-yellow); }
+.stat-flag.f-green .stat-meta:not(.off) { color: var(--flag-green); }
 .stat-flag.f-green  { border-color: color-mix(in srgb, var(--flag-green) 45%, transparent); }
 .stat-flag.f-yellow { border-color: color-mix(in srgb, var(--flag-yellow) 45%, transparent); }
 .stat-flag.f-red    { border-color: color-mix(in srgb, var(--flag-red) 45%, transparent); }
@@ -1211,6 +1214,23 @@ body::before {
 .hs-termo-pn { display: block; font-family: var(--display); font-size: 28px; font-weight: 600; line-height: 1; }
 .hs-termo-pl { display: block; margin-top: 4px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45); }
 .hs-termo-pn.g { color: var(--flag-green); } .hs-termo-pn.y { color: var(--flag-yellow); } .hs-termo-pn.r { color: var(--flag-red); } .hs-termo-pn.na { color: var(--creme-45); }
+/* meta da carteira 70/20/10 (v64) */
+.hs-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
+.hs-meta-box { padding: 14px 16px; background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.1); border-radius: var(--radius); }
+.hs-meta-box.green { border-color: color-mix(in srgb, var(--flag-green) 35%, transparent); }
+.hs-meta-box.yellow { border-color: color-mix(in srgb, var(--flag-yellow) 35%, transparent); }
+.hs-meta-box.red { border-color: color-mix(in srgb, var(--flag-red) 35%, transparent); }
+.hs-meta-head { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.hs-meta-head b { margin-left: auto; font-size: 24px; font-variant-numeric: tabular-nums; }
+.hs-meta-head small { font-family: var(--ui); font-size: 11px; color: var(--creme-45); }
+.hs-meta-bar { position: relative; height: 8px; border-radius: 999px; background: rgba(0,0,0,0.3); overflow: visible; }
+.hs-meta-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--creme-45); }
+.hs-meta-box.green .hs-meta-bar i { background: var(--flag-green); } .hs-meta-box.yellow .hs-meta-bar i { background: var(--flag-yellow); } .hs-meta-box.red .hs-meta-bar i { background: var(--flag-red); }
+.hs-meta-bar u { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--creme); opacity: 0.85; }
+.hs-meta-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11.5px; color: var(--creme-45); letter-spacing: 0.04em; }
+.hs-meta-lac { font-weight: 700; color: var(--flag-green); }
+.hs-meta-box.off .hs-meta-lac { color: var(--flag-yellow); }
+@media (max-width: 900px) { .hs-meta { grid-template-columns: 1fr; } }
 .hs-hist-info { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--creme-45); margin-left: 8px; }
 
 .hs-table-wrap { overflow-x: auto; margin-bottom: 26px; border-radius: var(--radius); border: 1px solid rgba(243,236,218,0.1); }

@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 63;
+  const VERSION = 64;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -66,6 +66,21 @@
   // ---------- dias na flag atual (a partir das fotos diárias do Redis) ----------
   // Green Flag há ≥ MADURO_DIAS = cliente maduro pra cross-sell/upsell (Bruno, 25/09/26).
   const MADURO_DIAS = 28;
+  // Meta de distribuição das flags na carteira (Bruno, 25/09/26): 70% Green · 20% Yellow · 10% Red
+  const META_FLAGS = { green: 70, yellow: 20, red: 10 };
+  const pct = (n, t) => (t ? Math.round((n / t) * 100) : 0);
+  // lacuna em clientes: verde = quantos faltam pra chegar na meta; amarelo/vermelho = quantos a mais que a meta permite
+  function lacunaFlag(f, n, t) {
+    if (!t) return null;
+    if (f === 'green') { const alvo = Math.ceil((META_FLAGS.green / 100) * t); return { ok: n >= alvo, dif: alvo - n }; }
+    const teto = Math.floor((META_FLAGS[f] / 100) * t); return { ok: n <= teto, dif: n - teto };
+  }
+  function metaTxt(f, n, t) {
+    const l = lacunaFlag(f, n, t);
+    if (!l) return '';
+    if (l.ok) return 'na meta';
+    return f === 'green' ? `falta${l.dif === 1 ? '' : 'm'} ${l.dif}` : `${l.dif} a mais`;
+  }
   // Conta, de trás pra frente, as fotos diárias em que o cliente tinha a mesma flag do score ao vivo.
   // Dia sem foto (ninguém abriu o painel) não quebra a sequência — só uma foto com OUTRA flag quebra.
   // Devolve null sem histórico; senão { flag, dias, desde, piso }: piso=true quando a sequência
@@ -341,9 +356,9 @@
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
       <div class="hero">
-        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div></div></button>
-        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div></div></button>
-        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div></div></button>
+        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('green', count('green'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('green'), byPlano.length)}% · meta ${META_FLAGS.green}%${(() => { const t = metaTxt('green', count('green'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
+        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('yellow', count('yellow'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('yellow'), byPlano.length)}% · meta ${META_FLAGS.yellow}%${(() => { const t = metaTxt('yellow', count('yellow'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
+        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('red', count('red'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('red'), byPlano.length)}% · meta ${META_FLAGS.red}%${(() => { const t = metaTxt('red', count('red'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
       </div>
       <section class="balcao">
@@ -746,6 +761,9 @@
         <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
       </div>
 
+      <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% Green · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red · sobre os ${com.length} clientes com score</span></p>
+      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, p)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
+
       <p class="eyebrow">Ranking · por ${ORDEM_LBL[state.hsOrdem] || 'score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
       <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7d')}${th('streak', 'Flag há')}${th('trafego', 'Tráfego')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Contato')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
@@ -768,6 +786,7 @@
         <div><b>Produtividade</b> (abertas − atrasadas) ÷ abertas: 85% → 0 · 95% → 100.</div>
         <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
         <div><b>Flag</b> ≥ 80 verde · 50–79 amarelo · &lt; 50 vermelho. Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
+        <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
         <div><b>Flag há</b> dias seguidos na flag atual, pelas fotos diárias do score (desde 14/09/26; "≥" quando a sequência encosta no início do histórico). Dia sem foto não quebra a sequência.</div>
         <div><b>Expandir</b> Green Flag há ≥ ${MADURO_DIAS} dias + CSAT ≥ 9 + sem sinal de risco no resumo do WhatsApp = candidato a cross-sell/upsell, apresentado pela operação na reunião semanal.</div>
       </div>`;
