@@ -929,6 +929,11 @@ body::before {
 .card-status.st-atrasado { color: var(--flag-red); border-color: color-mix(in srgb, var(--flag-red) 55%, transparent); }
 .card-status.st-encerramento { color: var(--flag-yellow); border-color: color-mix(in srgb, var(--flag-yellow) 55%, transparent); }
 .card-status.st-briefing { color: var(--creme-45); border-color: rgba(243, 236, 218, 0.2); }
+.card-status.st-expansao { color: var(--flag-green); border-color: color-mix(in srgb, var(--flag-green) 55%, transparent); background: color-mix(in srgb, var(--flag-green) 10%, transparent); }
+.stat-status.st-expansao strong, .stat-status.st-expansao.is-selected { color: var(--flag-green); }
+.stat-status.st-expansao.is-selected { border-color: color-mix(in srgb, var(--flag-green) 55%, transparent); }
+.ficha-title .ficha-tag { margin-left: 12px; vertical-align: middle; font-family: var(--ui); font-weight: 600; }
+.comanda-it.c-expansao { color: var(--flag-green); }
 
 /* ---------- v24: contagem por plano dentro do bloco de flags ---------- */
 .stats-flags { align-items: stretch; }

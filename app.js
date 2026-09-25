@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 62;
+  const VERSION = 63;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -206,7 +206,7 @@
   // ---------- balcão: comanda de filtros ativos ----------
   function comandaHTML() {
     const itens = [];
-    const FLAG_LBL = { green: 'Green Flag', yellow: 'Yellow Flag', red: 'Red Flag' };
+    const FLAG_LBL = { green: 'Green Flag', yellow: 'Yellow Flag', red: 'Red Flag', expansao: 'possibilidade de expansão' };
     if (state.flagFilter) itens.push(`<span class="comanda-it c-${state.flagFilter}">${esc(FLAG_LBL[state.flagFilter])}</span>`);
     if (state.statusFilter) itens.push(`<span class="comanda-it">${esc(state.statusFilter === 'execucao' ? 'em execução' : state.statusFilter)}</span>`);
     if (state.planoFilter) itens.push(`<span class="comanda-it">${esc(planoLabel(state.planoFilter).toLowerCase())}</span>`);
@@ -306,7 +306,8 @@
     const nSq = (s) => byStatus.filter((c) => s.byClient.has(c.id)).length;
     const squadChips = `<button class="stat-status${state.squadFilter ? '' : ' is-selected'}" data-squad=""><strong>${byStatus.length}</strong> Todos</button>`
       + squadsAll.map((s) => `<button class="stat-status stat-squad${state.squadFilter === s.key ? ' is-selected' : ''}" data-squad="${esc(s.key)}"><strong>${nSq(s)}</strong> ${esc(s.nome)}<span class="squad-avs">${s.members.map((p) => avatarHTML(p, 'avatar av-sm')).join('')}</span></button>`).join('');
-    const shownBase = state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
+    const shownBase = state.flagFilter === 'expansao' ? byPlano.filter((c) => maduroDe(c).ok) : state.flagFilter ? byPlano.filter((c) => flagDe(c) === state.flagFilter) : byPlano;
+    const nExp = byPlano.filter((c) => maduroDe(c).ok).length;
     const scoreDe = (c) => (c.healthScore && c.healthScore.score != null ? c.healthScore.score : null);
     const lateDe = (c) => tasksOf(c.id).filter(isLate).length;
     const nul = (v) => v == null; // sem dado vai pro fim em qualquer ordem
@@ -349,12 +350,12 @@
         <div class="balcao-rail"></div>
         ${comandaHTML()}
         <div class="balcao-row"><span class="balcao-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
-        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}</div></div>
+        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}<button class="stat-status stat-btn st-expansao${state.flagFilter === 'expansao' ? ' is-selected' : ''}" data-flag="expansao" title="Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp"><strong>${nExp}</strong> Possibilidade de expansão</button></div></div>
         ${temSquad ? `<div class="balcao-row"><span class="balcao-l">por squad</span><div class="chips">${squadChips}</div></div>` : ''}
         <div class="balcao-row balcao-ordem"><span class="balcao-l">ordenar</span><div class="chips chips-metal">${ordemRow}</div></div>
       </section>
       <div class="cards">${shown.map(cardHTML).join('')}</div>
-      ${shown.length ? '' : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
+      ${shown.length ? '' : state.flagFilter === 'expansao' ? `<div class="fn-empty">Ninguém com possibilidade de expansão ainda — precisa de Green Flag há ≥ ${MADURO_DIAS} dias, CSAT ≥ 9 e sem alerta no WhatsApp. A fila está na aba Health Score.</div>` : `<div class="fn-empty">Nenhum cliente com essa flag. Clique de novo no número para limpar o filtro.</div>`}`;
 
   }
 
@@ -367,8 +368,11 @@
     const k = stKeyOf(c);
     const statusBadge = k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : '';
     const md = maduroDe(c);
-    const maduro = md.ok ? `<span class="card-maduro" title="Green Flag há ${md.st.dias} dias, CSAT ${fmtNota(md.csat)} e sem alerta — candidato a cross-sell/upsell">🥂 expandir · ${md.st.dias}d</span>` : '';
-    return `<button class="card${statusBadge ? ' has-status' : ''}" data-id="${c.id}">
+    // etiqueta "Possibilidade de expansão" no topo do card (Bruno, 25/09/26); se o card já tem etiqueta de status, ela vai pra baixo do LTV
+    const expTitle = md.ok ? `Green Flag há ${md.st.dias} dias, CSAT ${fmtNota(md.csat)} e sem alerta — candidato a cross-sell/upsell` : '';
+    const expBadge = md.ok && !statusBadge ? `<span class="card-status st-expansao" title="${expTitle}">Possibilidade de expansão</span>` : '';
+    const maduro = md.ok && statusBadge ? `<span class="card-maduro" title="${expTitle}">🥂 possibilidade de expansão · ${md.st.dias}d</span>` : '';
+    return `<button class="card${statusBadge || expBadge ? ' has-status' : ''}" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
@@ -376,7 +380,7 @@
           <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
           ${maduro}
         </div>
-        ${statusBadge}
+        ${statusBadge || expBadge}
       </div>
       ${hsMiniHTML(c.healthScore)}
       ${equipeMiniHTML(c)}
@@ -452,7 +456,7 @@
       <div class="ficha">
         <div class="ficha-glass">${glass(flagDe(c), 62, true)}${glassCaption(flagDe(c), streakDe(c))}</div>
         <div>
-          <h2 class="ficha-title">${esc(c.name)}</h2>
+          <h2 class="ficha-title">${esc(c.name)}${(() => { const md = maduroDe(c); return md.ok ? `<span class="card-status st-expansao ficha-tag" title="Green Flag há ${md.st.dias} dias, CSAT ${fmtNota(md.csat)} e sem alerta no WhatsApp">Possibilidade de expansão</span>` : ''; })()}</h2>
           <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
           <div class="ficha-grid">
             ${item('Plano', c.plano ? `${planoIcon(c.plano, 18)} ${esc(planoLabel(c.plano))}` : null)}
