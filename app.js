@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 61;
+  const VERSION = 62;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -62,6 +62,47 @@
   // flag EFETIVA (08/09/26): o copo segue o score AO VIVO quando ele é suficiente;
   // a Flag do Growth é a foto semanal gravada pelo Make e só manda quando não há score.
   const flagDe = (c) => (c.healthScore && c.healthScore.flag) ? c.healthScore.flag : c.flag;
+
+  // ---------- dias na flag atual (a partir das fotos diárias do Redis) ----------
+  // Green Flag há ≥ MADURO_DIAS = cliente maduro pra cross-sell/upsell (Bruno, 25/09/26).
+  const MADURO_DIAS = 28;
+  // Conta, de trás pra frente, as fotos diárias em que o cliente tinha a mesma flag do score ao vivo.
+  // Dia sem foto (ninguém abriu o painel) não quebra a sequência — só uma foto com OUTRA flag quebra.
+  // Devolve null sem histórico; senão { flag, dias, desde, piso }: piso=true quando a sequência
+  // encosta na foto mais antiga do cliente (o número real pode ser maior — histórico começou em 14/09/26).
+  function streakDe(c) {
+    if (!hsHist || !hsHist.dias.length || !c.healthScore || c.healthScore.score == null || c.healthScore.insuficiente) return null;
+    const flag = c.healthScore.flag;
+    if (!flag) return null;
+    const fotos = hsHist.dias; // do mais antigo pro mais novo
+    let desde = null, piso = true, viu = false;
+    for (let i = fotos.length - 1; i >= 0; i--) {
+      const f = fotos[i].scores[c.id];
+      if (!f) continue;
+      viu = true;
+      if (f.f !== flag) { piso = false; break; }
+      desde = fotos[i].dia;
+    }
+    if (!viu) return null; // cliente sem nenhuma foto ainda (novo no score)
+    if (!desde) return { flag, dias: 0, desde: null, piso: false }; // última foto tinha outra flag → mudou hoje
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dias = Math.round((Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1, +hoje.slice(8, 10)) - Date.UTC(+desde.slice(0, 4), +desde.slice(5, 7) - 1, +desde.slice(8, 10))) / 864e5) + 1;
+    return { flag, dias, desde, piso };
+  }
+  const streakLabel = (st) => (!st ? null : st.dias === 0 ? 'mudou hoje' : `há ${st.piso ? '≥ ' : ''}${st.dias} dia${st.dias === 1 ? '' : 's'}`);
+  // maduro pra expandir: Green Flag há ≥ 28 dias + CSAT ≥ 9 + sem sinal de risco no WhatsApp
+  const ALERTA_RX = /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i;
+  const temAlertaWA = (c) => !!(c.contato && c.contato.resumo && ALERTA_RX.test(c.contato.resumo));
+  function maduroDe(c) {
+    const st = streakDe(c);
+    const csat = c.metrics ? c.metrics.csat : null;
+    const trava = [];
+    if (!st || st.flag !== 'green') return { ok: false, st, csat, trava: ['não é Green Flag'] };
+    if (st.dias < MADURO_DIAS) trava.push(`faltam ${MADURO_DIAS - st.dias}d`);
+    if (csat == null) trava.push('sem CSAT'); else if (csat < 9) trava.push(`CSAT ${fmtNota(csat)}`);
+    if (temAlertaWA(c)) trava.push('alerta no WhatsApp');
+    return { ok: !trava.length, st, csat, trava };
+  }
   // Plano DOSE não tem calendário de social (regra do Bruno, 08/09/26): nada de "post agendado" pra ele
   const temCalendario = (c) => String(c.plano || '').trim().toUpperCase() !== 'DOSE';
   // chave de status sem acento (execução → execucao)
@@ -202,10 +243,11 @@
       <line x1="8.3" y1="5" x2="9.4" y2="25" stroke="var(--creme)" stroke-width="1" opacity="0.22"/>
     </svg></span>`;
   }
-  function glassCaption(flag) {
+  function glassCaption(flag, st) {
     const f = FLAG[flag];
     if (!f) return `<div class="glass-caption"><span class="glass-word" style="color:var(--creme-45)">Sem flag</span></div>`;
-    return `<div class="glass-caption"><span class="glass-word t-${f.css}">${f.word}</span><span class="glass-sub">${f.sub}</span></div>`;
+    const since = st && st.flag === flag ? streakLabel(st) : null;
+    return `<div class="glass-caption"><span class="glass-word t-${f.css}">${f.word}</span><span class="glass-sub">${f.sub}</span>${since ? `<span class="glass-since" title="dias seguidos nesta flag, pelas fotos diárias do score${st.piso ? ' (histórico começou em ' + fmtCurto(new Date(st.desde + 'T12:00:00Z').getTime()) + ')' : ''}">${since}</span>` : ''}</div>`;
   }
 
   // ---------- derivações ----------
@@ -324,12 +366,15 @@
     const m = c.metrics || {};
     const k = stKeyOf(c);
     const statusBadge = k && k !== 'execucao' ? `<span class="card-status st-${k}">${esc(c.status)}</span>` : '';
+    const md = maduroDe(c);
+    const maduro = md.ok ? `<span class="card-maduro" title="Green Flag há ${md.st.dias} dias, CSAT ${fmtNota(md.csat)} e sem alerta — candidato a cross-sell/upsell">🥂 expandir · ${md.st.dias}d</span>` : '';
     return `<button class="card${statusBadge ? ' has-status' : ''}" data-id="${c.id}">
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
           <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}</div>
           <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
+          ${maduro}
         </div>
         ${statusBadge}
       </div>
@@ -405,7 +450,7 @@
     const diasSemResposta = m.ultimaResposta ? Math.floor((Date.now() - m.ultimaResposta) / 864e5) : null;
     el.innerHTML = `
       <div class="ficha">
-        <div class="ficha-glass">${glass(flagDe(c), 62, true)}${glassCaption(flagDe(c))}</div>
+        <div class="ficha-glass">${glass(flagDe(c), 62, true)}${glassCaption(flagDe(c), streakDe(c))}</div>
         <div>
           <h2 class="ficha-title">${esc(c.name)}</h2>
           <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
@@ -611,7 +656,7 @@
   let hsHist = null; // { dias: [...] } carregado sob demanda
   async function loadHist() {
     if (hsHist) return hsHist;
-    try { const r = await fetch('/api/hs-history?days=56'); hsHist = await r.json(); } catch { hsHist = { dias: [] }; }
+    try { const r = await fetch('/api/hs-history?days=120'); hsHist = await r.json(); } catch { hsHist = { dias: [] }; }
     return hsHist;
   }
   // score de um cliente há ~N dias (foto mais próxima, até 3 dias de tolerância)
@@ -638,6 +683,7 @@
       switch (state.hsOrdem) {
         case 'nome': return c.name.toLowerCase();
         case 'delta': { const p = scoreHa(hsHist, c.id, 7); return p ? hs.score - p.s : null; }
+        case 'streak': { const st = streakDe(c); return st ? st.dias : null; }
         case 'trafego': case 'satisfacao': case 'produtividade': case 'contato': return hs.pilares[state.hsOrdem].nota;
         case 'ltv': return c.ltv ?? null;
         default: return hs.score;
@@ -652,14 +698,16 @@
       return cmp * dir || x.healthScore.score - y.healthScore.score;
     });
     const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
-    const ORDEM_LBL = { nome: 'nome A–Z', score: 'score', delta: 'variação 7d', trafego: 'tráfego', satisfacao: 'satisfação', produtividade: 'produtividade', contato: 'contato', ltv: 'LTV' };
+    const ORDEM_LBL = { nome: 'nome A–Z', score: 'score', delta: 'variação 7d', streak: 'dias na flag', trafego: 'tráfego', satisfacao: 'satisfação', produtividade: 'produtividade', contato: 'contato', ltv: 'LTV' };
     const ltvRank = somaLTV(com);
     const linha = (c) => {
       const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
       const d = prev ? hs.score - prev.s : null;
       const delta = d == null ? '<span class="hs-delta na">—</span>' : d === 0 ? '<span class="hs-delta flat">= 0</span>' : `<span class="hs-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`;
       const pil = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const n = hs.pilares[k].nota; return `<td class="hs-td ${hsCls(n)}">${n != null ? n : '—'}</td>`; }).join('');
-      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td>${pil}<td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
+      const st = streakDe(c);
+      const streak = !st ? '<span class="hs-streak na">—</span>' : st.dias === 0 ? '<span class="hs-streak na" title="a flag mudou hoje">hoje</span>' : `<span class="hs-streak ${hsCls(st.flag === 'green' ? 100 : st.flag === 'yellow' ? 60 : 0)}${st.flag === 'green' && st.dias >= MADURO_DIAS ? ' maduro' : ''}" title="${FLAG[st.flag].word} ${streakLabel(st)}${st.piso ? ' (pelo menos — histórico começou em ' + fmtCurto(new Date(st.desde + 'T12:00:00Z').getTime()) + ')' : ''}">${st.piso ? '≥' : ''}${st.dias}d</span>`;
+      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td><td class="hs-td">${streak}</td>${pil}<td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     };
 
     const sangra = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => {
@@ -669,7 +717,21 @@
         ${ruins.length ? `<div class="hs-pilar-list">${ruins.slice(0, 8).map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="${hsCls(c.healthScore.pilares[k].nota)}">${c.healthScore.pilares[k].nota}</b></button>`).join('')}${ruins.length > 8 ? `<span class="hs-mais">+${ruins.length - 8}</span>` : ''}</div>` : `<div class="hs-pilar-ok">ninguém abaixo de 50${m == null ? ' · sem dado ainda' : ''}</div>`}</div>`;
     }).join('');
 
-    const alertas = clients.filter((c) => c.contato && c.contato.resumo && /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i.test(c.contato.resumo));
+    const alertas = clients.filter(temAlertaWA);
+
+    // ---- prontos pra expandir (cross-sell/upsell) — Green Flag madura + CSAT ≥ 9 + sem alerta ----
+    const verdes = com.filter((c) => c.healthScore.flag === 'green').map((c) => ({ c, md: maduroDe(c) })).filter((x) => x.md.st);
+    const prontos = verdes.filter((x) => x.md.ok).sort((a, b) => b.md.st.dias - a.md.st.dias);
+    const quase = verdes.filter((x) => !x.md.ok).sort((a, b) => b.md.st.dias - a.md.st.dias);
+    const inicioHist = hsHist && hsHist.dias.length ? fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime()) : null;
+    const nomes = (c) => equipeDe(c).map((p) => p.name.split(' ')[0]).join(', ');
+    const linhaMaduro = ({ c, md }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass('green', 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td"><span class="hs-streak g maduro">${md.st.piso ? '≥' : ''}${md.st.dias}d</span></td><td class="hs-td g">${fmtNota(md.csat)}</td><td class="hs-td-txt">${c.produtos && c.produtos.length ? esc(c.produtos.join(', ')) : '<span class="na">—</span>'}</td><td class="hs-td-txt">${esc(nomes(c) || '—')}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
+    const expandir = `
+      <p class="eyebrow">Prontos pra expandir · cross-sell / upsell ${prontos.length ? `<span class="hs-ok-n">${prontos.length}</span>` : ''}<span class="hs-hist-info">Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp</span></p>
+      ${prontos.length
+        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Green há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
+        : `<div class="fn-empty">Ninguém cruzou os ${MADURO_DIAS} dias ainda${inicioHist ? ` — as fotos diárias começaram em ${inicioHist}, então a primeira turma madura aparece por volta de ${fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime() + (MADURO_DIAS - 1) * 864e5)}` : ''}.</div>`}
+      ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
     const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ID'); else if (!c.hs) falta.push('sem métrica Meta'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
 
     el.innerHTML = `
@@ -681,8 +743,9 @@
       </div>
 
       <p class="eyebrow">Ranking · por ${ORDEM_LBL[state.hsOrdem] || 'score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7d')}${th('trafego', 'Tráfego')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Contato')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7d')}${th('streak', 'Flag há')}${th('trafego', 'Tráfego')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Contato')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
+      ${expandir}
 
       <p class="eyebrow">Onde a carteira sangra · clientes abaixo de 50 por pilar</p>
       <div class="hs-pilares-grid">${sangra}</div>
@@ -701,6 +764,8 @@
         <div><b>Produtividade</b> (abertas − atrasadas) ÷ abertas: 85% → 0 · 95% → 100.</div>
         <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
         <div><b>Flag</b> ≥ 80 verde · 50–79 amarelo · &lt; 50 vermelho. Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
+        <div><b>Flag há</b> dias seguidos na flag atual, pelas fotos diárias do score (desde 14/09/26; "≥" quando a sequência encosta no início do histórico). Dia sem foto não quebra a sequência.</div>
+        <div><b>Expandir</b> Green Flag há ≥ ${MADURO_DIAS} dias + CSAT ≥ 9 + sem sinal de risco no resumo do WhatsApp = candidato a cross-sell/upsell, apresentado pela operação na reunião semanal.</div>
       </div>`;
 
     // clique em cliente → ficha
@@ -708,7 +773,7 @@
     el.querySelectorAll('[data-hs-ordem]').forEach((n) => n.addEventListener('click', () => {
       const k = n.dataset.hsOrdem;
       if (state.hsOrdem === k) state.hsDir = state.hsDir === 'asc' ? 'desc' : 'asc';
-      else { state.hsOrdem = k; state.hsDir = (k === 'ltv' || k === 'delta') ? 'desc' : 'asc'; } // LTV e variação: maior primeiro por padrão
+      else { state.hsOrdem = k; state.hsDir = (k === 'ltv' || k === 'delta' || k === 'streak') ? 'desc' : 'asc'; } // LTV e variação: maior primeiro por padrão
       renderHealth(el);
     }));
     if (!hsHist) loadHist().then(() => { if (state.view === 'health') renderHealth(el); });
@@ -755,7 +820,7 @@
     }, true);
 
     try {
-      const res = await fetch('/api/data');
+      const [res] = await Promise.all([fetch('/api/data'), loadHist()]); // fotos diárias já vêm junto (dias na flag nos cards e na ficha)
       const json = await res.json();
       if (!res.ok) throw json;
       state.data = json;

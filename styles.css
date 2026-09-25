@@ -307,6 +307,12 @@ a:hover { text-decoration: underline; }
   text-transform: uppercase;
   color: var(--creme-45);
 }
+.glass-caption .glass-since {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--creme-70);
+  font-variant-numeric: tabular-nums;
+}
 .t-green { color: var(--flag-green); }
 .t-yellow { color: var(--flag-yellow); }
 .t-red { color: var(--flag-red); }
@@ -1050,6 +1056,8 @@ body::before {
 .card-sub { display: flex; align-items: center; gap: 8px; min-height: 22px; flex-wrap: nowrap; }
 .card-plan { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .card-plan-empty { color: var(--creme-45); font-style: italic; }
+/* candidato a cross-sell/upsell: Green Flag madura (v62) */
+.card-maduro { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--flag-green); background: color-mix(in srgb, var(--flag-green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--flag-green) 45%, transparent); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .card-status { margin-left: 0; vertical-align: 0; white-space: nowrap; }
 .hs-mini { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-height: 30px; margin: 0; }
 .hs-mini .hs-pil { white-space: nowrap; }
@@ -1210,6 +1218,14 @@ body::before {
 .hs-td-plano { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rolha); margin-left: 4px; }
 .hs-td-score { font-family: var(--display); font-size: 20px; font-weight: 600; }
 .hs-td.g { color: var(--flag-green); } .hs-td.y { color: var(--flag-yellow); } .hs-td.r { color: var(--flag-red); } .hs-td.na { color: var(--creme-45); }
+.hs-streak { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
+.hs-streak.g { color: var(--flag-green); } .hs-streak.y { color: var(--flag-yellow); } .hs-streak.r { color: var(--flag-red); } .hs-streak.na { color: var(--creme-45); font-weight: 400; }
+.hs-streak.maduro { background: color-mix(in srgb, var(--flag-green) 14%, transparent); border: 1px solid color-mix(in srgb, var(--flag-green) 45%, transparent); border-radius: 999px; padding: 1px 8px; }
+.hs-td-txt { font-size: 12.5px; color: var(--creme-70); } .hs-td-txt .na { color: var(--creme-45); }
+.hs-ok-n { display: inline-block; min-width: 20px; text-align: center; font-size: 11px; font-weight: 700; color: var(--garrafa); background: var(--flag-green); border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: 0; }
+.hs-maduro-wrap { border-color: color-mix(in srgb, var(--flag-green) 35%, transparent); margin-bottom: 4px; }
+.hs-quase-l { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--creme-45); margin: 14px 0 10px; }
+.hs-quase { margin-bottom: 26px; }
 .hs-delta { font-weight: 700; font-size: 12px; } .hs-delta.up { color: var(--flag-green); } .hs-delta.down { color: var(--flag-red); } .hs-delta.flat, .hs-delta.na { color: var(--creme-45); }
 
 .hs-pilares-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 26px; }
