@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 67;
+  const VERSION = 68;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -817,9 +817,160 @@
   }
 
   // ---------- shell ----------
+  // ===================== ABAS DE PILAR (v68) =====================
+  // Desdobramento das metas por pilar (Bruno, 28/09/26): uma aba por pilar, mesma estrutura em todas —
+  // meta do pilar + média da carteira, Pareto de quem concentra a lacuna, tabela cliente × valor × meta × falta,
+  // corte por tipo de campanha (tráfego) ou por colaborador (satisfação, produtividade, contato).
+  const METAS_PILAR = {
+    trafego:       { lbl: 'Tráfego',       meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — a régua é o percentil da carteira por tipo de campanha, então a meta é relativa: o melhor da carteira é a referência' },
+    satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 e NPS ≥ 9 (escala 0–10 do Typeform); 8–8,9 amarelo; abaixo de 8 vermelho' },
+    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — (abertas − atrasadas) ÷ abertas; sem tarefa aberta = 100%' },
+    contato:       { lbl: 'Contato',       meta: 70, unid: 'pts', desc: 'nota de engajamento do grupo de WhatsApp ≥ 70 (análise semanal por IA, 1–100); 50–69 amarelo; abaixo de 50 vermelho' },
+  };
+  const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
+  const pctFmt = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
+
+  // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
+  function medidaPilar(k, c) {
+    const hs = c.healthScore;
+    if (k === 'trafego') {
+      if (!hs || hs.pilares.trafego.nota == null) return null;
+      const n = hs.pilares.trafego.nota;
+      return { valor: n, txt: `${n} pts`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n), nota: n, cls: hsCls(n) };
+    }
+    if (k === 'satisfacao') {
+      const m = c.metrics || {}; const partes = [m.csat, m.nps].filter((x) => x != null);
+      if (!partes.length) return null;
+      const v = partes.reduce((a, b) => a + b, 0) / partes.length;
+      const cls = v >= 9 ? 'g' : v >= 8 ? 'y' : 'r';
+      return { valor: v, txt: `CSAT ${fmtNota(m.csat)} · NPS ${fmtNota(m.nps)}`, lacuna: Math.max(0, 9 - Math.min(...partes)), nota: hs ? hs.pilares.satisfacao.nota : null, cls };
+    }
+    if (k === 'produtividade') {
+      const ts = tasksOf(c.id); const abertas = ts.filter(isOpen); const late = abertas.filter(isLate).length;
+      const v = prodOf(ts);
+      const cls = v >= 95 ? 'g' : v >= 85 ? 'y' : 'r';
+      return { valor: v, txt: `${pctFmt(v)} · ${late} atrasada${late === 1 ? '' : 's'} de ${abertas.length}`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late, abertas: abertas.length };
+    }
+    if (k === 'contato') {
+      const n = c.contato && c.contato.nota != null ? c.contato.nota : null;
+      if (n == null) return null;
+      const cls = n >= 70 ? 'g' : n >= 50 ? 'y' : 'r';
+      return { valor: n, txt: `${n} pts`, lacuna: Math.max(0, 70 - n), nota: n, cls };
+    }
+    return null;
+  }
+
+  // pessoas do pilar num cliente (pra o corte por colaborador)
+  function pessoasPilar(k, c) {
+    if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(p.id || p.name, p); return [...seen.values()]; }
+    return equipeDe(c);
+  }
+
+  function renderPilar(el, k) {
+    const M = METAS_PILAR[k];
+    const { clients } = state.data;
+    const base = clients.filter((c) => stKeyOf(c) !== 'briefing');
+    if (!state.pilarFiltro) state.pilarFiltro = {};
+    const filtro = state.pilarFiltro[k] || null;
+
+    // ---- corte: tipo de campanha (tráfego) ou colaborador (demais) ----
+    let chips = '', filtrados = base, filtroLbl = '';
+    if (k === 'trafego') {
+      const tipos = [...new Set(base.map((c) => (c.tipoRelatorio || 'completo').toLowerCase()))].sort();
+      chips = tipos.map((t) => { const n = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === t).length; return `<button class="hs-chip pl-chip${filtro === t ? ' is-on' : ''}" data-pl-f="${t}">${esc(t)}<i>${n}</i></button>`; }).join('');
+      if (filtro) { filtrados = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === filtro); filtroLbl = `tipo de campanha: ${filtro}`; }
+    } else {
+      const pessoas = new Map();
+      for (const c of base) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!pessoas.has(id)) pessoas.set(id, { p, n: 0 }); pessoas.get(id).n++; }
+      chips = [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}" data-pl-f="${esc(id)}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${n}</i></button>`).join('');
+      if (filtro) { filtrados = base.filter((c) => pessoasPilar(k, c).some((p) => String(p.id || p.name) === filtro)); const pp = pessoas.get(filtro); filtroLbl = pp ? `colaborador: ${pp.p.name}` : ''; }
+    }
+    const limpar = filtro ? `<button class="hs-chip pl-chip pl-limpar" data-pl-f="">limpar</button>` : '';
+
+    // ---- medidas ----
+    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c) }));
+    const com = linhas.filter((x) => x.m);
+    const sem = linhas.filter((x) => !x.m);
+    const media = com.length ? com.reduce((s, x) => s + x.m.valor, 0) / com.length : null;
+    const abaixo = com.filter((x) => x.m.lacuna > 0).sort((a, b) => b.m.lacuna - a.m.lacuna);
+    const naMeta = com.length - abaixo.length;
+    const totalLac = abaixo.reduce((s, x) => s + x.m.lacuna, 0);
+    const fmtV = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pctFmt(v) : `${Math.round(v)} pts`);
+    const fmtLac = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' p.p.' : `${Math.round(v)} pts`);
+    const mediaCls = media == null ? 'na' : k === 'satisfacao' ? (media >= 9 ? 'g' : media >= 8 ? 'y' : 'r') : k === 'produtividade' ? (media >= 95 ? 'g' : media >= 85 ? 'y' : 'r') : (media >= 70 ? 'g' : media >= 50 ? 'y' : 'r');
+
+    // ---- Pareto: quem concentra 80% da lacuna ----
+    let acum = 0; const pareto = abaixo.map((x) => { acum += x.m.lacuna; return { ...x, acum: totalLac ? acum / totalLac : 0 }; });
+    const corte = pareto.findIndex((x) => x.acum >= 0.8);
+    const vitais = corte < 0 ? pareto : pareto.slice(0, corte + 1);
+    const maxLac = pareto.length ? pareto[0].m.lacuna : 1;
+
+    // ---- por colaborador (resumo agregado quando o pilar tem dono) ----
+    let porPessoa = '';
+    if (k === 'produtividade') {
+      const agg = new Map();
+      for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
+      const rows = [...agg.values()].map((a) => ({ ...a, pct: Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 })).sort((a, b) => a.pct - b.pct);
+      if (rows.length) porPessoa = `<p class="eyebrow">Por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+    if (k === 'satisfacao') {
+      // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
+      const PAP = { tr: 'Tráfego', so: 'Social', rp: 'RP', av: 'Audiovisual' };
+      const acc = { tr: [], so: [], rp: [], av: [] };
+      for (const c of filtrados) { const pp = (c.metrics && c.metrics.porPapel) || {}; for (const p of Object.keys(acc)) if (pp[p] != null && pp[p] > 0) acc[p].push(pp[p]); }
+      const rows = Object.keys(acc).filter((p) => acc[p].length).map((p) => { const v = acc[p].reduce((a, b) => a + b, 0) / acc[p].length; return { p, v, n: acc[p].length }; }).sort((a, b) => a.v - b.v);
+      if (rows.length) porPessoa = `<p class="eyebrow">Por função <span class="hs-hist-info">média das notas que o cliente dá a cada papel no CSAT${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Função</th><th class="r">Média</th><th class="r">Clientes avaliados</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((r) => `<tr><td class="hs-td-cli"><span>${PAP[r.p]}</span></td><td class="hs-td ${r.v >= 9 ? 'g' : r.v >= 8 ? 'y' : 'r'}">${fmtNota(r.v)}</td><td class="hs-td">${r.n}</td><td class="hs-td">${r.v >= 9 ? '<span class="g">na meta</span>' : fmtNota(9 - r.v)}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+    if (k === 'trafego' && com.length) {
+      // benchmark interno: o melhor de cada métrica dentro do corte (referência Falconi — "lacuna em relação ao melhor")
+      const best = {};
+      for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || [])) { if (f.valor == null || f.valor <= 0) continue; const menor = f.rotulo !== 'ROAS'; if (!best[f.rotulo] || (menor ? f.valor < best[f.rotulo].v : f.valor > best[f.rotulo].v)) best[f.rotulo] = { v: f.valor, c }; }
+      const fmtM = (r, v) => (r === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
+      const rows = Object.entries(best);
+      if (rows.length) porPessoa = `<p class="eyebrow">Melhor da carteira <span class="hs-hist-info">referência interna por métrica${filtroLbl ? ' · ' + esc(filtroLbl) : ''} — o que um cliente fez, outro pode copiar</span></p>
+        <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
+    }
+
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' && c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 90))}${c.contato.resumo.length > 90 ? '…' : ''}</span>` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+
+    el.innerHTML = `
+      <div class="pl-head">
+        <div class="hs-termo pl-termo">
+          <div class="hs-termo-media"><span class="hs-big ${mediaCls}">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">média da carteira<br><span>${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
+          <div class="pl-meta-box"><span class="pl-meta-n">${k === 'satisfacao' ? '9' : k === 'produtividade' ? '95%' : M.meta + ' pts'}</span><span class="hs-termo-l">meta<br><span>${esc(M.desc)}</span></span></div>
+          <div class="hs-termo-pilares pl-kpis">
+            <div class="hs-termo-p"><span class="hs-termo-pn g">${naMeta}</span><span class="hs-termo-pl">na meta</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn ${abaixo.length ? 'r' : 'g'}">${abaixo.length}</span><span class="hs-termo-pl">abaixo</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn na">${sem.length}</span><span class="hs-termo-pl">sem dado</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn ${vitais.length ? 'y' : 'g'}">${vitais.length}</span><span class="hs-termo-pl">concentram 80%</span></div>
+          </div>
+        </div>
+        <div class="pl-filtros"><span class="balcao-l">${k === 'trafego' ? 'por tipo de campanha' : 'por colaborador'}</span><div class="chips">${chips}${limpar}</div></div>
+      </div>
+
+      <p class="eyebrow">Onde está o problema <span class="hs-hist-info">Pareto da lacuna — quem concentra 80% do que falta pra meta</span></p>
+      ${pareto.length ? `<div class="pl-pareto">${pareto.map((x, i) => `<button class="pl-bar${i < vitais.length ? ' vital' : ''}" data-id="${x.c.id}" title="${esc(x.c.name)} · falta ${fmtLac(x.m.lacuna)} · acumulado ${Math.round(x.acum * 100)}%"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${Math.round((x.m.lacuna / maxLac) * 100)}%"></i></span><span class="pl-bar-v ${x.m.cls}">${fmtLac(x.m.lacuna)}</span><span class="pl-bar-a">${Math.round(x.acum * 100)}%</span></button>`).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
+
+      ${porPessoa}
+
+      <p class="eyebrow">Cliente a cliente <span class="hs-hist-info">ordenado por quanto falta</span></p>
+      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste corte.</div>'}
+      ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (!c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
+
+      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Lacuna</b> quanto falta pra chegar na meta, na unidade do pilar. O Pareto soma as lacunas e mostra quem responde por 80% — é por aí que a reunião semanal começa.</div><div><b>Peso no score</b> ${k === 'trafego' ? 40 : k === 'satisfacao' ? 30 : 15}.</div></div>`;
+
+    el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[k] = n.dataset.plF || null; renderPilar(el, k); }));
+    el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
+  }
+
   function render() {
     const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth') };
+    const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
+    pilarEl.hidden = !PILARES.includes(state.view);
+    if (PILARES.includes(state.view)) renderPilar(pilarEl, state.view);
     document.querySelectorAll('.tab').forEach((t) => {
       const on = t.dataset.view === state.view;
       t.classList.toggle('is-active', on);
