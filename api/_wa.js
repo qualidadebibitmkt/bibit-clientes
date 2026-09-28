@@ -70,6 +70,10 @@ const pessoaDe = (s) => String(s || '').split(/\s[|\-–]\s/)[0].trim().slice(0,
 const AUTOMACAO_RX = /^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|^⚠️|^🔴 \*Saldo|clipping da semana/i;
 const ehAutomacao = (m) => AUTOMACAO_RX.test(String(m.m || '')) || (m.me && /relatório|reportei/i.test(String(m.m || '')) && String(m.m || '').length > 400);
 const ehReacao = (m) => /^\[reação/.test(String(m.m || ''));
+// mensagens do número oficial (fromMe → o Z-API não traz o remetente, vem o nome do GRUPO) e dos números que só mandam
+// automação (André Guedes: alertas, CSAT, clipping) são da Bibit pro grupo, mas não são de uma pessoa no placar
+const NOMES_AUTOMACAO = ['andre guedes', 'andré guedes', 'bibit'];
+const semPessoa = (m) => !!m.me || ehAutomacao(m) || NOMES_AUTOMACAO.includes(pessoaDe(m.s).toLowerCase().trim());
 
 // horas úteis entre dois instantes (seg–sex 8h–19h, Brasília) — resposta pedida sexta à noite não conta o fim de semana
 function horasUteis(a, b) {
@@ -98,14 +102,14 @@ function metricasEquipe(msgs, agora = Date.now()) {
   let turnoAberto = null; // { t } início do turno do cliente aguardando resposta
   for (const m of msgs) {
     if (ehAutomacao(m)) continue;
-    const bibit = ehBibit(m);
+    const bibit = ehBibit(m) || !!m.me;
     if (bibit) {
-      const p = P(pessoaDe(m.s));
-      if (ehReacao(m)) p.reacoes++; else { p.msgs++; g.msgsBibit++; }
-      p.dias.add(dayKey(m.t - 3 * 3600 * 1000)); p.ultima = m.t; if (!p.primeira) p.primeira = m.t;
+      const p = semPessoa(m) ? null : P(pessoaDe(m.s));
+      if (p) { if (ehReacao(m)) p.reacoes++; else { p.msgs++; g.msgsBibit++; } p.dias.add(dayKey(m.t - 3 * 3600 * 1000)); p.ultima = m.t; if (!p.primeira) p.primeira = m.t; }
+      else if (!ehReacao(m)) g.msgsBibit++;
       if (turnoAberto && !ehReacao(m)) {
         const h = horasUteis(turnoAberto.t, m.t);
-        p.respostas++; p.somaH += h; if (h <= 2) p.respostas2h++;
+        if (p) { p.respostas++; p.somaH += h; if (h <= 2) p.respostas2h++; }
         g.respondidos++; if (h <= 2) g.respondidos2h++;
         turnoAberto = null;
       }
