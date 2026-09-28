@@ -1369,3 +1369,4 @@ body::before {
 .pl-parecer summary { cursor: pointer; color: var(--creme); }
 .pl-parecer ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; } .pl-parecer li b { margin-right: 4px; }
 .hs-td small.na { font-size: 10.5px; color: var(--creme-45); font-weight: 400; }
+.pl-chip.pl-semtarefa { opacity: 0.6; }

@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 72;
+  const VERSION = 73;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -835,7 +835,7 @@
   const pctFmt = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
 
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
-  function medidaPilar(k, c) {
+  function medidaPilar(k, c, pessoa = null) {
     const hs = c.healthScore;
     if (k === 'trafego') {
       if (!hs || hs.pilares.trafego.nota == null) return null;
@@ -850,7 +850,10 @@
       return { valor: v, txt: `CSAT ${fmtNota(m.csat)} · NPS ${fmtNota(m.nps)}`, lacuna: Math.max(0, 9 - Math.min(...partes)), nota: hs ? hs.pilares.satisfacao.nota : null, cls };
     }
     if (k === 'produtividade') {
-      const ts = tasksOf(c.id); const abertas = ts.filter(isOpen); const late = abertas.filter(isLate).length;
+      // com colaborador selecionado, a produtividade do cliente é só das tarefas DELE (não do cliente inteiro)
+      const ts = pessoa ? tasksOf(c.id).filter((t) => (t.assignees || []).some((p) => String(p.id || p.name) === pessoa)) : tasksOf(c.id);
+      const abertas = ts.filter(isOpen); const late = abertas.filter(isLate).length;
+      if (pessoa && !abertas.length) return null; // sem tarefa aberta dessa pessoa aqui = sem dado
       const v = prodOf(ts);
       const cls = v >= 95 ? 'g' : v >= 85 ? 'y' : 'r';
       return { valor: v, txt: `${pctFmt(v)} · ${late} atrasada${late === 1 ? '' : 's'} de ${abertas.length}`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late, abertas: abertas.length };
@@ -867,7 +870,7 @@
   // pessoas do pilar num cliente (pra o corte por colaborador)
   function pessoasPilar(k, c) {
     if (k === 'trafego') return (c.team && c.team.trafego && c.team.trafego.length) ? c.team.trafego : equipeDe(c); // dono do pilar: Gestor de Tráfego do card
-    if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(p.id || p.name, p); return [...seen.values()]; }
+    if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
     return equipeDe(c);
   }
 
@@ -887,13 +890,14 @@
     } else {
       const pessoas = new Map();
       for (const c of base) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!pessoas.has(id)) pessoas.set(id, { p, n: 0 }); pessoas.get(id).n++; }
-      chips = [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}" data-pl-f="${esc(id)}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${n}</i></button>`).join('');
+      const comTarefa = new Set(); if (k === 'produtividade') for (const c of base) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) comTarefa.add(String(p.id || p.name));
+      chips = [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => { const st = k === 'produtividade' && !comTarefa.has(id); return `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}${st ? ' pl-semtarefa' : ''}" data-pl-f="${esc(id)}" title="${st ? 'na Equipe de ' + n + ' cliente(s), sem nenhuma tarefa aberta no ClickUp' : n + ' cliente(s)'}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${st ? 'sem tarefa' : n}</i></button>`; }).join('');
       if (filtro) { filtrados = base.filter((c) => pessoasPilar(k, c).some((p) => String(p.id || p.name) === filtro)); const pp = pessoas.get(filtro); filtroLbl = pp ? `colaborador: ${pp.p.name}` : ''; }
     }
     const limpar = filtro ? `<button class="hs-chip pl-chip pl-limpar" data-pl-f="">limpar</button>` : '';
 
     // ---- medidas ----
-    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c) }));
+    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c, k === 'produtividade' ? filtro : null) }));
     const com = linhas.filter((x) => x.m);
     const sem = linhas.filter((x) => !x.m);
     const media = com.length ? com.reduce((s, x) => s + x.m.valor, 0) / com.length : null;
@@ -951,9 +955,10 @@
     if (k === 'produtividade') {
       const agg = new Map();
       for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
-      const rows = [...agg.values()].map((a) => ({ ...a, pct: Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 })).sort((a, b) => a.pct - b.pct);
+      for (const c of filtrados) for (const p of equipeDe(c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
+      const rows = [...agg.values()].map((a) => ({ ...a, pct: a.abertas ? Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 : null })).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
-        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas || '<span class="na" title="nenhuma tarefa aberta no ClickUp — a produtividade dessa pessoa não é medida">sem tarefa</span>'}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
