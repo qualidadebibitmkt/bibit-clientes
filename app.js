@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 78;
+  const VERSION = 79;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1038,14 +1038,14 @@
             <div class="hs-termo-p"><span class="hs-termo-pn g">${naMeta}</span><span class="hs-termo-pl">na meta</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn ${abaixo.length ? 'r' : 'g'}">${abaixo.length}</span><span class="hs-termo-pl">abaixo</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn na">${sem.length}</span><span class="hs-termo-pl">sem dado</span></div>
-            <div class="hs-termo-p"><span class="hs-termo-pn ${vitais.length ? 'y' : 'g'}">${vitais.length}</span><span class="hs-termo-pl">concentram 80%</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn ${com.filter((x) => x.m.cls === 'r').length ? 'r' : 'g'}">${com.filter((x) => x.m.cls === 'r').length}</span><span class="hs-termo-pl">na faixa vermelha</span></div>
           </div>
         </div>
         <div class="pl-filtros"><span class="balcao-l">${k === 'trafego' ? 'por tipo de campanha' : 'por colaborador'}</span><div class="chips">${chips}${limpar}</div></div>
       </div>
 
-      <p class="eyebrow">Onde está o problema <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'Pareto da atuação do colaborador por grupo — calado com o cliente falando = 0, calado em grupo parado = 50, respostas lentas descontam' : k === 'satisfacao' ? 'Pareto da nota que cada cliente dá ao papel do colaborador no CSAT' : 'Pareto das tarefas do colaborador por cliente') : 'Pareto da lacuna — quem concentra 80% do que falta pra meta'}</span></p>
-      ${pareto.length ? `<div class="pl-pareto">${pareto.map((x, i) => `<button class="pl-bar${i < vitais.length ? ' vital' : ''}" data-id="${x.c.id}" title="${esc(x.c.name)} · falta ${fmtLac(x.m.lacuna)} · acumulado ${Math.round(x.acum * 100)}%"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${Math.round((x.m.lacuna / maxLac) * 100)}%"></i></span><span class="pl-bar-v ${x.m.cls}">${fmtLac(x.m.lacuna)}</span><span class="pl-bar-a">${Math.round(x.acum * 100)}%</span></button>`).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
+      <p class="eyebrow">Abaixo da meta <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador em cada grupo: calado com o cliente falando = 0 · calado em grupo parado = 50 · respostas lentas descontam' : k === 'satisfacao' ? 'nota que cada cliente dá ao papel do colaborador no CSAT' : 'tarefas do colaborador em cada cliente') : 'valor de cada cliente, do pior pro melhor — o traço é a meta'}</span></p>
+      ${abaixo.length ? `<div class="pl-pareto">${abaixo.map((x) => { const esc100 = k === 'satisfacao' ? 10 : 100; const w = Math.max(2, Math.round((x.m.valor / esc100) * 100)); const metaPos = Math.round(((k === 'satisfacao' ? 9 : k === 'produtividade' ? 95 : 70) / esc100) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLac(x.m.lacuna)}</span></button>`; }).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
 
       ${placar}
       ${porPessoa}
@@ -1054,7 +1054,7 @@
       ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste corte.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (!c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
-      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Lacuna</b> quanto falta pra chegar na meta, na unidade do pilar. O Pareto soma as lacunas e mostra quem responde por 80% — é por aí que a reunião semanal começa.</div><div><b>Peso no score</b> ${k === 'trafego' ? 40 : k === 'satisfacao' ? 30 : 15}.</div></div>`;
+      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Abaixo da meta" é a pauta da reunião semanal, do pior pro melhor.</div><div><b>Peso no score</b> ${k === 'trafego' ? 40 : k === 'satisfacao' ? 30 : 15}.</div></div>`;
 
     el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[k] = n.dataset.plF || null; renderPilar(el, k); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
