@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 69;
+  const VERSION = 70;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -862,6 +862,7 @@
 
   // pessoas do pilar num cliente (pra o corte por colaborador)
   function pessoasPilar(k, c) {
+    if (k === 'trafego') return (c.team && c.team.trafego && c.team.trafego.length) ? c.team.trafego : equipeDe(c); // dono do pilar: Gestor de Tráfego do card
     if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(p.id || p.name, p); return [...seen.values()]; }
     return equipeDe(c);
   }
@@ -905,14 +906,27 @@
     const vitais = corte < 0 ? pareto : pareto.slice(0, corte + 1);
     const maxLac = pareto.length ? pareto[0].m.lacuna : 1;
 
+    // ---- placar individual: a nota de cada colaborador no pilar = média dos clientes dele (Bruno, 28/09/26) ----
+    let placar = '';
+    if (k !== 'produtividade') {
+      const agg = new Map();
+      for (const { c, m } of com) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); a.vals.push(m.valor); a.lac += m.lacuna; if (m.lacuna > 0) a.abaixo++; a.clientes++; }
+      for (const { c } of sem) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (agg.has(id)) agg.get(id).semDado++; }
+      const rows = [...agg.values()].map((a) => ({ ...a, media: a.vals.reduce((x, y) => x + y, 0) / a.vals.length })).sort((a, b) => a.media - b.media);
+      const clsDe = (v) => (k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
+      const metaV = k === 'satisfacao' ? 9 : 70;
+      if (rows.length) placar = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">nota de cada pessoa no pilar = média dos clientes em que ela está${k === 'trafego' ? ' (pelo campo Gestor de Tráfego)' : ' (pelo campo Equipe)'}${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Nota</th><th class="r">Falta</th><th class="r">Clientes</th><th class="r">Na meta</th><th class="r">Abaixo</th><th class="r">Sem dado</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td hs-td-score ${clsDe(a.media)}">${fmtV(a.media)}</td><td class="hs-td">${a.media >= metaV ? '<span class="g">na meta</span>' : `<span class="${clsDe(a.media)}">${fmtLac(metaV - a.media)}</span>`}</td><td class="hs-td">${a.clientes}</td><td class="hs-td g">${a.clientes - a.abaixo}</td><td class="hs-td ${a.abaixo ? 'r' : 'g'}">${a.abaixo}</td><td class="hs-td na">${a.semDado || '—'}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+
     // ---- por colaborador (resumo agregado quando o pilar tem dono) ----
     let porPessoa = '';
     if (k === 'produtividade') {
       const agg = new Map();
       for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
       const rows = [...agg.values()].map((a) => ({ ...a, pct: Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 })).sort((a, b) => a.pct - b.pct);
-      if (rows.length) porPessoa = `<p class="eyebrow">Por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
-        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+      if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
@@ -953,6 +967,7 @@
       <p class="eyebrow">Onde está o problema <span class="hs-hist-info">Pareto da lacuna — quem concentra 80% do que falta pra meta</span></p>
       ${pareto.length ? `<div class="pl-pareto">${pareto.map((x, i) => `<button class="pl-bar${i < vitais.length ? ' vital' : ''}" data-id="${x.c.id}" title="${esc(x.c.name)} · falta ${fmtLac(x.m.lacuna)} · acumulado ${Math.round(x.acum * 100)}%"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${Math.round((x.m.lacuna / maxLac) * 100)}%"></i></span><span class="pl-bar-v ${x.m.cls}">${fmtLac(x.m.lacuna)}</span><span class="pl-bar-a">${Math.round(x.acum * 100)}%</span></button>`).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
 
+      ${placar}
       ${porPessoa}
 
       <p class="eyebrow">Cliente a cliente <span class="hs-hist-info">ordenado por quanto falta</span></p>

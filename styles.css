@@ -1363,3 +1363,4 @@ body::before {
 .pl-bar-a { font-size: 11px; color: var(--creme-45); text-align: right; font-variant-numeric: tabular-nums; }
 .pl-regras { margin-top: 26px; }
 @media (max-width: 900px) { .pl-termo { grid-template-columns: 1fr; } .pl-meta-box { border: 0; padding: 0; max-width: none; } .pl-bar { grid-template-columns: 120px 1fr 70px 40px; } }
+.pl-pessoa { cursor: pointer; } .pl-pessoa:hover td { background: var(--garrafa-3); }
