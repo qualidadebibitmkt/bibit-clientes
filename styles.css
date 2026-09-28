@@ -167,12 +167,16 @@ a:hover { text-decoration: underline; }
 /* ---- abas ---- */
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--garrafa-2);
-  border: 1px solid var(--linha);
-  border-radius: var(--radius-sm);
+  gap: 10px;
+  padding: 0;
+  background: none;
+  border: 0;
 }
+/* três grupos (Bruno, 28/09/26): visão · pilares · agenda */
+.tabs-g { display: flex; gap: 4px; padding: 4px; background: var(--garrafa-2); border: 1px solid var(--linha); border-radius: var(--radius-sm); position: relative; }
+.tabs-g--pilares { border-color: color-mix(in srgb, var(--rolha) 55%, transparent); padding-left: 10px; }
+.tabs-g-l { position: absolute; top: -8px; left: 12px; font: 600 9.5px var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--rolha); background: var(--garrafa-0); padding: 0 6px; line-height: 1.4; }
+@media (max-width: 900px) { .tabs { flex-wrap: wrap; } }
 .tab {
   padding: 7px 14px;
   font: 600 13.5px var(--ui);
