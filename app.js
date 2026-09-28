@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 74;
+  const VERSION = 75;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -867,8 +867,14 @@
     return null;
   }
 
+  // fora das análises por colaborador (Bruno, 28/09/26): Will (Head de Operação, não é mais operacional) e Gabriel Beltrão (saiu)
+  const FORA_PLACAR = ['willian pereira', 'will', 'gabriel beltrao', 'gabriel beltrão'];
+  const normNome = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const foraPlacar = (nome) => { const n = normNome(nome); return FORA_PLACAR.some((x) => n === normNome(x) || n.startsWith(normNome(x) + ' ')); };
+  const semExcluidos = (lista) => lista.filter((p) => !foraPlacar(p.name || p.nome));
   // pessoas do pilar num cliente (pra o corte por colaborador)
-  function pessoasPilar(k, c) {
+  function pessoasPilar(k, c) { return semExcluidos(pessoasPilar0(k, c)); }
+  function pessoasPilar0(k, c) {
     if (k === 'trafego') return (c.team && c.team.trafego && c.team.trafego.length) ? c.team.trafego : equipeDe(c); // dono do pilar: Gestor de Tráfego do card
     if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
     return equipeDe(c);
@@ -928,10 +934,10 @@
       for (const c of filtrados) {
         const eq = c.contato && c.contato.equipe; if (!eq) continue;
         const falaram = new Set();
-        for (const ps of eq.pessoas) { const a = A(chave(ps.nome), ps.nome); falaram.add(a.key); a.grupos++; a.msgs += ps.msgs; a.reacoes += ps.reacoes; a.dias += ps.diasAtivos; a.respostas += ps.respostas; a.resp2h += ps.respostas2h; if (ps.tempoMedioH != null) { a.somaH += ps.tempoMedioH * ps.respostas; a.nResp += ps.respostas; } }
+        for (const ps of eq.pessoas) { if (foraPlacar(ps.nome)) continue; const a = A(chave(ps.nome), ps.nome); falaram.add(a.key); a.grupos++; a.msgs += ps.msgs; a.reacoes += ps.reacoes; a.dias += ps.diasAtivos; a.respostas += ps.respostas; a.resp2h += ps.respostas2h; if (ps.tempoMedioH != null) { a.somaH += ps.tempoMedioH * ps.respostas; a.nResp += ps.respostas; } }
         // silêncio: está na Equipe do cliente e não escreveu nada na semana
-        for (const p of equipeDe(c)) { const key = chave(p.name); if (!falaram.has(key)) { const a = A(key, p.name); a.silencio++; a.calados.push(c); (caladosDe.get(c.id) || caladosDe.set(c.id, []).get(c.id)).push(p.name.split(' ')[0]); } }
-        for (const pr of ((c.contato.pareceres && c.contato.pareceres.pessoas) || [])) { const a = A(chave(pr.nome), pr.nome); a.notas.push(pr.nota); a.pareceres.push({ cliente: c.name, nota: pr.nota, txt: pr.parecer }); }
+        for (const p of semExcluidos(equipeDe(c))) { const key = chave(p.name); if (!falaram.has(key)) { const a = A(key, p.name); a.silencio++; a.calados.push(c); (caladosDe.get(c.id) || caladosDe.set(c.id, []).get(c.id)).push(p.name.split(' ')[0]); } }
+        for (const pr of ((c.contato.pareceres && c.contato.pareceres.pessoas) || [])) { if (foraPlacar(pr.nome)) continue; const a = A(chave(pr.nome), pr.nome); a.notas.push(pr.nota); a.pareceres.push({ cliente: c.name, nota: pr.nota, txt: pr.parecer }); }
       }
       const rows = [...agg.values()].filter((a) => a.grupos || a.silencio).map((a) => ({ ...a, pct2h: a.respostas ? Math.round((a.resp2h / a.respostas) * 100) : null, tempo: a.nResp ? Math.round((a.somaH / a.nResp) * 10) / 10 : null, notaIA: a.notas.length ? Math.round(a.notas.reduce((x, y) => x + y, 0) / a.notas.length) : null })).sort((x, y) => (y.silencio - x.silencio) || ((x.pct2h ?? 101) - (y.pct2h ?? 101)));
       const c2h = (v) => (v == null ? 'na' : v >= 80 ? 'g' : v >= 60 ? 'y' : 'r');
@@ -957,8 +963,8 @@
     let porPessoa = '';
     if (k === 'produtividade') {
       const agg = new Map();
-      for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
-      for (const c of filtrados) for (const p of equipeDe(c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
+      for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
+      for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
       const rows = [...agg.values()].map((a) => ({ ...a, pct: a.abertas ? Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 : null })).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas || '<span class="na" title="nenhuma tarefa aberta no ClickUp — a produtividade dessa pessoa não é medida">sem tarefa</span>'}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -982,7 +988,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = equipeDe(c).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       <div class="pl-head">
