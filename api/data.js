@@ -440,7 +440,7 @@ module.exports = async (req, res) => {
           if (pareceres && !(pareceres.pessoas || []).length && pareceres.raw) pareceres.pessoas = wa.parsePareceres(pareceres.raw); // docs gravados antes do parser aceitar "|" no nome
           if (pareceres) delete pareceres.raw; // texto da IA não vai ao navegador além do parecer por pessoa
           msgs.sort((a, b) => a.t - b.t);
-          const met = wa.metricasEquipe(msgs, hoje);
+          const met = wa.metricasEquipe(msgs, hoje, c.name);
           if (c.contato) { c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres; }
         }
       }

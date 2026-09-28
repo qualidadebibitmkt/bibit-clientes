@@ -96,7 +96,11 @@ async function lerMsgs(grupo, days) {
 }
 
 // msgs ordenadas → { pessoas: {nome → métricas}, grupo: {…} }
-function metricasEquipe(msgs, agora = Date.now()) {
+const normTxt = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+// msgs ordenadas + nome do cliente (pra reconhecer mensagens sem remetente, que chegam com o NOME DO GRUPO, ex. "Cachaça Caranguejo | Bibit Mkt")
+function metricasEquipe(msgs, agora = Date.now(), nomeCliente = '') {
+  const nc = normTxt(nomeCliente);
+  const ehNomeDoGrupo = (m) => { const n = normTxt(pessoaDe(m.s)); return !!nc && !!n && (n === nc || n.includes(nc) || nc.includes(n)); };
   const pessoas = {}; const P = (n) => (pessoas[n] = pessoas[n] || { nome: n, msgs: 0, reacoes: 0, dias: new Set(), respostas: 0, respostas2h: 0, somaH: 0, primeira: null, ultima: null });
   const g = { msgsCliente: 0, msgsBibit: 0, turnosCliente: 0, respondidos: 0, respondidos2h: 0, semResposta: 0, pendentes: 0, remetentesCliente: new Set() };
   let turnoAberto = null; // { t } início do turno do cliente aguardando resposta
@@ -104,7 +108,7 @@ function metricasEquipe(msgs, agora = Date.now()) {
     if (ehAutomacao(m)) continue;
     const bibit = ehBibit(m) || !!m.me;
     if (bibit) {
-      const p = semPessoa(m) ? null : P(pessoaDe(m.s));
+      const p = (semPessoa(m) || ehNomeDoGrupo(m)) ? null : P(pessoaDe(m.s));
       if (p) { if (ehReacao(m)) p.reacoes++; else { p.msgs++; g.msgsBibit++; } p.dias.add(dayKey(m.t - 3 * 3600 * 1000)); p.ultima = m.t; if (!p.primeira) p.primeira = m.t; }
       else if (!ehReacao(m)) g.msgsBibit++;
       if (turnoAberto && !ehReacao(m)) {
