@@ -24,9 +24,14 @@ module.exports = async (req, res) => {
   const key = 'wa:parecer:' + grupo;
   try {
     if (req.method === 'GET') { const r = await redisPipeline([['GET', key]]); res.setHeader('Cache-Control', 'no-store'); res.status(200).json(r[0] && r[0].result ? JSON.parse(r[0].result) : null); return; }
-    let b = req.body; if (b && typeof b === 'object' && b.texto) b = b.texto; if (typeof b !== 'string') b = JSON.stringify(b || '');
+    let b = req.body;
+    if (b == null || b === '') { // corpo cru não parseado pelo Vercel (content-type inesperado): lê o stream
+      b = await new Promise((ok) => { let acc = ''; req.on('data', (c) => { acc += c; }); req.on('end', () => ok(acc)); req.on('error', () => ok('')); });
+    }
+    if (b && typeof b === 'object') b = b.texto || b.result || JSON.stringify(b);
+    b = String(b || '');
     const pessoas = parse(b);
-    const doc = { grupo, em: Date.now(), pessoas };
+    const doc = { grupo, em: Date.now(), pessoas, raw: b.slice(0, 600), ct: String(req.headers['content-type'] || '') };
     await redisPipeline([['SET', key, JSON.stringify(doc)], ['EXPIRE', key, String(90 * 86400)]]);
     res.status(200).json({ ok: true, pessoas: pessoas.length });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
