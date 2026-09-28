@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 76;
+  const VERSION = 77;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -842,6 +842,17 @@
       const n = hs.pilares.trafego.nota;
       return { valor: n, txt: `${n} pts`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n), nota: n, cls: hsCls(n) };
     }
+    if (k === 'satisfacao' && pessoa) {
+      // com colaborador selecionado a medida é a nota que o cliente dá ao PAPEL dele no CSAT (tráfego/social/RP/AV)
+      const pp = (c.metrics && c.metrics.porPapel) || {}; const t = c.team || {};
+      const em = (lista) => (lista || []).some((x) => String(x.id || x.name) === pessoa);
+      const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : null;
+      const v = papel && pp[papel] != null && pp[papel] > 0 ? pp[papel] : null;
+      if (v == null) return null;
+      const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual' };
+      const cls = v >= 9 ? 'g' : v >= 8 ? 'y' : 'r';
+      return { valor: v, txt: `nota ao ${PAP[papel]}: ${fmtNota(v)}`, lacuna: Math.max(0, 9 - v), nota: null, cls, pessoa: true };
+    }
     if (k === 'satisfacao') {
       const m = c.metrics || {}; const partes = [m.csat, m.nps].filter((x) => x != null);
       if (!partes.length) return null;
@@ -859,6 +870,19 @@
       return { valor: v, txt: `${pctFmt(v)} · ${late} atrasada${late === 1 ? '' : 's'} de ${abertas.length}`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late, abertas: abertas.length };
     }
     if (k === 'contato') {
+      if (pessoa) {
+        // com colaborador selecionado a medida é a ATUAÇÃO DELE no grupo (0–100): silêncio com o cliente falando = 0;
+        // silêncio com grupo parado = 50; falou: 100 menos a fatia de respostas fora das 2h úteis
+        const eq = c.contato && c.contato.equipe; if (!eq) return null;
+        const p = equipeDe(c).find((x) => String(x.id || x.name) === pessoa); if (!p) return null;
+        const f = p.name.split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const ps = eq.pessoas.find((x) => { const g = String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return g === f || (f === 'willian' && g === 'will'); });
+        let v, txt;
+        if (!ps) { v = eq.grupo.msgsCliente ? 0 : 50; txt = eq.grupo.msgsCliente ? `calado · cliente mandou ${eq.grupo.msgsCliente} msg` : 'calado · grupo parado na semana'; }
+        else { const lentas = ps.respostas ? (ps.respostas - ps.respostas2h) / ps.respostas : 0; v = Math.round(100 - lentas * 60); txt = `${ps.msgs} msg em ${ps.diasAtivos} dia${ps.diasAtivos === 1 ? '' : 's'} · ${ps.respostas} resp.${ps.respostas ? ` (${ps.respostas2h} ≤ 2h)` : ''}`; }
+        const cls = v >= 70 ? 'g' : v >= 50 ? 'y' : 'r';
+        return { valor: v, txt, lacuna: Math.max(0, 70 - v), nota: v, cls, pessoa: true };
+      }
       const n = c.contato && c.contato.nota != null ? c.contato.nota : null;
       if (n == null) return null;
       const cls = n >= 70 ? 'g' : n >= 50 ? 'y' : 'r';
@@ -903,7 +927,8 @@
     const limpar = filtro ? `<button class="hs-chip pl-chip pl-limpar" data-pl-f="">limpar</button>` : '';
 
     // ---- medidas ----
-    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c, k === 'produtividade' ? filtro : null) }));
+    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c, k !== 'trafego' ? filtro : null) }));
+    const porPessoaSel = k !== 'trafego' && !!filtro;
     const com = linhas.filter((x) => x.m);
     const sem = linhas.filter((x) => !x.m);
     const media = com.length ? com.reduce((s, x) => s + x.m.valor, 0) / com.length : null;
@@ -994,7 +1019,7 @@
     el.innerHTML = `
       <div class="pl-head">
         <div class="hs-termo pl-termo">
-          <div class="hs-termo-media"><span class="hs-big ${mediaCls}">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">média da carteira<br><span>${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
+          <div class="hs-termo-media"><span class="hs-big ${mediaCls}">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador' : k === 'satisfacao' ? 'nota ao papel dele' : 'média do colaborador') : 'média da carteira'}<br><span>${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
           <div class="pl-meta-box"><span class="pl-meta-n">${k === 'satisfacao' ? '9' : k === 'produtividade' ? '95%' : M.meta + ' pts'}</span><span class="hs-termo-l">meta<br><span>${esc(M.desc)}</span></span></div>
           <div class="hs-termo-pilares pl-kpis">
             <div class="hs-termo-p"><span class="hs-termo-pn g">${naMeta}</span><span class="hs-termo-pl">na meta</span></div>
@@ -1006,7 +1031,7 @@
         <div class="pl-filtros"><span class="balcao-l">${k === 'trafego' ? 'por tipo de campanha' : 'por colaborador'}</span><div class="chips">${chips}${limpar}</div></div>
       </div>
 
-      <p class="eyebrow">Onde está o problema <span class="hs-hist-info">Pareto da lacuna — quem concentra 80% do que falta pra meta</span></p>
+      <p class="eyebrow">Onde está o problema <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'Pareto da atuação do colaborador por grupo — calado com o cliente falando = 0, calado em grupo parado = 50, respostas lentas descontam' : k === 'satisfacao' ? 'Pareto da nota que cada cliente dá ao papel do colaborador no CSAT' : 'Pareto das tarefas do colaborador por cliente') : 'Pareto da lacuna — quem concentra 80% do que falta pra meta'}</span></p>
       ${pareto.length ? `<div class="pl-pareto">${pareto.map((x, i) => `<button class="pl-bar${i < vitais.length ? ' vital' : ''}" data-id="${x.c.id}" title="${esc(x.c.name)} · falta ${fmtLac(x.m.lacuna)} · acumulado ${Math.round(x.acum * 100)}%"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${Math.round((x.m.lacuna / maxLac) * 100)}%"></i></span><span class="pl-bar-v ${x.m.cls}">${fmtLac(x.m.lacuna)}</span><span class="pl-bar-a">${Math.round(x.acum * 100)}%</span></button>`).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
 
       ${placar}
