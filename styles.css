@@ -1364,13 +1364,17 @@ body::before {
 .pl-regras { margin-top: 26px; }
 @media (max-width: 900px) { .pl-termo { grid-template-columns: 1fr; } .pl-meta-box { border: 0; padding: 0; max-width: none; } .pl-bar { grid-template-columns: 120px 1fr 70px 40px; } }
 .pl-pessoa { cursor: pointer; } .pl-pessoa:hover td { background: var(--garrafa-3); }
-.pl-pareceres { display: grid; gap: 6px; margin: -16px 0 26px; }
+.pl-pareceres { display: grid; gap: 6px; margin: 0 0 26px; }
+.pl-parecer summary { display: flex; align-items: center; gap: 10px; }
+.pl-parecer summary b { color: var(--creme); }
+.pl-parecer-n { font-family: var(--display); font-size: 18px; font-weight: 600; }
+.pl-parecer summary small { color: var(--creme-45); font-size: 11px; }
 .pl-parecer { background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.1); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; color: var(--creme-70); }
 .pl-parecer summary { cursor: pointer; color: var(--creme); }
 .pl-parecer ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; } .pl-parecer li b { margin-right: 4px; }
 .hs-td small.na { font-size: 10.5px; color: var(--creme-45); font-weight: 400; }
 .pl-chip.pl-semtarefa { opacity: 0.6; }
-.pl-silencio { display: grid; gap: 10px; margin: -16px 0 26px; }
+.pl-silencio { display: grid; gap: 10px; margin: 0 0 30px; }
 .pl-sil-row { display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: start; padding: 10px 12px; background: var(--garrafa-2); border: 1px solid color-mix(in srgb, var(--flag-red) 30%, transparent); border-radius: var(--radius-sm); }
 .pl-sil-who { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--creme); }
 .pl-sil-who span.r { font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--flag-red); margin-left: auto; }
