@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 77;
+  const VERSION = 78;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -828,11 +828,23 @@
   const METAS_PILAR = {
     trafego:       { lbl: 'Tráfego',       meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — a régua é o percentil da carteira por tipo de campanha, então a meta é relativa: o melhor da carteira é a referência' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 e NPS ≥ 9 (escala 0–10 do Typeform); 8–8,9 amarelo; abaixo de 8 vermelho' },
-    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — (abertas − atrasadas) ÷ abertas; sem tarefa aberta = 100%' },
+    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (o pilar do score usa só as abertas)' },
     contato:       { lbl: 'Contato',       meta: 70, unid: 'pts', desc: 'nota de engajamento do grupo de WhatsApp ≥ 70 (análise semanal por IA, 1–100); 50–69 amarelo; abaixo de 50 vermelho' },
   };
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
   const pctFmt = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
+  // Produtividade da aba (Bruno, 28/09/26): além das abertas vencidas, conta as CONCLUÍDAS FORA DO PRAZO nos últimos 30 dias.
+  // "descartado" não é conclusão. (O pilar do score segue a fórmula oficial, só abertas — regra do Make.)
+  const JANELA_CONCL_DIAS = 30;
+  const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
+  const concluida = (t) => !isOpen(t) && !descartada(t) && t.dateClosed && Date.now() - t.dateClosed <= JANELA_CONCL_DIAS * 864e5;
+  const conclFora = (t) => concluida(t) && t.dueDate && dayKey(t.dateClosed) > dayKey(t.dueDate);
+  function prodDetalhe(ts) {
+    const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
+    const lateAb = abertas.filter(isLate).length, lateCo = concl.filter(conclFora).length;
+    const total = abertas.length + concl.length;
+    return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, pct: total ? Math.round(((total - lateAb - lateCo) / total) * 1000) / 10 : 100 };
+  }
 
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
   function medidaPilar(k, c, pessoa = null) {
@@ -863,11 +875,12 @@
     if (k === 'produtividade') {
       // com colaborador selecionado, a produtividade do cliente é só das tarefas DELE (não do cliente inteiro)
       const ts = pessoa ? tasksOf(c.id).filter((t) => (t.assignees || []).some((p) => String(p.id || p.name) === pessoa)) : tasksOf(c.id);
-      const abertas = ts.filter(isOpen); const late = abertas.filter(isLate).length;
-      if (pessoa && !abertas.length) return null; // sem tarefa aberta dessa pessoa aqui = sem dado
-      const v = prodOf(ts);
+      const d = prodDetalhe(ts);
+      if (!d.total) return null; // nenhuma tarefa aberta nem concluída em 30 dias = sem dado
+      const v = d.pct;
       const cls = v >= 95 ? 'g' : v >= 85 ? 'y' : 'r';
-      return { valor: v, txt: `${pctFmt(v)} · ${late} atrasada${late === 1 ? '' : 's'} de ${abertas.length}`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late, abertas: abertas.length };
+      const partes = []; if (d.lateAb) partes.push(`${d.lateAb} aberta${d.lateAb === 1 ? '' : 's'} vencida${d.lateAb === 1 ? '' : 's'}`); if (d.lateCo) partes.push(`${d.lateCo} concluída${d.lateCo === 1 ? '' : 's'} fora do prazo`);
+      return { valor: v, txt: `${partes.length ? partes.join(' + ') : 'tudo no prazo'} · ${d.abertas} aberta${d.abertas === 1 ? '' : 's'}, ${d.concl} concluída${d.concl === 1 ? '' : 's'} em 30d`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late: d.late, abertas: d.abertas };
     }
     if (k === 'contato') {
       if (pessoa) {
@@ -900,7 +913,7 @@
   function pessoasPilar(k, c) { return semExcluidos(pessoasPilar0(k, c)); }
   function pessoasPilar0(k, c) {
     if (k === 'trafego') return (c.team && c.team.trafego && c.team.trafego.length) ? c.team.trafego : equipeDe(c); // dono do pilar: Gestor de Tráfego do card
-    if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
+    if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t) || concluida(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
     return equipeDe(c);
   }
 
@@ -920,8 +933,8 @@
     } else {
       const pessoas = new Map();
       for (const c of base) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!pessoas.has(id)) pessoas.set(id, { p, n: 0 }); pessoas.get(id).n++; }
-      const comTarefa = new Set(); if (k === 'produtividade') for (const c of base) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) comTarefa.add(String(p.id || p.name));
-      chips = [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => { const st = k === 'produtividade' && !comTarefa.has(id); return `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}${st ? ' pl-semtarefa' : ''}" data-pl-f="${esc(id)}" title="${st ? 'na Equipe de ' + n + ' cliente(s), sem nenhuma tarefa aberta no ClickUp' : n + ' cliente(s)'}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${st ? 'sem tarefa' : n}</i></button>`; }).join('');
+      const comTarefa = new Set(); if (k === 'produtividade') for (const c of base) for (const t of tasksOf(c.id)) if (isOpen(t) || concluida(t)) for (const p of t.assignees || []) comTarefa.add(String(p.id || p.name));
+      chips = [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => { const st = k === 'produtividade' && !comTarefa.has(id); return `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}${st ? ' pl-semtarefa' : ''}" data-pl-f="${esc(id)}" title="${st ? 'na Equipe de ' + n + ' cliente(s), sem tarefa aberta nem concluída em 30 dias no ClickUp' : n + ' cliente(s)'}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${st ? 'sem tarefa' : n}</i></button>`; }).join('');
       if (filtro) { filtrados = base.filter((c) => pessoasPilar(k, c).some((p) => String(p.id || p.name) === filtro)); const pp = pessoas.get(filtro); filtroLbl = pp ? `colaborador: ${pp.p.name}` : ''; }
     }
     const limpar = filtro ? `<button class="hs-chip pl-chip pl-limpar" data-pl-f="">limpar</button>` : '';
@@ -989,11 +1002,11 @@
     let porPessoa = '';
     if (k === 'produtividade') {
       const agg = new Map();
-      for (const c of filtrados) for (const t of tasksOf(c.id)) if (isOpen(t)) for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set() }); const a = agg.get(id); a.abertas++; if (isLate(t)) a.late++; a.clientes.add(c.id); }
-      for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, late: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
-      const rows = [...agg.values()].map((a) => ({ ...a, pct: a.abertas ? Math.round(((a.abertas - a.late) / a.abertas) * 1000) / 10 : null })).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
-      if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
-        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r">Atrasadas</th><th class="r">Abertas</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.late ? 'r' : 'g'}">${a.late}</td><td class="hs-td">${a.abertas || '<span class="na" title="nenhuma tarefa aberta no ClickUp — a produtividade dessa pessoa não é medida">sem tarefa</span>'}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+      for (const c of filtrados) for (const t of tasksOf(c.id)) { const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
+      for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
+      const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.round(((total - late) / total) * 1000) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
+      if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas + concluídas nos últimos ${JANELA_CONCL_DIAS} dias, de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r" title="abertas já vencidas">Abertas vencidas</th><th class="r" title="concluídas depois do vencimento, nos últimos 30 dias">Concluídas fora do prazo</th><th class="r">Abertas</th><th class="r">Concluídas 30d</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.lateAb ? 'r' : 'g'}">${a.lateAb}</td><td class="hs-td ${a.lateCo ? 'r' : 'g'}">${a.lateCo}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.concl || (a.total ? '0' : '<span class="na" title="nenhuma tarefa aberta nem concluída em 30 dias no ClickUp">sem tarefa</span>')}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)

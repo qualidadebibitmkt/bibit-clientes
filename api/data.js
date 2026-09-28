@@ -158,6 +158,7 @@ function shapeOperacaoTask(task, listKey) {
       ? { label: task.status.status, color: task.status.color || null, type: task.status.type || null }
       : null,
     dueDate: task.due_date ? Number(task.due_date) : null,
+    dateClosed: Number(task.date_done) || Number(task.date_closed) || null, // quando foi concluída (pra "concluída fora do prazo")
     dataAgendamento: cfDate(getCF(task, CF_DATA_AGENDAMENTO)),
     // data usada no calendário: agendamento explícito, ou vencimento quando é um post de social
     calDate: cfDate(getCF(task, CF_DATA_AGENDAMENTO)) ||
