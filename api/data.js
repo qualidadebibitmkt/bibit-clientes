@@ -426,6 +426,21 @@ module.exports = async (req, res) => {
       if (wa.redisReady() && comGrupo.length) {
         const out = await wa.redisPipeline(comGrupo.map((c) => ['GET', 'wa:last:' + wa.normGrupo(c._waGrupo)]));
         comGrupo.forEach((c, i) => { const v = out[i] && out[i].result; if (v && c.contato) c.contato.atualizadoEm = Number(v) || null; });
+        // métricas por pessoa da Bibit nos últimos 7 dias (do buffer) + parecer individual da IA (gravado pelo Make)
+        // Só números e nomes saem ao navegador — nenhum texto de mensagem.
+        const DIAS = 7, hoje = Date.now();
+        const cmds = [];
+        for (const c of comGrupo) { const g = wa.normGrupo(c._waGrupo); for (let i = 0; i < DIAS; i++) cmds.push(['LRANGE', wa.keyFor(g, wa.dayKey(hoje - i * 86400000)), '0', '-1']); cmds.push(['GET', 'wa:parecer:' + g]); }
+        const r2 = await wa.redisPipeline(cmds);
+        let k = 0;
+        for (const c of comGrupo) {
+          const msgs = [];
+          for (let i = 0; i < DIAS; i++) { const r = r2[k++]; for (const raw of ((r && r.result) || [])) { try { msgs.push(JSON.parse(raw)); } catch {} } }
+          const par = r2[k++]; let pareceres = null; try { pareceres = par && par.result ? JSON.parse(par.result) : null; } catch {}
+          msgs.sort((a, b) => a.t - b.t);
+          const met = wa.metricasEquipe(msgs, hoje);
+          if (c.contato) { c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres; }
+        }
       }
     } catch (e) { /* opcional */ }
 

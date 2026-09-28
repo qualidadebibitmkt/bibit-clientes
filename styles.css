@@ -1364,3 +1364,8 @@ body::before {
 .pl-regras { margin-top: 26px; }
 @media (max-width: 900px) { .pl-termo { grid-template-columns: 1fr; } .pl-meta-box { border: 0; padding: 0; max-width: none; } .pl-bar { grid-template-columns: 120px 1fr 70px 40px; } }
 .pl-pessoa { cursor: pointer; } .pl-pessoa:hover td { background: var(--garrafa-3); }
+.pl-pareceres { display: grid; gap: 6px; margin: -16px 0 26px; }
+.pl-parecer { background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.1); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; color: var(--creme-70); }
+.pl-parecer summary { cursor: pointer; color: var(--creme); }
+.pl-parecer ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; } .pl-parecer li b { margin-right: 4px; }
+.hs-td small.na { font-size: 10.5px; color: var(--creme-45); font-weight: 400; }

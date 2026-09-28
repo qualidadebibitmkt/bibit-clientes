@@ -53,4 +53,71 @@ function tokenOk(req) {
   return t && t === INBOUND_TOKEN;
 }
 
-module.exports = { redisReady, redis, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS };
+
+// ---------- métricas por pessoa da Bibit (item de verificação do pilar de contato) ----------
+// Quem é da Bibit: o nome de exibição no WhatsApp traz "| Bibit Mkt" / "WebDesigner", ou é um dos nomes da casa.
+const EQUIPE_RX = /bibit|webdesigner|gestor de tr[aá]fego|head marketing/i;
+const NOMES_CASA = ['bruno serra', 'andré guedes', 'andre guedes', 'gabriela', 'rafaela', 'michelle', 'daniel bomtempo', 'willian', 'will', 'joão ribas', 'joao ribas'];
+function ehBibit(msg) {
+  const s = String(msg.s || '');
+  if (EQUIPE_RX.test(s)) return true;
+  const n = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return NOMES_CASA.some((x) => n === x.normalize('NFD').replace(/[̀-ͯ]/g, '') || n.startsWith(x.normalize('NFD').replace(/[̀-ͯ]/g, '') + ' '));
+}
+// nome curto da pessoa (sem o cargo): "Daniel Bomtempo - Gestor De Tráfego | Bibit Mkt" → "Daniel Bomtempo"
+const pessoaDe = (s) => String(s || '').split(/\s[|\-–]\s/)[0].trim().slice(0, 40) || 'alguém';
+// mensagens de robô mandadas pelo número de alguém (relatório de segunda, alertas) — não contam como presença da pessoa
+const AUTOMACAO_RX = /^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|^⚠️|^🔴 \*Saldo|clipping da semana/i;
+const ehAutomacao = (m) => AUTOMACAO_RX.test(String(m.m || '')) || (m.me && /relatório|reportei/i.test(String(m.m || '')) && String(m.m || '').length > 400);
+const ehReacao = (m) => /^\[reação/.test(String(m.m || ''));
+
+// horas úteis entre dois instantes (seg–sex 8h–19h, Brasília) — resposta pedida sexta à noite não conta o fim de semana
+function horasUteis(a, b) {
+  if (b <= a) return 0;
+  let h = 0; const passo = 15 * 60 * 1000;
+  for (let t = a; t < b; t += passo) {
+    const d = new Date(t - 3 * 3600 * 1000); const dow = d.getUTCDay(); const hr = d.getUTCHours() + d.getUTCMinutes() / 60;
+    if (dow >= 1 && dow <= 5 && hr >= 8 && hr < 19) h += passo / 3600000;
+  }
+  return Math.round(h * 10) / 10;
+}
+
+async function lerMsgs(grupo, days) {
+  const hoje = Date.now(); const keys = [];
+  for (let i = 0; i < days; i++) keys.push(keyFor(grupo, dayKey(hoje - i * 86400000)));
+  const out = await redisPipeline(keys.map((k) => ['LRANGE', k, '0', '-1']));
+  const msgs = [];
+  for (const r of out) for (const raw of (r.result || [])) { try { msgs.push(JSON.parse(raw)); } catch {} }
+  return msgs.sort((a, b) => a.t - b.t);
+}
+
+// msgs ordenadas → { pessoas: {nome → métricas}, grupo: {…} }
+function metricasEquipe(msgs, agora = Date.now()) {
+  const pessoas = {}; const P = (n) => (pessoas[n] = pessoas[n] || { nome: n, msgs: 0, reacoes: 0, dias: new Set(), respostas: 0, respostas2h: 0, somaH: 0, primeira: null, ultima: null });
+  const g = { msgsCliente: 0, msgsBibit: 0, turnosCliente: 0, respondidos: 0, respondidos2h: 0, semResposta: 0, pendentes: 0, remetentesCliente: new Set() };
+  let turnoAberto = null; // { t } início do turno do cliente aguardando resposta
+  for (const m of msgs) {
+    if (ehAutomacao(m)) continue;
+    const bibit = ehBibit(m);
+    if (bibit) {
+      const p = P(pessoaDe(m.s));
+      if (ehReacao(m)) p.reacoes++; else { p.msgs++; g.msgsBibit++; }
+      p.dias.add(dayKey(m.t - 3 * 3600 * 1000)); p.ultima = m.t; if (!p.primeira) p.primeira = m.t;
+      if (turnoAberto && !ehReacao(m)) {
+        const h = horasUteis(turnoAberto.t, m.t);
+        p.respostas++; p.somaH += h; if (h <= 2) p.respostas2h++;
+        g.respondidos++; if (h <= 2) g.respondidos2h++;
+        turnoAberto = null;
+      }
+    } else {
+      if (ehReacao(m)) continue;
+      g.msgsCliente++; g.remetentesCliente.add(pessoaDe(m.s));
+      if (!turnoAberto) { turnoAberto = { t: m.t }; g.turnosCliente++; }
+    }
+  }
+  if (turnoAberto) { if (horasUteis(turnoAberto.t, agora) > 24) g.semResposta++; else g.pendentes++; }
+  const lista = Object.values(pessoas).map((p) => ({ nome: p.nome, msgs: p.msgs, reacoes: p.reacoes, diasAtivos: p.dias.size, respostas: p.respostas, respostas2h: p.respostas2h, tempoMedioH: p.respostas ? Math.round((p.somaH / p.respostas) * 10) / 10 : null, primeira: p.primeira, ultima: p.ultima })).sort((a, b) => b.msgs - a.msgs);
+  return { pessoas: lista, grupo: { ...g, remetentesCliente: g.remetentesCliente.size } };
+}
+
+module.exports = { redisReady, redis, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, ehBibit, pessoaDe, horasUteis };

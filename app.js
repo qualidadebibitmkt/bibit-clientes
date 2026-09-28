@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 70;
+  const VERSION = 71;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -908,7 +908,30 @@
 
     // ---- placar individual: a nota de cada colaborador no pilar = média dos clientes dele (Bruno, 28/09/26) ----
     let placar = '';
-    if (k !== 'produtividade') {
+    if (k === 'contato') {
+      // placar individual do contato = o que cada pessoa da Bibit FEZ nos grupos (item de verificação), não a nota do grupo (resultado)
+      const norm1 = (n) => String(n || '').split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const ALIAS = { will: 'willian', joao: 'joao', michelle: 'michelle', daniel: 'daniel', gabriela: 'gabriela', bruno: 'bruno', andre: 'andre', rafaela: 'rafaela' };
+      const chave = (n) => { const f = norm1(n); return ALIAS[f] || f; };
+      const users = new Map(); for (const c of filtrados) for (const p of equipeDe(c)) users.set(chave(p.name), p);
+      const agg = new Map();
+      const A = (key, nome) => { if (!agg.has(key)) agg.set(key, { key, nome, p: users.get(key) || null, grupos: 0, msgs: 0, reacoes: 0, dias: 0, respostas: 0, resp2h: 0, somaH: 0, nResp: 0, silencio: 0, notas: [], pareceres: [] }); return agg.get(key); };
+      for (const c of filtrados) {
+        const eq = c.contato && c.contato.equipe; if (!eq) continue;
+        const falaram = new Set();
+        for (const ps of eq.pessoas) { const a = A(chave(ps.nome), ps.nome); falaram.add(a.key); a.grupos++; a.msgs += ps.msgs; a.reacoes += ps.reacoes; a.dias += ps.diasAtivos; a.respostas += ps.respostas; a.resp2h += ps.respostas2h; if (ps.tempoMedioH != null) { a.somaH += ps.tempoMedioH * ps.respostas; a.nResp += ps.respostas; } }
+        // silêncio: está na Equipe do cliente e não escreveu nada na semana
+        for (const p of equipeDe(c)) { const key = chave(p.name); if (!falaram.has(key)) { const a = A(key, p.name); a.silencio++; } }
+        for (const pr of ((c.contato.pareceres && c.contato.pareceres.pessoas) || [])) { const a = A(chave(pr.nome), pr.nome); a.notas.push(pr.nota); a.pareceres.push({ cliente: c.name, nota: pr.nota, txt: pr.parecer }); }
+      }
+      const rows = [...agg.values()].filter((a) => a.grupos || a.silencio).map((a) => ({ ...a, pct2h: a.respostas ? Math.round((a.resp2h / a.respostas) * 100) : null, tempo: a.nResp ? Math.round((a.somaH / a.nResp) * 10) / 10 : null, notaIA: a.notas.length ? Math.round(a.notas.reduce((x, y) => x + y, 0) / a.notas.length) : null })).sort((x, y) => (y.silencio - x.silencio) || ((x.pct2h ?? 101) - (y.pct2h ?? 101)));
+      const c2h = (v) => (v == null ? 'na' : v >= 80 ? 'g' : v >= 60 ? 'y' : 'r');
+      const cIA = (v) => (v == null ? 'na' : v >= 70 ? 'g' : v >= 50 ? 'y' : 'r');
+      const temParecer = rows.some((a) => a.pareceres.length);
+      if (rows.length) placar = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">o que cada um fez nos grupos nos últimos 7 dias (relatório automático de segunda e alertas não contam)${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r" title="grupos em que escreveu na semana">Grupos ativos</th><th class="r" title="está na Equipe do cliente e não escreveu nada na semana">Silêncio</th><th class="r">Mensagens</th><th class="r" title="média de mensagens por grupo ativo">Por grupo</th><th class="r" title="respostas a mensagens do cliente">Respostas</th><th class="r" title="respostas dadas em até 2 horas úteis (seg–sex 8h–19h) — meta ≥ 80%">≤ 2h úteis</th><th class="r" title="tempo médio de resposta em horas úteis">Tempo médio</th><th class="r" title="parecer individual da IA (análise de domingo), média das notas">Parecer IA</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p ? (a.p.id || a.p.name) : ''))}" title="${a.p ? 'filtrar por ' + esc(a.p.name) : esc(a.nome)}"><td class="hs-td-cli">${a.p ? avatarHTML(a.p, 'avatar avatar-xs') : ''}<span>${esc(a.p ? a.p.name : a.nome)}</span></td><td class="hs-td">${a.grupos}</td><td class="hs-td ${a.silencio ? 'r' : 'g'}">${a.silencio}</td><td class="hs-td">${a.msgs}${a.reacoes ? `<small class="na"> +${a.reacoes} reações</small>` : ''}</td><td class="hs-td">${a.grupos ? (a.msgs / a.grupos).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : '—'}</td><td class="hs-td">${a.respostas || '—'}</td><td class="hs-td ${c2h(a.pct2h)}">${a.pct2h != null ? a.pct2h + '%' : '—'}</td><td class="hs-td">${a.tempo != null ? a.tempo.toLocaleString('pt-BR') + 'h' : '—'}</td><td class="hs-td ${cIA(a.notaIA)}">${a.notaIA != null ? `<span title="${esc(a.pareceres.map((x) => x.cliente + ' (' + x.nota + '): ' + x.txt).join('\n'))}">${a.notaIA} <small class="na">· ${a.pareceres.length}</small></span>` : '—'}</td></tr>`).join('')}</tbody></table></div>
+        ${temParecer ? `<div class="pl-pareceres">${rows.filter((a) => a.pareceres.length).map((a) => `<details class="pl-parecer"><summary>${esc(a.p ? a.p.name : a.nome)} · ${a.pareceres.length} parecer${a.pareceres.length === 1 ? '' : 'es'} da IA</summary><ul>${a.pareceres.sort((x, y) => x.nota - y.nota).map((x) => `<li><b class="${cIA(x.nota)}">${x.nota}</b> <span class="na">${esc(x.cliente)}</span> — ${esc(x.txt)}</li>`).join('')}</ul></details>`).join('')}</div>` : '<p class="hs-ordem-dica">O parecer individual da IA entra a partir da próxima análise de domingo.</p>'}`;
+    } else if (k !== 'produtividade') {
       const agg = new Map();
       for (const { c, m } of com) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); a.vals.push(m.valor); a.lac += m.lacuna; if (m.lacuna > 0) a.abaixo++; a.clientes++; }
       for (const { c } of sem) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (agg.has(id)) agg.get(id).semDado++; }
@@ -947,7 +970,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' && c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 90))}${c.contato.resumo.length > 90 ? '…' : ''}</span>` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       <div class="pl-head">

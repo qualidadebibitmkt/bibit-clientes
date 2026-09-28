@@ -1,7 +1,7 @@
 // BIBIT · GET /api/wa-transcript?grupo=<wa_grupo_id>&t=<token>[&days=7]
 // Devolve a transcrição pronta pra análise (Make → Claude). Só o Make chama isto.
 
-const { redisReady, redisPipeline, dayKey, keyFor, normGrupo, tokenOk } = require('./_wa');
+const { redisReady, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, lerMsgs, metricasEquipe } = require('./_wa');
 
 const fmt = (ms) => {
   const d = new Date(ms);
@@ -57,10 +57,15 @@ module.exports = async (req, res) => {
     if (req.query.mark) { try { await redisPipeline([['SET', 'wa:last:' + grupo, String(Date.now())], ['EXPIRE', 'wa:last:' + grupo, String(180 * 86400)]]); } catch {} }
     const linhas = msgs.map((m) => `${fmt(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`);
     const remetentes = [...new Set(msgs.map((m) => m.s).filter(Boolean))];
+    // métricas por pessoa da Bibit (pro prompt individual do Make e pro painel)
+    const met = metricasEquipe(msgs);
+    const metricasTxt = met.pessoas.length
+      ? met.pessoas.map((p) => `${p.nome}: ${p.msgs} mensagens em ${p.diasAtivos} dia(s), ${p.reacoes} reações, respondeu ${p.respostas} vez(es) ao cliente (${p.respostas2h} em até 2h úteis${p.tempoMedioH != null ? `, tempo médio ${p.tempoMedioH}h` : ''})`).join('\n') + `\nCliente: ${met.grupo.msgsCliente} mensagens de ${met.grupo.remetentesCliente} pessoa(s), ${met.grupo.turnosCliente} vez(es) puxou assunto, ${met.grupo.semResposta} ficou sem resposta da Bibit por mais de 24h úteis`
+      : 'Ninguém da Bibit escreveu no grupo nesta semana.';
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({
       grupo, dias: days, count: msgs.length,
-      remetentes,
+      remetentes, metricas: metricasTxt, metricasJson: met,
       primeira: msgs.length ? fmt(msgs[0].t) : null,
       ultima: msgs.length ? fmt(msgs[msgs.length - 1].t) : null,
       transcript: linhas.join('\n'),
