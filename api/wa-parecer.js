@@ -2,19 +2,7 @@
 // Recebe o parecer individual da IA (Make, análise de domingo) por pessoa da Bibit no grupo,
 // como texto puro — uma linha por pessoa: NOME | NOTA (1-100) | PARECER — e guarda no Redis (90 dias).
 // O painel lê em /api/data e mostra no placar da aba Contato. GET devolve o que está guardado.
-const { redisReady, redisPipeline, normGrupo, tokenOk } = require('./_wa');
-
-function parse(txt) {
-  const out = [];
-  for (const raw of String(txt || '').split(/\r?\n/)) {
-    const l = raw.replace(/\*/g, '').trim(); if (!l || !l.includes('|')) continue;
-    const [nome, nota, ...rest] = l.split('|').map((x) => x.trim());
-    const n = parseInt(String(nota).replace(/[^0-9]/g, ''), 10);
-    if (!nome || !Number.isFinite(n)) continue;
-    out.push({ nome: nome.slice(0, 40), nota: Math.max(1, Math.min(100, n)), parecer: rest.join(' | ').slice(0, 400) });
-  }
-  return out;
-}
+const { redisReady, redisPipeline, normGrupo, tokenOk, parsePareceres: parse } = require('./_wa');
 
 module.exports = async (req, res) => {
   if (!tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
@@ -23,7 +11,7 @@ module.exports = async (req, res) => {
   if (!grupo) { res.status(400).json({ error: 'grupo obrigatório' }); return; }
   const key = 'wa:parecer:' + grupo;
   try {
-    if (req.method === 'GET') { const r = await redisPipeline([['GET', key]]); res.setHeader('Cache-Control', 'no-store'); res.status(200).json(r[0] && r[0].result ? JSON.parse(r[0].result) : null); return; }
+    if (req.method === 'GET') { const r = await redisPipeline([['GET', key]]); res.setHeader('Cache-Control', 'no-store'); const doc = r[0] && r[0].result ? JSON.parse(r[0].result) : null; if (doc && !(doc.pessoas || []).length && doc.raw) doc.pessoas = parse(doc.raw); res.status(200).json(doc); return; }
     let b = req.body;
     if (b == null || b === '') { // corpo cru não parseado pelo Vercel (content-type inesperado): lê o stream
       b = await new Promise((ok) => { let acc = ''; req.on('data', (c) => { acc += c; }); req.on('end', () => ok(acc)); req.on('error', () => ok('')); });

@@ -437,6 +437,8 @@ module.exports = async (req, res) => {
           const msgs = [];
           for (let i = 0; i < DIAS; i++) { const r = r2[k++]; for (const raw of ((r && r.result) || [])) { try { msgs.push(JSON.parse(raw)); } catch {} } }
           const par = r2[k++]; let pareceres = null; try { pareceres = par && par.result ? JSON.parse(par.result) : null; } catch {}
+          if (pareceres && !(pareceres.pessoas || []).length && pareceres.raw) pareceres.pessoas = wa.parsePareceres(pareceres.raw); // docs gravados antes do parser aceitar "|" no nome
+          if (pareceres) delete pareceres.raw; // texto da IA não vai ao navegador além do parecer por pessoa
           msgs.sort((a, b) => a.t - b.t);
           const met = wa.metricasEquipe(msgs, hoje);
           if (c.contato) { c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres; }

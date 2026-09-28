@@ -120,4 +120,19 @@ function metricasEquipe(msgs, agora = Date.now()) {
   return { pessoas: lista, grupo: { ...g, remetentesCliente: g.remetentesCliente.size } };
 }
 
-module.exports = { redisReady, redis, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, ehBibit, pessoaDe, horasUteis };
+// parecer individual da IA: "NOME | NOTA | PARECER" por linha. O nome pode vir com o cargo e o próprio "|" do WhatsApp
+// ("Will - Social media & Designer | Bibit Mkt | 87 | ..."), então a NOTA é o primeiro campo que é um inteiro 1–100.
+function parsePareceres(txt) {
+  const out = [];
+  for (const raw of String(txt || '').split(/\r?\n/)) {
+    const l = raw.replace(/\*/g, '').trim(); if (!l || !l.includes('|')) continue;
+    const parts = l.split('|').map((x) => x.trim());
+    const i = parts.findIndex((x, idx) => idx > 0 && /^\d{1,3}$/.test(x) && +x >= 1 && +x <= 100);
+    if (i < 1) continue;
+    const nome = pessoaDe(parts.slice(0, i).join(' | '));
+    out.push({ nome: nome.slice(0, 40), nota: +parts[i], parecer: parts.slice(i + 1).join(' | ').slice(0, 400) });
+  }
+  return out;
+}
+
+module.exports = { redisReady, redis, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, ehBibit, pessoaDe, horasUteis, parsePareceres };
