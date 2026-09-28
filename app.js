@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 71;
+  const VERSION = 72;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -165,10 +165,14 @@
     }
     const list = [...groups.values()].sort((x, y) => y.clients.length - x.clients.length || y.set.size - x.set.size);
     const merged = [];
+    // mesma equipe = mesmo squad, com tolerância a troca de pessoa (Will → João, set/26): duas composições são do mesmo
+    // squad quando a menor compartilha pelo menos 2 pessoas com a maior (ou a única pessoa dela, se tiver só 1).
+    // Um segundo squad de verdade (pessoas novas) compartilha no máximo 1 (ex.: a Michelle atendendo os dois) e fica separado.
     for (const g of list) {
-      const host = merged.find((m) => [...g.set].every((i) => m.set.has(i)) || [...m.set].every((i) => g.set.has(i)));
+      const host = merged.find((m) => { const comum = [...g.set].filter((i) => m.set.has(i)).length; const menor = Math.min(g.set.size, m.set.size); return comum >= Math.min(2, menor); });
       if (host) {
         host.clients.push(...g.clients);
+        for (const i of g.set) host.set.add(i);
         for (const p of g.members) if (!host.members.some((m) => pid(m) === pid(p))) host.members.push(p); // todo mundo do squad
       } else merged.push(g);
     }
