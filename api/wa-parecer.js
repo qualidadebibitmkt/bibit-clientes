@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
     if (b && typeof b === 'object') b = b.texto || b.result || JSON.stringify(b);
     b = String(b || '');
     const pessoas = parse(b);
-    const doc = { grupo, em: Date.now(), pessoas, raw: b.slice(0, 600), ct: String(req.headers['content-type'] || '') };
+    const doc = { grupo, em: Date.now(), pessoas, raw: b.slice(0, 4000), ct: String(req.headers['content-type'] || '') };
     await redisPipeline([['SET', key, JSON.stringify(doc)], ['EXPIRE', key, String(90 * 86400)]]);
     res.status(200).json({ ok: true, pessoas: pessoas.length });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
