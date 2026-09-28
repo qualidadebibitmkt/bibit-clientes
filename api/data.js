@@ -56,6 +56,7 @@ const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
 const CF_HS_LEAD = '0cc186ba-9053-4266-9a2b-9c304c8e6e5d';
 const CF_HS_ATUALIZADO = '02aa0b63-6f5d-423d-b299-1cb0e181513d';
 const { calcularTodos } = require('./healthscore');
+const HS_VALIDADE_DIAS = 10; // métrica de tráfego mais velha que isso = campanha parada (coleta é semanal, segunda 9h30)
 const CF_DATA_SAIDA = 'b969da4a-8bae-4f4c-9f8b-2919620a98e0';
 const CF_TEAM = {
   social: 'b767dbfb-1371-4370-baee-508e67fa9ba7',
@@ -198,7 +199,23 @@ function shapeCliente(task) {
       const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0 ? v : null; }; // 0 = sem dado
       const at = cfDate(getCF(task, CF_HS_ATUALIZADO));
       const o = { cpm: n(CF_HS_CPM), roas: n(CF_HS_ROAS), custoConversa: n(CF_HS_CONVERSA), custoLead: n(CF_HS_LEAD), atualizadoEm: at };
-      return (o.cpm || o.roas || o.custoConversa || o.custoLead) ? o : null;
+      const temMetrica = !!(o.cpm || o.roas || o.custoConversa || o.custoLead);
+      // Métrica com mais de 10 dias = a coleta semanal não gravou nada desde então (Reportei devolveu "sem dados
+      // no período", ou seja, o cliente parou de anunciar) — não vale como tráfego da semana (Bruno, 28/09/26).
+      if (temMetrica && at && Date.now() - at > HS_VALIDADE_DIAS * 864e5) return null;
+      return temMetrica ? o : null;
+    })(),
+    // campanha de anúncios rodando? null = não dá pra saber (sem Reportei ID / nunca coletado)
+    campanha: (() => {
+      if (!cfText(getCF(task, CF_REPORTEI_ID))) return null;
+      const at = cfDate(getCF(task, CF_HS_ATUALIZADO));
+      if (!at) return null;
+      const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0; };
+      const temMetrica = n(CF_HS_CPM) || n(CF_HS_ROAS) || n(CF_HS_CONVERSA) || n(CF_HS_LEAD);
+      const velha = Date.now() - at > HS_VALIDADE_DIAS * 864e5;
+      if (temMetrica && !velha) return { rodando: true, coletadoEm: at, desde: null };
+      // parada: "desde" = última semana com investimento (a data da métrica velha) quando dá pra saber
+      return { rodando: false, coletadoEm: at, desde: temMetrica ? at : null };
     })(),
     team: {
       social: cfUsers(getCF(task, CF_TEAM.social)),
