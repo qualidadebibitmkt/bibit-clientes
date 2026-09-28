@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 68;
+  const VERSION = 69;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1007,9 +1007,15 @@
       if (more) { state.fnExpanded.add(more.dataset.fn); renderFuncoes($('#viewFuncoes')); return; }
     }, true);
 
+    await carregarDados();
+  }
+
+  async function carregarDados() {
     try {
-      const [res] = await Promise.all([fetch('/api/data'), loadHist()]); // fotos diárias já vêm junto (dias na flag nos cards e na ficha)
-      const json = await res.json();
+      // fotos diárias já vêm junto (dias na flag nos cards e na ficha); /api/data tenta 2x — o ClickUp dá 500 esporádico
+      const carregar = async () => { const r = await fetch('/api/data'); const j = await r.json(); return { r, j }; };
+      let { r: res, j: json } = await Promise.all([carregar(), loadHist()]).then(([x]) => x);
+      if (!res.ok && !(json && (json.error === 'missing_token' || json.error === 'unauthorized'))) { await new Promise((ok) => setTimeout(ok, 1500)); ({ r: res, j: json } = await carregar()); }
       if (!res.ok) throw json;
       state.data = json;
       buildSelect();
@@ -1027,7 +1033,10 @@
       } else if (err && err.error === 'unauthorized') {
         el.innerHTML = `<h2>Token recusado pelo ClickUp</h2><p>Verifique o valor de <code>CLICKUP_API_TOKEN</code> na Vercel.</p>`;
       } else {
-        el.innerHTML = `<h2>Não deu pra carregar os dados</h2><p>${esc(err?.message || 'Erro inesperado ao falar com o ClickUp.')} Recarregue a página para tentar de novo.</p>`;
+        el.innerHTML = `<h2>Não deu pra carregar os dados</h2><p>${esc(err?.message || 'Erro inesperado ao falar com o ClickUp.')} Instabilidade momentânea do ClickUp — tentando de novo em 20 s… <button class="hs-chip" id="retryNow">tentar agora</button></p>`;
+        const again = () => { el.hidden = true; $('#stateLoading').hidden = false; carregarDados(); };
+        const tm = setTimeout(again, 20000);
+        const b = $('#retryNow'); if (b) b.addEventListener('click', () => { clearTimeout(tm); again(); });
       }
     }
   }

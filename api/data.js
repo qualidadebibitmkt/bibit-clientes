@@ -129,8 +129,14 @@ async function fetchAllTasks(token, listId, includeClosed = false) {
   const out = [];
   for (let page = 0; page < 20; page++) {
     const url = `${CLICKUP}/list/${listId}/task?page=${page}&include_closed=${includeClosed}&subtasks=true`;
-    const res = await fetch(url, { headers: { Authorization: token } });
-    if (res.status === 401 || res.status === 403) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' });
+    // o ClickUp devolve 500/502/503/429 de vez em quando; uma página falhando derrubava o painel inteiro (28/09/26) — tenta 3x com espera
+    let res;
+    for (let tent = 0; tent < 3; tent++) {
+      res = await fetch(url, { headers: { Authorization: token } });
+      if (res.status === 401 || res.status === 403) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' });
+      if (res.ok || (res.status < 500 && res.status !== 429)) break;
+      await new Promise((r) => setTimeout(r, 400 * (tent + 1)));
+    }
     if (!res.ok) throw new Error(`ClickUp ${res.status} na lista ${listId}`);
     const json = await res.json();
     out.push(...(json.tasks || []));
