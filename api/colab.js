@@ -56,6 +56,11 @@ function equipeDe(c) {
   return out;
 }
 
+// no cliente, a pessoa é SÓ Web Designer (não está em social/tráfego/RP/AV) → contato opcional
+function contatoOpcional(c, id) {
+  const t = c.team || {}; const em = (l) => (l || []).some((p) => pid(p) === id);
+  return em(t.webdesign) && !em(t.social) && !em(t.trafego) && !em(t.rp) && !em(t.audiovisual);
+}
 // medida da pessoa num cliente, por pilar (porta fiel de medidaPilar/medidaColab do app.js)
 function medida(k, c, a, tasksOf) {
   const hs = c.healthScore;
@@ -89,6 +94,8 @@ function medida(k, c, a, tasksOf) {
     const p = equipeDe(c).find((x) => pid(x) === a.id); if (!p) return null;
     const f = chave(p.name);
     const ps = eq.pessoas.find((x) => chave(x.nome) === f);
+    // webdesigner (Bruno, 09/10/26): presença no grupo não é obrigatória — silêncio não conta; o que ela escrever é avaliado normal
+    if (!ps && contatoOpcional(c, a.id)) return null;
     if (!ps) { const v = eq.grupo.msgsCliente ? 0 : 50; return { valor: v, lacuna: 70 - v, cls: cls(k, v), txt: eq.grupo.msgsCliente ? `sem mensagem sua no grupo em 7 dias · o cliente mandou ${eq.grupo.msgsCliente}` : 'sem mensagem sua · grupo parado na semana', calado: true, msgsCliente: eq.grupo.msgsCliente }; }
     const lentas = ps.respostas ? (ps.respostas - ps.respostas2h) / ps.respostas : 0; const v = Math.round(100 - lentas * 60);
     return { valor: v, lacuna: Math.max(0, 70 - v), cls: cls(k, v), txt: `${ps.msgs} msg em ${ps.diasAtivos} dia${ps.diasAtivos === 1 ? '' : 's'} · ${ps.respostas} resposta${ps.respostas === 1 ? '' : 's'}${ps.respostas ? ` (${ps.respostas2h} em até 2h úteis)` : ''}`, lentas: ps.respostas - ps.respostas2h, respostas: ps.respostas };
