@@ -189,9 +189,11 @@ async function whatsapps(token) {
       for (const t of j.tasks || []) {
         const cf = (id) => (t.custom_fields || []).find((f) => f.id === id);
         const pessoa = cf(CF_RH_PESSOA); const tel = cf(CF_RH_WHATSAPP);
-        const uid = pessoa && Array.isArray(pessoa.value) && pessoa.value[0] ? String(pessoa.value[0].id) : null;
+        const u = pessoa && Array.isArray(pessoa.value) && pessoa.value[0] ? pessoa.value[0] : null;
         const dig = tel && tel.value ? String(tel.value).replace(/\D/g, '') : '';
-        if (uid && dig.length >= 12) out.set(uid, dig);
+        if (!u || dig.length < 12) continue;
+        // o painel identifica a pessoa pelo nome de usuário (sem id numérico) — guarda pelas duas chaves
+        out.set(String(u.id), dig); if (u.username) out.set(norm(u.username), dig); out.set(norm(t.name), dig);
       }
     } catch (e) { /* sem RH = sem número, segue */ }
   }
@@ -238,7 +240,7 @@ module.exports = async (req, res) => {
     if (bons.length) foiBem.push(`${bons.slice(0, 2).map((p) => `${p.cliente} (${p.nota})`).join(' e ')} — grupo${bons.length === 1 ? '' : 's'} bem avaliado${bons.length === 1 ? '' : 's'} pela IA`);
     const verdesOk = porCliente.filter((c) => c.flag === 'green' && !c.pontos.length).length;
     if (verdesOk) foiBem.push(`${verdesOk} cliente${verdesOk === 1 ? '' : 's'} em Green Flag sem nenhum ponto aberto`);
-    const x = { id: a.id, nome: a.p.name, papeis: a.papeis.map((k) => PAPEL_LBL[k] || k), whatsapp: tel.get(a.id) || null, clientes: a.clientes.length, flags, pilares: por, atacar, abaixo: abaixo.map((y) => ({ cliente: y.c.name, pilar: LBL[y.k], valor: fmtV(y.k, y.m.valor), falta: fmtLac(y.k, y.m.lacuna), cls: y.m.cls, detalhe: y.m.txt })), calados, atrasadas, pareceres, ultimoParecer: ultimoParecer || null, porCliente, foiBem };
+    const x = { id: a.id, nome: a.p.name, papeis: a.papeis.map((k) => PAPEL_LBL[k] || k), whatsapp: tel.get(a.id) || tel.get(norm(a.p.name)) || null, clientes: a.clientes.length, flags, pilares: por, atacar, abaixo: abaixo.map((y) => ({ cliente: y.c.name, pilar: LBL[y.k], valor: fmtV(y.k, y.m.valor), falta: fmtLac(y.k, y.m.lacuna), cls: y.m.cls, detalhe: y.m.txt })), calados, atrasadas, pareceres, ultimoParecer: ultimoParecer || null, porCliente, foiBem };
     x.mensagem = mensagem(x, quando);
     return x;
   }).sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
