@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 80;
+  const VERSION = 81;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -40,6 +40,7 @@
     hsDir: 'asc',       // 'asc' | 'desc' (padrão: score asc = pior primeiro)
     cal: null,     // { y, m }
     fnExpanded: new Set(),
+    colab: null,        // colaborador escolhido na visão por pessoa (v81)
   };
 
   const $ = (s, el = document) => el.querySelector(s);
@@ -1060,8 +1061,133 @@
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
   }
 
+  // ===================== VISÃO POR COLABORADOR (v81) =====================
+  // Em vez de filtrar por área (pilar), filtrar por PESSOA (Bruno, 09/10/26): escolhe o colaborador e vê tudo dele de uma vez —
+  // clientes que atende, nota em cada pilar (a mesma medida por pessoa das abas de pilar), o que está abaixo da meta,
+  // silêncio nos grupos, tarefas atrasadas e os pareceres da IA. Will e Beltrão continuam fora (FORA_PLACAR).
+  const PAPEL_LBL = { trafego: 'Tráfego', social: 'Social Media', rp: 'RP', audiovisual: 'Audiovisual', webdesign: 'Web Designer' };
+  const META_V = { trafego: 70, satisfacao: 9, produtividade: 95, contato: 70 };
+  const ESC_V = { trafego: 100, satisfacao: 10, produtividade: 100, contato: 100 };
+  const clsPilar = (k, v) => (v == null ? 'na' : k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : k === 'produtividade' ? (v >= 95 ? 'g' : v >= 85 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
+  const fmtPilar = (k, v) => (v == null ? '—' : k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pctFmt(v) : `${Math.round(v)} pts`);
+  const fmtLacP = (k, v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' p.p.' : `${Math.round(v)} pts`);
+  const chaveNome = (n) => { const f = normNome(String(n || '').split(' ')[0]); return f === 'will' ? 'willian' : f; };
+
+  // todo mundo da operação: Equipe dos cards + responsáveis de tarefa + Gestor de Tráfego; com os papéis e os clientes de cada um
+  function colaboradores(base) {
+    const map = new Map();
+    const add = (p, c, papel) => {
+      if (!p || foraPlacar(p.name)) return;
+      const id = pid(p);
+      if (!map.has(id)) map.set(id, { id, p, papeis: new Set(), clientes: new Map() });
+      const a = map.get(id); a.clientes.set(c.id, c); if (papel) a.papeis.add(papel);
+    };
+    for (const c of base) {
+      for (const p of equipeDe(c)) add(p, c, null);
+      for (const [k, lista] of Object.entries(c.team || {})) for (const p of lista || []) add(p, c, k);
+      for (const t of tasksOf(c.id)) if (isOpen(t) || concluida(t)) for (const p of t.assignees || []) add(p, c, null);
+    }
+    return [...map.values()].map((a) => ({ ...a, clientes: [...a.clientes.values()].sort((x, y) => x.name.localeCompare(y.name, 'pt-BR')) }));
+  }
+  // medida de UM pilar pra pessoa num cliente; tráfego só conta quando ela é o Gestor de Tráfego do card
+  function medidaColab(k, c, a) {
+    if (k === 'trafego') return (c.team && c.team.trafego || []).some((p) => pid(p) === a.id) ? medidaPilar('trafego', c) : null;
+    return medidaPilar(k, c, a.id);
+  }
+  // resumo da pessoa: média por pilar + lista de (cliente × pilar) abaixo da meta
+  function resumoColab(a) {
+    const por = {}; const abaixo = [];
+    for (const k of PILARES) {
+      const vals = [];
+      for (const c of a.clientes) { const m = medidaColab(k, c, a); if (!m) continue; vals.push(m.valor); if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META_V[k] }); }
+      const media = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
+      por[k] = { media, n: vals.length, cls: clsPilar(k, media), lacuna: media == null ? null : Math.max(0, META_V[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
+    }
+    abaixo.sort((x, y) => (x.m.cls === y.m.cls ? y.rel - x.rel : x.m.cls === 'r' ? -1 : y.m.cls === 'r' ? 1 : 0));
+    return { por, abaixo };
+  }
+
+  function renderColab(el) {
+    const { clients } = state.data;
+    const base = clients.filter((c) => stKeyOf(c) !== 'briefing');
+    const todos = colaboradores(base).sort((x, y) => y.clientes.length - x.clientes.length || x.p.name.localeCompare(y.p.name, 'pt-BR'));
+    if (state.colab && !todos.some((a) => a.id === state.colab)) state.colab = null;
+    const sel = todos.find((a) => a.id === state.colab) || null;
+
+    const chips = todos.map((a) => `<button class="hs-chip pl-chip${sel && sel.id === a.id ? ' is-on' : ''}" data-colab="${esc(a.id)}" title="${esc(a.p.name)} · ${a.clientes.length} cliente${a.clientes.length === 1 ? '' : 's'}">${avatarHTML(a.p, 'avatar avatar-xs')}${esc(a.p.name.split(' ')[0])}<i>${a.clientes.length}</i></button>`).join('');
+    const filtros = `<div class="pl-filtros cb-filtros"><span class="balcao-l">colaborador</span><div class="chips">${chips}${sel ? '<button class="hs-chip pl-chip pl-limpar" data-colab="">limpar</button>' : ''}</div></div>`;
+
+    // ---- sem pessoa escolhida: placar geral, uma linha por colaborador, os 4 pilares lado a lado ----
+    if (!sel) {
+      const rows = todos.map((a) => ({ a, r: resumoColab(a) }));
+      const td = (k, p) => `<td class="hs-td ${p.cls}" title="${p.n ? p.n + ' cliente(s) com dado' + (p.abaixo ? ' · ' + p.abaixo + ' abaixo da meta' : '') : 'sem dado'}">${p.media == null ? '<span class="na">—</span>' : `${fmtPilar(k, p.media)}${p.abaixo ? `<small class="na"> · ${p.abaixo}↓</small>` : ''}`}</td>`;
+      el.innerHTML = `
+        <div class="pl-head">
+          <div class="hs-termo pl-termo cb-termo">
+            <div class="hs-termo-media"><span class="hs-big na">${todos.length}</span><span class="hs-termo-l">colaboradores<br><span>${base.length} clientes na carteira · escolha uma pessoa pra ver tudo dela</span></span></div>
+            <div class="pl-meta-box"><span class="pl-meta-n">4</span><span class="hs-termo-l">pilares<br><span>tráfego ≥ 70 pts (só pra quem é gestor de tráfego) · satisfação ≥ 9 (nota ao papel da pessoa no CSAT) · produtividade ≥ 95% (só as tarefas da pessoa) · contato ≥ 70 pts (atuação da pessoa no grupo)</span></span></div>
+          </div>
+          ${filtros}
+        </div>
+        <p class="eyebrow">Placar geral <span class="hs-hist-info">nota de cada pessoa em cada pilar = média dos clientes em que ela está · o número pequeno é quantos clientes estão abaixo da meta naquele pilar</span></p>
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th>Papel</th><th class="r">Clientes</th><th class="r">Tráfego</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Contato</th><th class="r" title="combinações cliente × pilar abaixo da meta">Abaixo</th></tr></thead><tbody>${rows.sort((x, y) => y.r.abaixo.length - x.r.abaixo.length || y.a.clientes.length - x.a.clientes.length).map(({ a, r }) => `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="ver ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td-txt">${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(', ') || 'equipe')}</td><td class="hs-td">${a.clientes.length}</td>${PILARES.map((k) => td(k, r.por[k])).join('')}<td class="hs-td ${r.abaixo.length ? 'r' : 'g'}">${r.abaixo.length}</td></tr>`).join('')}</tbody></table></div>
+        <div class="hs-regras pl-regras"><div><b>Como ler</b> cada célula é a média da pessoa naquele pilar, nos clientes em que ela está. Tráfego só aparece pra quem é Gestor de Tráfego no card.</div><div><b>Clique</b> no nome ou no chip pra abrir a visão completa do colaborador: clientes, o que está abaixo da meta, silêncio, atrasadas e pareceres da IA.</div></div>`;
+      el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; renderColab(el); }));
+      return;
+    }
+
+    // ---- pessoa escolhida ----
+    const a = sel; const { por, abaixo } = resumoColab(a);
+    const flags = { green: 0, yellow: 0, red: 0 }; for (const c of a.clientes) { const f = flagDe(c); if (flags[f] != null) flags[f]++; }
+    const gestor = a.papeis.has('trafego');
+    const kpi = (k) => { const p = por[k]; const M = METAS_PILAR[k]; const na = k === 'trafego' && !gestor;
+      return `<div class="cb-kpi ${na ? 'is-na' : p.cls}"><span class="cb-kpi-l">${M.lbl}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'não é gestor de tráfego' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></div>`; };
+
+    // silêncio: grupos em que ela está na Equipe e não escreveu na semana
+    const calados = a.clientes.filter((c) => { const m = medidaColab('contato', c, a); return m && /^calado/.test(m.txt); });
+    // tarefas atrasadas dela (abertas vencidas) nos clientes dela
+    const atrasadas = [].concat(...a.clientes.map((c) => tasksOf(c.id).filter((t) => isLate(t) && (t.assignees || []).some((p) => pid(p) === a.id)).map((t) => ({ ...t, clienteName: t.clienteName || c.name })))).sort((x, y) => x.dueDate - y.dueDate);
+    // pareceres da IA sobre ela, cliente a cliente
+    const pareceres = []; let ultimoParecer = 0;
+    for (const c of a.clientes) { const pr = c.contato && c.contato.pareceres; if (!pr) continue; ultimoParecer = Math.max(ultimoParecer, pr.em || 0); for (const x of pr.pessoas || []) if (chaveNome(x.nome) === chaveNome(a.p.name)) pareceres.push({ c, nota: x.nota, txt: x.parecer }); }
+    pareceres.sort((x, y) => x.nota - y.nota);
+    const notaIA = pareceres.length ? Math.round(pareceres.reduce((s, x) => s + x.nota, 0) / pareceres.length) : null;
+
+    const cel = (k, c) => { const m = medidaColab(k, c, a); if (!m) return `<td class="hs-td na" title="${k === 'trafego' ? 'não é o gestor de tráfego deste cliente' : 'sem dado'}">—</td>`; return `<td class="hs-td ${m.cls}" title="${esc(m.txt)}">${fmtPilar(k, m.valor)}${m.lacuna > 0 ? `<small class="na"> falta ${fmtLacP(k, m.lacuna)}</small>` : ''}</td>`; };
+
+    el.innerHTML = `
+      <div class="pl-head">
+        <div class="hs-termo pl-termo cb-termo">
+          <div class="hs-termo-media cb-who">${avatarHTML(a.p, 'avatar cb-avatar')}<span class="hs-termo-l"><b class="cb-nome">${esc(a.p.name)}</b><br><span>${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(' · ') || 'equipe')} · ${a.clientes.length} cliente${a.clientes.length === 1 ? '' : 's'}</span></span></div>
+          <div class="pl-meta-box cb-flags"><span class="cb-flag g" title="clientes em Green Flag">${flags.green}</span><span class="cb-flag y" title="em Yellow Flag">${flags.yellow}</span><span class="cb-flag r" title="em Red Flag">${flags.red}</span><span class="hs-termo-l">copos<br><span>dos clientes em que está</span></span></div>
+          <div class="hs-termo-pilares pl-kpis cb-kpis">${PILARES.map(kpi).join('')}</div>
+        </div>
+        ${filtros}
+      </div>
+
+      <p class="eyebrow">Abaixo da meta <span class="hs-hist-info">cliente × pilar onde a medida da pessoa está abaixo da meta, do mais grave pro menos — a pauta da conversa com ${esc(a.p.name.split(' ')[0])}</span></p>
+      ${abaixo.length ? `<div class="pl-pareto">${abaixo.map((x) => { const w = Math.max(2, Math.round((x.m.valor / ESC_V[x.k]) * 100)); const metaPos = Math.round((META_V[x.k] / ESC_V[x.k]) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(METAS_PILAR[x.k].lbl)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)} <small class="cb-bar-k">${esc(METAS_PILAR[x.k].lbl)}</small></span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtPilar(x.k, x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLacP(x.k, x.m.lacuna)}</span></button>`; }).join('')}</div>` : '<div class="fn-empty">Nada abaixo da meta. 🥂</div>'}
+
+      ${calados.length ? `<p class="eyebrow">Silêncio na semana <span class="hs-hist-info">está na Equipe do cliente e não escreveu nada no grupo em 7 dias</span></p>
+      <div class="pl-silencio"><div class="pl-sil-row"><div class="pl-sil-who">${avatarHTML(a.p, 'avatar avatar-xs')}<b>${esc(a.p.name.split(' ')[0])}</b><span class="r">${calados.length}</span><small>de ${a.clientes.filter((c) => c.contato && c.contato.equipe).length}</small></div><div class="hs-pilar-list">${calados.map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}${c.contato.equipe.grupo.msgsCliente ? `<i>${c.contato.equipe.grupo.msgsCliente} msg do cliente</i>` : '<i>grupo parado</i>'}</button>`).join('')}</div></div></div>` : ''}
+
+      <p class="eyebrow">Cliente a cliente <span class="hs-hist-info">a medida da pessoa em cada pilar, por cliente · clique pra abrir a ficha</span></p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Tráfego</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Contato</th></tr></thead><tbody>${a.clientes.map((c) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td>${PILARES.map((k) => cel(k, c)).join('')}</tr>`).join('')}</tbody></table></div>
+
+      ${atrasadas.length ? `<p class="eyebrow">Tarefas atrasadas <span class="hs-hist-info">${atrasadas.length} aberta${atrasadas.length === 1 ? '' : 's'} vencida${atrasadas.length === 1 ? '' : 's'} sob responsabilidade de ${esc(a.p.name.split(' ')[0])}</span></p>
+      <div class="task-rows">${atrasadas.slice(0, 12).map(rowHTML).join('')}</div>${atrasadas.length > 12 ? `<p class="sinais-nota">+ ${atrasadas.length - 12} na aba Produtividade.</p>` : ''}` : ''}
+
+      <p class="eyebrow">Pareceres da IA <span class="hs-hist-info">análise de domingo sobre a atuação de ${esc(a.p.name.split(' ')[0])} em cada grupo${ultimoParecer ? ' · última análise ' + fmtCurto(ultimoParecer) : ''}${notaIA != null ? ` · média <b class="${clsPilar('contato', notaIA)}">${notaIA}</b>` : ''}</span></p>
+      ${pareceres.length ? `<div class="pl-pareceres">${pareceres.map((x) => `<div class="pl-parecer cb-parecer"><b class="${clsPilar('contato', x.nota)} pl-parecer-n">${x.nota}</b><button class="hs-chip" data-id="${x.c.id}">${esc(x.c.name)}</button><span>${esc(x.txt)}</span></div>`).join('')}</div>` : '<div class="fn-empty">Sem parecer individual ainda — entra na próxima análise de domingo.</div>'}
+
+      <div class="hs-regras pl-regras"><div><b>Tráfego</b> nota do pilar nos clientes em que a pessoa é o Gestor de Tráfego.</div><div><b>Satisfação</b> nota que o cliente dá ao papel da pessoa no CSAT (tráfego/social/RP/AV).</div><div><b>Produtividade</b> só as tarefas da pessoa: abertas vencidas + concluídas fora do prazo em 30 dias.</div><div><b>Contato</b> atuação da pessoa no grupo: sem mensagem com o cliente falando = 0 · sem mensagem em grupo parado = 50 · respostas lentas descontam.</div></div>`;
+
+    el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; renderColab(el); }));
+    el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
+  }
+
   function render() {
-    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth') };
+    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab') };
     const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     pilarEl.hidden = !PILARES.includes(state.view);
@@ -1075,6 +1201,7 @@
     if (state.view === 'calendario') renderCalendario(views.calendario);
     if (state.view === 'funcoes') renderFuncoes(views.funcoes);
     if (state.view === 'health') renderHealth(views.health);
+    if (state.view === 'colab') renderColab(views.colab);
   }
 
   async function boot() {
