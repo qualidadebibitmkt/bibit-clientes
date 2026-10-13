@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 84;
+  const VERSION = 85;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1163,7 +1163,7 @@
       <div class="pl-head">
         <div class="hs-termo pl-termo cb-termo">
           <div class="hs-termo-media cb-who">${avatarHTML(a.p, 'avatar cb-avatar')}<span class="hs-termo-l"><b class="cb-nome">${esc(a.p.name)}</b><br><span>${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(' · ') || 'equipe')} · ${a.clientes.length} cliente${a.clientes.length === 1 ? '' : 's'}</span></span></div>
-          <div class="pl-meta-box cb-flags"><span class="cb-flag g" title="clientes em Green Flag">${flags.green}</span><span class="cb-flag y" title="em Yellow Flag">${flags.yellow}</span><span class="cb-flag r" title="em Red Flag">${flags.red}</span><span class="hs-termo-l">copos<br><span>dos clientes em que está</span></span></div>
+          <div class="pl-meta-box cb-flags"><span class="cb-flags-l">copos dos clientes</span><div class="cb-flag-row">${['green', 'yellow', 'red'].map((f) => `<span class="cb-flag" title="${f === 'green' ? 'Green' : f === 'yellow' ? 'Yellow' : 'Red'} Flag">${glass(f, 22)}<b class="${flagCls(f)}">${flags[f]}</b></span>`).join('')}</div></div>
           <div class="hs-termo-pilares pl-kpis cb-kpis">${PILARES.map(kpi).join('')}</div>
         </div>
         ${filtros}
