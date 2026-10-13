@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 85;
+  const VERSION = 86;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -41,6 +41,7 @@
     cal: null,     // { y, m }
     fnExpanded: new Set(),
     colab: null,        // colaborador escolhido na visão por pessoa (v81)
+    colabFoco: null,    // pilar em foco dentro da visão da pessoa (v86): trafego|satisfacao|produtividade|contato
   };
 
   const $ = (s, el = document) => el.querySelector(s);
@@ -1144,8 +1145,10 @@
     const a = sel; const { por, abaixo } = resumoColab(a);
     const flags = { green: 0, yellow: 0, red: 0 }; for (const c of a.clientes) { const f = flagDe(c); if (flags[f] != null) flags[f]++; }
     const gestor = a.papeis.has('trafego');
+    if (state.colabFoco && (!PILARES.includes(state.colabFoco) || (state.colabFoco === 'trafego' && !gestor))) state.colabFoco = null;
+    const foco = state.colabFoco;
     const kpi = (k) => { const p = por[k]; const M = METAS_PILAR[k]; const na = k === 'trafego' && !gestor;
-      return `<div class="cb-kpi ${na ? 'is-na' : p.cls}"><span class="cb-kpi-l">${M.lbl}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'não é gestor de tráfego' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></div>`; };
+      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''} title="${na ? '' : 'explorar ' + M.lbl.toLowerCase() + ' cliente a cliente'}"><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go">explorar ›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'não é gestor de tráfego' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
 
     // silêncio: grupos em que ela está na Equipe e não escreveu na semana
     const calados = a.clientes.filter((c) => { const m = medidaColab('contato', c, a); return m && /^calado/.test(m.txt); });
@@ -1156,6 +1159,40 @@
     for (const c of a.clientes) { const pr = c.contato && c.contato.pareceres; if (!pr) continue; ultimoParecer = Math.max(ultimoParecer, pr.em || 0); for (const x of pr.pessoas || []) if (chaveNome(x.nome) === chaveNome(a.p.name)) pareceres.push({ c, nota: x.nota, txt: x.parecer }); }
     pareceres.sort((x, y) => x.nota - y.nota);
     const notaIA = pareceres.length ? Math.round(pareceres.reduce((s, x) => s + x.nota, 0) / pareceres.length) : null;
+
+    // ---- foco num pilar (v86): distribuição + cliente a cliente só daquele pilar, com o detalhe de cada medida ----
+    let focoHTML = '';
+    if (foco) {
+      const k = foco; const M = METAS_PILAR[k];
+      const linhas = a.clientes.map((c) => ({ c, m: medidaColab(k, c, a) }));
+      const com = linhas.filter((x) => x.m), sem = linhas.filter((x) => !x.m);
+      const ab = com.filter((x) => x.m.lacuna > 0).sort((x, y) => y.m.lacuna - x.m.lacuna);
+      const ok = com.filter((x) => x.m.lacuna <= 0).sort((x, y) => y.m.valor - x.m.valor);
+      const detalhe = (c, m) => {
+        if (k === 'trafego') return (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') + (c.tipoRelatorio ? ` <span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : '');
+        if (k === 'satisfacao') return `${esc(m.txt)}${c.metrics && c.metrics.ultimaResposta ? ` · última resposta ${fmtCurto(c.metrics.ultimaResposta)}` : ''}${c.metrics && c.metrics.respostas ? ` · ${c.metrics.respostas} resposta${c.metrics.respostas === 1 ? '' : 's'}` : ''}`;
+        if (k === 'produtividade') { const venc = tasksOf(c.id).filter((t) => isLate(t) && (t.assignees || []).some((p) => pid(p) === a.id)).sort((x, y) => x.dueDate - y.dueDate); return `${esc(m.txt)}${venc.length ? ` · <span class="r">${venc.slice(0, 3).map((t) => esc(t.name) + ' (' + fmtCurto(t.dueDate) + ')').join(', ')}${venc.length > 3 ? ` +${venc.length - 3}` : ''}</span>` : ''}`; }
+        const g = c.contato && c.contato.equipe && c.contato.equipe.grupo;
+        return `${esc(m.txt)}${g ? ` · <span class="na">${g.msgsCliente} do cliente · ${g.msgsBibit} da Bibit${g.semResposta ? ` · <b class="r">${g.semResposta} sem resposta >24h</b>` : ''}</span>` : ''}`;
+      };
+      const motivo = (c) => (k === 'trafego' ? (!((c.team && c.team.trafego) || []).some((p) => pid(p) === a.id) ? 'não é o gestor' : !c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? (nuncaCSAT(c) ? 'nunca respondeu CSAT' : 'sem nota ao papel') : k === 'produtividade' ? 'sem tarefa em 30 dias' : (contatoOpcional(c, a.id) ? 'presença opcional (web)' : 'sem grupo analisado'));
+      const linha = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td ${m.cls}">${fmtPilar(k, m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLacP(k, m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${detalhe(c, m)}</td></tr>`;
+      const media = por[k].media;
+      focoHTML = `<div class="cb-foco">
+        <div class="cb-foco-head"><p class="eyebrow">Foco · ${M.lbl} <span class="hs-hist-info">${esc(M.desc)}</span></p><div class="chips">${k !== 'trafego' ? `<button class="hs-chip" data-pilar-ir="${k}" title="abre a aba ${M.lbl} já filtrada por ${esc(a.p.name)}">abrir aba ${M.lbl} ↗</button>` : `<button class="hs-chip" data-pilar-ir="${k}">abrir aba ${M.lbl} ↗</button>`}<button class="hs-chip pl-limpar" data-foco="">fechar foco</button></div></div>
+        <div class="hs-termo-pilares cb-foco-kpis">
+          <div class="hs-termo-p"><span class="hs-termo-pn ${clsPilar(k, media)}">${fmtPilar(k, media)}</span><span class="hs-termo-pl">média da pessoa</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn g">${ok.length}</span><span class="hs-termo-pl">na meta</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn ${ab.length ? 'r' : 'g'}">${ab.length}</span><span class="hs-termo-pl">abaixo</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn ${com.filter((x) => x.m.cls === 'r').length ? 'r' : 'g'}">${com.filter((x) => x.m.cls === 'r').length}</span><span class="hs-termo-pl">na faixa vermelha</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn na">${sem.length}</span><span class="hs-termo-pl">sem dado</span></div>
+        </div>
+        ${ab.length ? `<div class="pl-pareto">${ab.map((x) => { const w = Math.max(2, Math.round((x.m.valor / ESC_V[k]) * 100)); const metaPos = Math.round((META_V[k] / ESC_V[k]) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtPilar(k, x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLacP(k, x.m.lacuna)}</span></button>`; }).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta em ${M.lbl.toLowerCase()}. 🥂</div>`}
+        <p class="eyebrow">Cliente a cliente · ${M.lbl} <span class="hs-hist-info">a medida de ${esc(a.p.name.split(' ')[0])} em cada cliente, do pior pro melhor, com o detalhe por trás do número</span></p>
+        ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...ab, ...ok].map(linha).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste pilar.</div>'}
+        ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${motivo(c)}</i></button>`).join('')}</div>` : ''}
+      </div>`;
+    }
 
     const cel = (k, c) => { const m = medidaColab(k, c, a); if (!m) return `<td class="hs-td na" title="${k === 'trafego' ? 'não é o gestor de tráfego deste cliente' : 'sem dado'}">—</td>`; return `<td class="hs-td ${m.cls}" title="${esc(m.txt)}">${fmtPilar(k, m.valor)}${m.lacuna > 0 ? `<small class="na"> falta ${fmtLacP(k, m.lacuna)}</small>` : ''}</td>`; };
 
@@ -1169,8 +1206,9 @@
         ${filtros}
       </div>
 
-      <p class="eyebrow">Abaixo da meta <span class="hs-hist-info">cliente × pilar onde a medida da pessoa está abaixo da meta, do mais grave pro menos — a pauta da conversa com ${esc(a.p.name.split(' ')[0])}</span></p>
-      ${abaixo.length ? `<div class="pl-pareto">${abaixo.map((x) => { const w = Math.max(2, Math.round((x.m.valor / ESC_V[x.k]) * 100)); const metaPos = Math.round((META_V[x.k] / ESC_V[x.k]) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(METAS_PILAR[x.k].lbl)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)} <small class="cb-bar-k">${esc(METAS_PILAR[x.k].lbl)}</small></span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtPilar(x.k, x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLacP(x.k, x.m.lacuna)}</span></button>`; }).join('')}</div>` : '<div class="fn-empty">Nada abaixo da meta. 🥂</div>'}
+      ${focoHTML}
+      ${foco ? '' : `<p class="eyebrow">Abaixo da meta <span class="hs-hist-info">cliente × pilar onde a medida da pessoa está abaixo da meta, do mais grave pro menos — a pauta da conversa com ${esc(a.p.name.split(' ')[0])}</span></p>
+      ${abaixo.length ? `<div class="pl-pareto">${abaixo.map((x) => { const w = Math.max(2, Math.round((x.m.valor / ESC_V[x.k]) * 100)); const metaPos = Math.round((META_V[x.k] / ESC_V[x.k]) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(METAS_PILAR[x.k].lbl)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)} <small class="cb-bar-k">${esc(METAS_PILAR[x.k].lbl)}</small></span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtPilar(x.k, x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLacP(x.k, x.m.lacuna)}</span></button>`; }).join('')}</div>` : '<div class="fn-empty">Nada abaixo da meta. 🥂</div>'}`}
 
       ${calados.length ? `<p class="eyebrow">Silêncio na semana <span class="hs-hist-info">está na Equipe do cliente e não escreveu nada no grupo em 7 dias</span></p>
       <div class="pl-silencio"><div class="pl-sil-row"><div class="pl-sil-who">${avatarHTML(a.p, 'avatar avatar-xs')}<b>${esc(a.p.name.split(' ')[0])}</b><span class="r">${calados.length}</span><small>de ${a.clientes.filter((c) => c.contato && c.contato.equipe).length}</small></div><div class="hs-pilar-list">${calados.map((c) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}${c.contato.equipe.grupo.msgsCliente ? `<i>${c.contato.equipe.grupo.msgsCliente} msg do cliente</i>` : '<i>grupo parado</i>'}</button>`).join('')}</div></div></div>` : ''}
@@ -1186,7 +1224,9 @@
 
       <div class="hs-regras pl-regras"><div><b>Tráfego</b> nota do pilar nos clientes em que a pessoa é o Gestor de Tráfego.</div><div><b>Satisfação</b> nota que o cliente dá ao papel da pessoa no CSAT (tráfego/social/RP/AV).</div><div><b>Produtividade</b> só as tarefas da pessoa: abertas vencidas + concluídas fora do prazo em 30 dias.</div><div><b>Contato</b> atuação da pessoa no grupo: sem mensagem com o cliente falando = 0 · sem mensagem em grupo parado = 50 · respostas lentas descontam.</div></div>`;
 
-    el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; renderColab(el); }));
+    el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; state.colabFoco = null; renderColab(el); }));
+    el.querySelectorAll('[data-foco]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.foco || null; state.colabFoco = (!k || state.colabFoco === k) ? null : k; renderColab(el); const f = el.querySelector('.cb-foco'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+    el.querySelectorAll('[data-pilar-ir]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.pilarIr; if (!state.pilarFiltro) state.pilarFiltro = {}; if (k !== 'trafego') state.pilarFiltro[k] = a.id; state.view = k; render(); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
   }
 
