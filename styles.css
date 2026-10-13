@@ -1413,7 +1413,9 @@ body::before {
 @media (max-width: 900px) { .cb-termo, .cb-termo--2 { grid-template-columns: 1fr; } .cb-kpis { grid-template-columns: repeat(2, 1fr); } .cb-parecer { grid-template-columns: 36px 1fr; } .cb-parecer span { grid-column: 1 / -1; } }
 
 /* foco num pilar (v86) */
-.cb-kpi { cursor: pointer; font-family: var(--ui); color: inherit; transition: background .15s, border-color .15s; }
+.cb-kpi { cursor: pointer; font: inherit; color: inherit; appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; box-sizing: border-box; text-align: left; white-space: normal; overflow: hidden; justify-items: start; transition: background .15s, border-color .15s; }
+.cb-kpi > * { min-width: 0; max-width: 100%; }
+.cb-kpi-s { overflow-wrap: anywhere; }
 .cb-kpi:hover:not(:disabled) { background: rgba(0,0,0,0.3); }
 .cb-kpi:disabled { cursor: default; }
 .cb-kpi.is-on { background: var(--garrafa-3); border-color: var(--creme-45); box-shadow: inset 0 0 0 1px var(--creme-45); }
