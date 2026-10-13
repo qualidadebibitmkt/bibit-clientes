@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 87;
+  const VERSION = 88;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1148,7 +1148,7 @@
     if (state.colabFoco && (!PILARES.includes(state.colabFoco) || (state.colabFoco === 'trafego' && !gestor))) state.colabFoco = null;
     const foco = state.colabFoco;
     const kpi = (k) => { const p = por[k]; const M = METAS_PILAR[k]; const na = k === 'trafego' && !gestor;
-      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''} title="${na ? '' : 'explorar ' + M.lbl.toLowerCase() + ' cliente a cliente'}"><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go">explorar ›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'não é gestor de tráfego' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
+      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''}><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go" aria-hidden="true">›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'não é gestor de tráfego' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
 
     // silêncio: grupos em que ela está na Equipe e não escreveu na semana
     const calados = a.clientes.filter((c) => { const m = medidaColab('contato', c, a); return m && /^calado/.test(m.txt); });

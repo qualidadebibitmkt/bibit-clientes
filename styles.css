@@ -1413,15 +1413,16 @@ body::before {
 @media (max-width: 900px) { .cb-termo, .cb-termo--2 { grid-template-columns: 1fr; } .cb-kpis { grid-template-columns: repeat(2, 1fr); } .cb-parecer { grid-template-columns: 36px 1fr; } .cb-parecer span { grid-column: 1 / -1; } }
 
 /* foco num pilar (v86) */
-.cb-kpi { cursor: pointer; font: inherit; color: inherit; appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; box-sizing: border-box; text-align: left; white-space: normal; overflow: hidden; justify-items: start; transition: background .15s, border-color .15s; }
+.cb-kpi { cursor: pointer; font: inherit; color: inherit; appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; box-sizing: border-box; text-align: left; white-space: normal; justify-items: stretch; transition: background .15s, border-color .15s; }
 .cb-kpi > * { min-width: 0; max-width: 100%; }
 .cb-kpi-s { overflow-wrap: anywhere; }
 .cb-kpi:hover:not(:disabled) { background: rgba(0,0,0,0.3); }
 .cb-kpi:disabled { cursor: default; }
 .cb-kpi.is-on { background: var(--garrafa-3); border-color: var(--creme-45); box-shadow: inset 0 0 0 1px var(--creme-45); }
 .cb-kpi-l { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.cb-kpi-go { font-style: normal; font-size: 9.5px; letter-spacing: 0.08em; color: var(--rolha); opacity: 0; transition: opacity .15s; }
-.cb-kpi:hover .cb-kpi-go, .cb-kpi.is-on .cb-kpi-go { opacity: 1; }
+.cb-kpi-go { font-style: normal; font-size: 16px; line-height: 1; letter-spacing: 0; text-transform: none; color: var(--creme-45); flex: none; transition: color .15s, transform .15s; }
+.cb-kpi:hover .cb-kpi-go { color: var(--creme); transform: translateX(2px); }
+.cb-kpi.is-on .cb-kpi-go { color: var(--creme); transform: rotate(90deg); }
 .cb-foco { padding: 18px 20px 6px; margin: 0 0 28px; background: var(--garrafa-2); border: 1px solid var(--creme-45); border-radius: var(--radius); }
 .cb-foco-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .cb-foco-head .chips { display: flex; gap: 8px; flex-wrap: wrap; }
