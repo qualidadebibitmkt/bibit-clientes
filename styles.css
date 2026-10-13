@@ -1388,6 +1388,8 @@ body::before {
 
 /* ===== visão por colaborador (v81) ===== */
 .cb-termo { grid-template-columns: auto auto 1fr; }
+.cb-termo--2 { grid-template-columns: auto 1fr; }
+.cb-termo--2 .pl-meta-box { border-right: 0; max-width: none; }
 .cb-who { gap: 14px; }
 .cb-avatar { width: 56px; height: 56px; font-size: 20px; flex: none; }
 .cb-nome { font-family: var(--display); font-size: 26px; font-weight: 600; color: var(--creme); letter-spacing: 0; text-transform: none; line-height: 1.1; }
@@ -1405,4 +1407,4 @@ body::before {
 .cb-bar-k { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rolha); margin-left: 6px; }
 .cb-parecer { display: grid; grid-template-columns: 36px auto 1fr; gap: 10px; align-items: center; }
 .cb-parecer .pl-parecer-n.g { color: var(--flag-green); } .cb-parecer .pl-parecer-n.y { color: var(--flag-yellow); } .cb-parecer .pl-parecer-n.r { color: var(--flag-red); }
-@media (max-width: 900px) { .cb-termo { grid-template-columns: 1fr; } .cb-kpis { grid-template-columns: repeat(2, 1fr); } .cb-parecer { grid-template-columns: 36px 1fr; } .cb-parecer span { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .cb-termo, .cb-termo--2 { grid-template-columns: 1fr; } .cb-kpis { grid-template-columns: repeat(2, 1fr); } .cb-parecer { grid-template-columns: 36px 1fr; } .cb-parecer span { grid-column: 1 / -1; } }

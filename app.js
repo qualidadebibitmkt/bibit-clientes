@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 83;
+  const VERSION = 84;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1127,7 +1127,7 @@
       const td = (k, p) => `<td class="hs-td ${p.cls}" title="${p.n ? p.n + ' cliente(s) com dado' + (p.abaixo ? ' · ' + p.abaixo + ' abaixo da meta' : '') : 'sem dado'}">${p.media == null ? '<span class="na">—</span>' : `${fmtPilar(k, p.media)}${p.abaixo ? `<small class="na"> · ${p.abaixo}↓</small>` : ''}`}</td>`;
       el.innerHTML = `
         <div class="pl-head">
-          <div class="hs-termo pl-termo cb-termo">
+          <div class="hs-termo pl-termo cb-termo cb-termo--2">
             <div class="hs-termo-media"><span class="hs-big na">${todos.length}</span><span class="hs-termo-l">colaboradores<br><span>${base.length} clientes na carteira · escolha uma pessoa pra ver tudo dela</span></span></div>
             <div class="pl-meta-box"><span class="pl-meta-n">4</span><span class="hs-termo-l">pilares<br><span>tráfego ≥ 70 pts (só pra quem é gestor de tráfego) · satisfação ≥ 9 (nota ao papel da pessoa no CSAT) · produtividade ≥ 95% (só as tarefas da pessoa) · contato ≥ 70 pts (atuação da pessoa no grupo)</span></span></div>
           </div>
