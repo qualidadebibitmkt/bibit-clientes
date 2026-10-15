@@ -151,19 +151,29 @@ function montarTatico(reg, porPessoa, semDono) {
     if (reg.obs) L.push(`_${reg.obs}_`);
     return L.join('\n');
   }
-  const porCliente = new Map();
-  for (const i of reg.itens) { if (!porCliente.has(i.cliente)) porCliente.set(i.cliente, []); porCliente.get(i.cliente).push(i); }
+  const totalGrupos = new Set(reg.itens.map((i) => i.cliente)).size;
   const contagem = [...porPessoa.entries()].map(([n, l]) => `${n.split(' ')[0]} ${l.length}`).join(' · ');
-  L.push(`${reg.itens.length} ${reg.itens.length === 1 ? 'item' : 'itens'} em ${porCliente.size} grupo${porCliente.size === 1 ? '' : 's'}${reg.gruposAnalisados ? ` (de ${reg.gruposAnalisados} conferidos)` : ''}${contagem ? ` · ${contagem}` : ''}`);
+  L.push(`${reg.itens.length} ${reg.itens.length === 1 ? 'item' : 'itens'} em ${totalGrupos} grupo${totalGrupos === 1 ? '' : 's'}${reg.gruposAnalisados ? ` (de ${reg.gruposAnalisados} conferidos)` : ''}${contagem ? ` · ${contagem}` : ''}`);
   L.push('');
-  const clientesOrd = [...porCliente.entries()].sort((a, b) => (b[1].some((i) => i.urgente) ? 1 : 0) - (a[1].some((i) => i.urgente) ? 1 : 0) || a[0].localeCompare(b[0], 'pt-BR'));
-  for (const [cliente, itens] of clientesOrd) {
-    L.push(`*${cliente}*`);
-    for (const i of itens.sort((x, y) => ORDEM_TIPO.indexOf(x.tipo) - ORDEM_TIPO.indexOf(y.tipo))) {
-      const dono = i._donos && i._donos.length ? i._donos.map((d) => d.split(' ')[0]).join(', ') : 'equipe toda';
-      L.push(`• ${ICONE[i.tipo] || '•'}${i.urgente ? ' *URGENTE*' : ''} ${i.fato}${i.quando ? ` (${i.quando})` : ''} → ${i.acao} _(${dono})_`);
-    }
+  // Bruno (15/10/26): o consolidado do Tático sai separado por urgência — PREOCUPANTE primeiro, depois NÃO PREOCUPANTE.
+  // Preocupante = urgente, alerta ou cliente sem resposta; o resto (pedido, promessa, grupo parado, comunicação) é acompanhamento.
+  const preocupante = (i) => i.urgente || i.tipo === 'alerta' || i.tipo === 'sem_resposta';
+  const secoes = [['🔴 *PREOCUPANTE*', reg.itens.filter(preocupante)], ['🟢 *NÃO PREOCUPANTE*', reg.itens.filter((i) => !preocupante(i))]];
+  for (const [titulo, lista] of secoes) {
+    L.push(`${titulo} — ${lista.length} ${lista.length === 1 ? 'item' : 'itens'}`);
+    if (!lista.length) { L.push('_nada_'); L.push(''); continue; }
     L.push('');
+    const porCliente = new Map();
+    for (const i of lista) { if (!porCliente.has(i.cliente)) porCliente.set(i.cliente, []); porCliente.get(i.cliente).push(i); }
+    const clientesOrd = [...porCliente.entries()].sort((a, b) => (b[1].some((i) => i.urgente) ? 1 : 0) - (a[1].some((i) => i.urgente) ? 1 : 0) || a[0].localeCompare(b[0], 'pt-BR'));
+    for (const [cliente, itens] of clientesOrd) {
+      L.push(`*${cliente}*`);
+      for (const i of itens.sort((x, y) => ORDEM_TIPO.indexOf(x.tipo) - ORDEM_TIPO.indexOf(y.tipo))) {
+        const dono = i._donos && i._donos.length ? i._donos.map((d) => d.split(' ')[0]).join(', ') : 'equipe toda';
+        L.push(`• ${ICONE[i.tipo] || '•'}${i.urgente ? ' *URGENTE*' : ''} ${i.fato}${i.quando ? ` (${i.quando})` : ''} → ${i.acao} _(${dono})_`);
+      }
+      L.push('');
+    }
   }
   if (semDono.length) L.push(`_${semDono.length} ${semDono.length === 1 ? 'item ficou' : 'itens ficaram'} sem ninguém com WhatsApp cadastrado — só aqui no Tático._`);
   if (reg.obs) L.push(`_${reg.obs}_`);
