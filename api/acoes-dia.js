@@ -75,7 +75,8 @@ async function insumo(req, res) {
     let msgs = [];
     try { msgs = await wa.lerMsgs(grupo, 8); } catch (e) { out.push({ cliente: c.name, erro: String(e.message || e) }); continue; }
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
-    const bibitHumano = uteis.filter((m) => wa.ehBibit(m) && !m.me && !/^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|clipping da semana/i.test(String(m.m || '')));
+    // "humano" = alguém da equipe escrevendo de fato: fora o relatório de segunda, alertas, CSAT (número oficial) e o PDF de clipping
+    const bibitHumano = uteis.filter((m) => wa.ehBibit(m) && !m.me && !/^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|clipping da semana|^\[documento\] Clipping/i.test(String(m.m || '')));
     const ultimaBibit = bibitHumano.length ? bibitHumano[bibitHumano.length - 1].t : null;
     const ultimaCliente = uteis.filter((m) => !wa.ehBibit(m) && !m.me).slice(-1)[0];
     const met = wa.metricasEquipe(msgs, agora, c.name);
