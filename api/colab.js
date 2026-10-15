@@ -254,3 +254,6 @@ module.exports = async (req, res) => {
 
   res.status(200).json({ generatedAt: captured.generatedAt, quando, pessoas: soTexto ? pessoas.map((p) => ({ id: p.id, nome: p.nome, whatsapp: p.whatsapp, mensagem: p.mensagem })) : pessoas });
 };
+
+// reutilizado por /api/acoes-dia (números do Time - Operação)
+module.exports.whatsapps = whatsapps;

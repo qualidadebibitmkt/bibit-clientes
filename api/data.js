@@ -464,7 +464,9 @@ module.exports = async (req, res) => {
 
     res.status(200).json({
       generatedAt: now,
-      clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => c),
+      // _waGrupo (id do grupo de WhatsApp) nunca vai pro navegador; só chamadas internas de outro endpoint
+      // (req._internal, ex. /api/acoes-dia) recebem o id como waGrupo
+      clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => (req._internal && _waGrupo ? { ...c, waGrupo: _waGrupo } : c)),
       tasks,
     });
   } catch (err) {
