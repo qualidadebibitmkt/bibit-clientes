@@ -17,6 +17,7 @@
 //    sem nenhum dos dois → faixa de mercado.
 //  - CSAT e NPS na escala 0–10 do Typeform: verde ≥9 · amarelo 8–8,9 · vermelho <8.
 //  - Produtividade: verde ≥95% · amarelo 85–94 · vermelho <85.
+//    Conta abertas vencidas + concluídas fora do prazo nos últimos 30 dias (André, 20/10/26; cálculo em api/data.js).
 //  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
 
 const PESOS = { trafego: 40, satisfacao: 30, contato: 15, produtividade: 15 };
@@ -122,7 +123,7 @@ function notaSatisfacao(csat, nps) {
   return { nota: round0(partes.reduce((a, b) => a + b, 0) / partes.length), detalhe: { csat, nps } };
 }
 
-// ---- Pilar PRODUTIVIDADE (% do mês) -------------------------------------
+// ---- Pilar PRODUTIVIDADE (% no prazo: abertas + concluídas 30d) --------
 // 85% → 0 · 95% → 100, linear; acima satura. Sem tarefas abertas = 100%.
 function notaProdutividade(prodPct) {
   if (prodPct == null) return { nota: null, detalhe: { prodPct } };

@@ -281,12 +281,10 @@
   const tasksOf = (id) => state.data.tasks.filter((t) => t.clienteId === id);
   const filteredTasks = () => (state.cliente ? tasksOf(state.cliente) : state.data.tasks);
 
-  // fórmula oficial da Bibit: (totais − atrasadas) ÷ totais; zero tarefa = 100%
+  // fórmula oficial (André, 20/10/26): mesma do pilar do score e da aba Produtividade —
+  // abertas vencidas + concluídas fora do prazo (30 dias) sobre abertas + concluídas; zero tarefa = 100%
   function prodOf(ts) {
-    const abertas = ts.filter(isOpen);
-    if (!abertas.length) return 100;
-    const late = abertas.filter(isLate).length;
-    return Math.round(((abertas.length - late) / abertas.length) * 1000) / 10;
+    return prodDetalhe(ts).pct;
   }
   const fmtNota = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
   const metaClass = (v, meta) => (v == null ? '' : v >= meta ? ' hit' : ' miss');
@@ -443,7 +441,7 @@
       else if (k === 'trafego' && semCampanha(c)) det = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · não pesa no score</span>`;
       else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
       if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
-      if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} do mês`;
+      if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} no prazo (30 dias)`;
       const ctAt = c.contato?.atualizadoEm ? `<span class="hs-regua"> · atualizado ${fmtCurto(c.contato.atualizadoEm)} ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>` : '';
       if (k === 'contato') det = p.nota != null
         ? esc(c.contato?.resumo || 'análise semanal do grupo de WhatsApp') + ctAt
@@ -802,7 +800,7 @@
         <div><b>Pesos</b> Tráfego 40 · Satisfação 30 · Contato 15 · Produtividade 15 — pilar sem dado não zera o cliente: os pesos redistribuem entre os disponíveis (mínimo 2 pilares pra emitir flag).</div>
         <div><b>Tráfego</b> última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Objetivo com investimento e sem resultado = 0.</div>
         <div><b>Satisfação</b> CSAT e NPS (0–10): 7 → 0 pontos · 9 → 100 · 8 = 50.</div>
-        <div><b>Produtividade</b> (abertas − atrasadas) ÷ abertas: 85% → 0 · 95% → 100.</div>
+        <div><b>Produtividade</b> tarefas no prazo ÷ tarefas (abertas + concluídas nos últimos 30 dias); conta abertas vencidas e concluídas fora do prazo: 85% → 0 · 95% → 100.</div>
         <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
         <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow · &lt; ${FLAG_FAIXAS.yellow} Red (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
         <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
@@ -830,13 +828,13 @@
   const METAS_PILAR = {
     trafego:       { lbl: 'Tráfego',       meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — a régua é o percentil da carteira por tipo de campanha, então a meta é relativa: o melhor da carteira é a referência' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 e NPS ≥ 9 (escala 0–10 do Typeform); 8–8,9 amarelo; abaixo de 8 vermelho' },
-    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (o pilar do score usa só as abertas)' },
+    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score)' },
     contato:       { lbl: 'Contato',       meta: 70, unid: 'pts', desc: 'nota de engajamento do grupo de WhatsApp ≥ 70 (análise semanal por IA, 1–100); 50–69 amarelo; abaixo de 50 vermelho' },
   };
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
   const pctFmt = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
-  // Produtividade da aba (Bruno, 28/09/26): além das abertas vencidas, conta as CONCLUÍDAS FORA DO PRAZO nos últimos 30 dias.
-  // "descartado" não é conclusão. (O pilar do score segue a fórmula oficial, só abertas — regra do Make.)
+  // Produtividade (Bruno, 28/09/26 na aba; André, 20/10/26 estendeu ao score e à ficha): além das abertas vencidas,
+  // conta as CONCLUÍDAS FORA DO PRAZO nos últimos 30 dias. "descartado" não é conclusão. Espelhada em api/data.js (prodDe).
   const JANELA_CONCL_DIAS = 30;
   const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
   const concluida = (t) => !isOpen(t) && !descartada(t) && t.dateClosed && Date.now() - t.dateClosed <= JANELA_CONCL_DIAS * 864e5;

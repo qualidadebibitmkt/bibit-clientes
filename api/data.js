@@ -403,15 +403,27 @@ module.exports = async (req, res) => {
     }
 
     // ---- Health Score (3 pilares por enquanto) ----
-    // produtividade no servidor — mesma fórmula oficial do front: (abertas − atrasadas) ÷ abertas; sem abertas = 100
-    const hojeKey = new Date(now).toISOString().slice(0, 10);
+    // produtividade no servidor (André, 20/10/26 — mesma regra da aba Produtividade):
+    // (abertas + concluídas nos últimos 30 dias − abertas vencidas − concluídas fora do prazo) ÷ (abertas + concluídas 30d).
+    // "descartado" não é conclusão. Sem nenhuma tarefa = 100. Datas comparadas pelo dia em BRT
+    // (vencimento sem hora vem à meia-noite UTC e é lido em UTC, igual ao front).
+    const fmtBRT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const fmtUTC = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const diaDe = (ms) => (ms % 864e5 === 0 ? fmtUTC : fmtBRT).format(new Date(ms));
+    const hojeKey = diaDe(now);
+    const JANELA_CONCL_MS = 30 * 864e5;
     const isOpenT = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
-    const isLateT = (t) => isOpenT(t) && t.dueDate && new Date(t.dueDate).toISOString().slice(0, 10) < hojeKey;
+    const isLateT = (t) => isOpenT(t) && t.dueDate && diaDe(t.dueDate) < hojeKey;
+    const descartadaT = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
+    const concluidaT = (t) => !isOpenT(t) && !descartadaT(t) && t.dateClosed && now - t.dateClosed <= JANELA_CONCL_MS;
+    const conclForaT = (t) => concluidaT(t) && t.dueDate && diaDe(t.dateClosed) > diaDe(t.dueDate);
     const prodDe = (cid) => {
-      const abertas = tasks.filter((t) => t.clienteId === cid && isOpenT(t));
-      if (!abertas.length) return 100;
-      const late = abertas.filter(isLateT).length;
-      return Math.round(((abertas.length - late) / abertas.length) * 1000) / 10;
+      const ts = tasks.filter((t) => t.clienteId === cid);
+      const abertas = ts.filter(isOpenT), concl = ts.filter(concluidaT);
+      const total = abertas.length + concl.length;
+      if (!total) return 100;
+      const late = abertas.filter(isLateT).length + concl.filter(conclForaT).length;
+      return Math.round(((total - late) / total) * 1000) / 10;
     };
     const hsResultados = calcularTodos(clients.map((c) => ({
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs,
