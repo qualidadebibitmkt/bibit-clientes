@@ -123,4 +123,27 @@ t('metricasCliente: dias distintos, 24h, turno sem resposta, automação/reaçã
 });
 t('dayKeyBR: 02:00 UTC é dia anterior em Brasília', () => { assert.strictEqual(W.dayKeyBR(Date.UTC(2026, 9, 21, 2, 0)), '2026-10-20'); assert.strictEqual(W.dayKeyBR(Date.UTC(2026, 9, 21, 3, 0)), '2026-10-21'); });
 
+
+// ---- alertas canônicos e marca do cliente (correções do teste seco de 21/10) ----
+t('canonAlerta: wording livre da IA cai nos tipos do spec, nível pela regra', () => {
+  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Solicitação sem resposta com prazo vencido'), { nivel: 'MODERADO', tipo: I.TIPOS.solicitacaoPendente });
+  assert.deepStrictEqual(I.canonAlerta('MODERADO', 'Aprovação do calendário editorial pendente'), { nivel: 'MODERADO', tipo: I.TIPOS.aprovacaoPendente });
+  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Pergunta importante do cliente sem resposta da Bibit'), { nivel: 'ALTO', tipo: I.TIPOS.perguntaSemResposta });
+  assert.deepStrictEqual(I.canonAlerta('CRITICO', 'Cliente falou em cancelar o contrato'), { nivel: 'CRÍTICO', tipo: I.TIPOS.ameaca });
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Ausência de cliente nas últimas 24 horas'), null);
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Gestor de tráfego em período de férias'), null);
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Conteúdo de resposta indecifrado'), null);
+});
+t('alertas da IA + código não duplicam o mesmo tipo', () => {
+  const r = I.calcularIEC({ extracao: ex({ alertas: [{ nivel: 'MODERADO', tipo: 'Solicitação sem resposta do cliente' }, { nivel: 'ALTO', tipo: 'Aprovação pendente com prazo crítico' }], solicitacoes_bibit: [{ o_que: 'aprovar post', respondida: false, prazo_vencido: true }] }), codigo: base, anterior: null, dia: DIA });
+  const tipos = r.alertas.map((a) => a.tipo); assert.strictEqual(new Set(tipos).size, tipos.length); assert.ok(tipos.includes(I.TIPOS.solicitacaoPendente)); assert.ok(tipos.includes(I.TIPOS.aprovacaoPendente));
+});
+t('metricasCliente: contato do cliente no nome do card NÃO vira Bibit; nome do grupo vira', () => {
+  const ms = [m(50, 'Murilo Azzi', 'Quinta dia 29 pela manhã?'), m(49, 'Adega Quinta do Lago | Bibit Mkt', 'Fala pessoal, pesquisa de satisfação...'), m(48, 'Adega Quinta do Lago - Murilo Azzi', 'msg com o nome exato do card')].sort((a, b) => a.t - b.t);
+  const c = W.metricasCliente(ms, agora, 'Adega Quinta do Lago - Murilo Azzi');
+  assert.strictEqual(c.msgs7d, 1); assert.deepStrictEqual(c.remetentes, ['Murilo Azzi']); assert.strictEqual(c.msgsBibit7d, 2);
+  const c2 = W.metricasCliente([m(10, 'Red Espresso - Romanna Remor', 'oi')], agora, 'Red Espresso - Romanna Remor');
+  assert.strictEqual(c2.msgs7d, 0, 'remetente igual ao nome inteiro do card = mensagem do grupo (número oficial)');
+});
+
 console.log(process.exitCode ? `\n${n} ok, com falhas` : `\n${n} testes ok`);

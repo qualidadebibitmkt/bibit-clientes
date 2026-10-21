@@ -100,10 +100,18 @@ async function lerMsgs(grupo, days, agora = Date.now()) {
 
 // msgs ordenadas → { pessoas: {nome → métricas}, grupo: {…} }
 const normTxt = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-// msgs ordenadas + nome do cliente (pra reconhecer mensagens sem remetente, que chegam com o NOME DO GRUPO, ex. "Cachaça Caranguejo | Bibit Mkt")
+// Mensagem sem remetente (número oficial) chega com o NOME DO GRUPO como remetente, ex. "Cachaça Caranguejo | Bibit Mkt".
+// O card do Growth se chama "<Marca> - <Contato>" (ex. "Adega Quinta do Lago - Murilo Azzi"), então comparar com o nome
+// inteiro fazia o CONTATO do cliente virar "Bibit" (bug visto em 21/10/26: Murilo, Mara, Luan… sumiam da presença).
+// Regra: remetente contém a MARCA (parte antes de " - ", "(" ou "|") E (tem "bibit" OU é igual ao nome do card).
+const marcaDe = (nomeCliente) => normTxt(String(nomeCliente || '').split(/\s[-–(|]\s?|\s\(/)[0]);
+function ehNomeDoGrupoFn(nomeCliente) {
+  const nc = normTxt(nomeCliente), marca = marcaDe(nomeCliente);
+  return (m) => { const n = normTxt(m.s); if (!marca || !n) return false; return n.includes(marca) && (/bibit/.test(n) || n === nc); };
+}
+// msgs ordenadas + nome do cliente (pra reconhecer mensagens sem remetente, que chegam com o NOME DO GRUPO)
 function metricasEquipe(msgs, agora = Date.now(), nomeCliente = '') {
-  const nc = normTxt(nomeCliente);
-  const ehNomeDoGrupo = (m) => { const n = normTxt(pessoaDe(m.s)); return !!nc && !!n && (n === nc || n.includes(nc) || nc.includes(n)); };
+  const ehNomeDoGrupo = ehNomeDoGrupoFn(nomeCliente);
   const pessoas = {}; const P = (n) => (pessoas[n] = pessoas[n] || { nome: n, msgs: 0, reacoes: 0, dias: new Set(), respostas: 0, respostas2h: 0, somaH: 0, primeira: null, ultima: null });
   const g = { msgsCliente: 0, msgsBibit: 0, turnosCliente: 0, respondidos: 0, respondidos2h: 0, semResposta: 0, pendentes: 0, remetentesCliente: new Set() };
   let turnoAberto = null; // { t } início do turno do cliente aguardando resposta
@@ -138,8 +146,7 @@ const dayKeyBR = (ms) => new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 1
 const ehCliente = (m) => !m.me && !ehBibit(m) && !ehAutomacao(m) && !ehReacao(m);
 // msgs ordenadas → presença do cliente, volume, últimas 24h e turnos do cliente sem resposta da Bibit
 function metricasCliente(msgs, agora = Date.now(), nomeCliente = '') {
-  const nc = normTxt(nomeCliente);
-  const ehNomeDoGrupo = (m) => { const n = normTxt(pessoaDe(m.s)); return !!nc && !!n && (n === nc || n.includes(nc) || nc.includes(n)); };
+  const ehNomeDoGrupo = ehNomeDoGrupoFn(nomeCliente);
   const ini24 = agora - 86400000;
   const dias = new Set(); const remetentes = new Set();
   let msgs7d = 0, msgs24h = 0, msgsBibit7d = 0, msgsBibit24h = 0, ultimaCliente = null, ultimaBibit = null;

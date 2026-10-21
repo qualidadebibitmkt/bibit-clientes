@@ -44,6 +44,32 @@ function evolucao(delta) {
   return delta >= 10 ? 'MELHORA RELEVANTE' : delta >= 1 ? 'MELHORA' : delta === 0 ? 'ESTÁVEL' : delta <= -10 ? 'PIORA RELEVANTE' : 'PIORA';
 }
 
+// ---- alertas canônicos (seção 8 do spec) ----
+const TIPOS = {
+  ameaca: 'ameaça explícita de cancelamento', grave: 'reclamação grave não resolvida', ruptura: 'ruptura de confiança',
+  perguntaSemResposta: 'pergunta do cliente sem resposta da Bibit', reclamacoes: 'reclamações recorrentes', reuniaoEmergencial: 'pedido de reunião emergencial por insatisfação', atraso: 'atraso relevante de atendimento',
+  solicitacaoPendente: 'solicitação da Bibit sem resposta do cliente', aprovacaoPendente: 'aprovação pendente', queda: 'queda relevante do IEC', ausencia: 'ausência prolongada de interação',
+};
+// Alerta livre da IA → tipo canônico + nível da regra. Devolve null pro que não é alerta de engajamento do cliente
+// (ex.: "ausência nas últimas 24h" — o spec proíbe penalizar silêncio de 1 dia; "gestor em férias").
+function canonAlerta(nivelIA, texto) {
+  const t = String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/24 ?h|24 horas|ultimo dia|ferias|descanso|licenca/.test(t) && !/vencid|prazo/.test(t)) return null;
+  if (/cancel|nao renov|encerr/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ameaca };
+  if (/ruptura|confianca/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ruptura };
+  if (/reclama.*grave|grave.*reclama|reclama.*nao resolvid/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.grave };
+  if (/reuniao.*(emergenc|urgent)|(emergenc|urgent).*reuniao/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.reuniaoEmergencial };
+  if (/reclama|insatisf/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.reclamacoes };
+  if (/(pergunta|duvida|questiona).*(sem resposta|nao respondid|aguard|pendente)|sem resposta da bibit|resposta da bibit|bibit nao respond/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.perguntaSemResposta };
+  if (/atraso|demora|lentid/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.atraso };
+  if (/queda/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.queda };
+  if (/ausencia|silenci|inativ|sem intera|nao particip/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.ausencia };
+  if (/aprova|calendari|valida/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.aprovacaoPendente };
+  if (/solicita|pedido|pend|prazo|vencid|confirma|sem resposta|aguard|retorno/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.solicitacaoPendente };
+  const n = /crit/i.test(nivelIA) ? 'CRÍTICO' : /alto/i.test(nivelIA) ? 'ALTO' : /moder/i.test(nivelIA) ? 'MODERADO' : null;
+  return n === 'CRÍTICO' || n === 'ALTO' ? { nivel: n, tipo: limpa(texto, 60) } : null; // moderado genérico vira ruído: descarta
+}
+
 // ---- parse da saída da IA (JSON, possivelmente com cercas de código ou texto em volta) ----
 function parseExtracao(txt) {
   if (txt && typeof txt === 'object') return txt;
@@ -109,18 +135,22 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   const delta = antIEC == null ? null : iec - antIEC;
   const evo = evolucao(delta);
 
-  // alertas: IA + código; carrega a data de identificação de ontem quando o alerta persiste
-  const nivelOk = (n) => (/crit/i.test(n) ? 'CRÍTICO' : /alto/i.test(n) ? 'ALTO' : /moder/i.test(n) ? 'MODERADO' : null);
+  // alertas: IA + código, sempre em TIPOS CANÔNICOS (o nível vem da regra, não da IA); um por tipo; carrega a data de
+  // identificação do dia anterior quando o alerta persiste
   const alertas = [];
-  const push = (nivel, tipo, descricao) => { if (!nivel) return; const t = limpa(tipo, 60); if (alertas.some((a) => a.nivel === nivel && a.tipo.toLowerCase() === t.toLowerCase())) return; alertas.push({ nivel, tipo: t, descricao: limpa(descricao, 160) }); };
-  for (const a of arr(ex.alertas)) { if (!a) continue; push(nivelOk(a.nivel), a.tipo || a.descricao, a.descricao || a.tipo); }
-  if (ameaca) push('CRÍTICO', 'ameaça de cancelamento', c4.evidencia || 'cliente ameaçou cancelar');
-  if (graveNaoResolvida) push('CRÍTICO', 'reclamação grave não resolvida', c4.evidencia || 'reclamação grave sem resolução');
-  for (const p of arr(ex.perguntas_cliente_sem_resposta)) if (p) push('ALTO', 'pergunta do cliente sem resposta da Bibit', p.o_que || p.descricao || p);
-  for (const p of (cod.semRespostaBibit || [])) push('ALTO', 'pergunta do cliente sem resposta da Bibit', `${p.s}: ${p.m}`);
-  if (c2.pendentes) push('MODERADO', 'solicitação da Bibit sem resposta do cliente', `${c2.pendentes} solicitação(ões) aguardando o cliente`);
-  if (delta != null && delta <= -10) push('MODERADO', 'queda relevante do IEC', `IEC caiu ${Math.abs(delta)} pontos em relação a ${anterior.dia}`);
-  if (semMsgCliente) push('MODERADO', 'ausência prolongada de interação', 'cliente sem mensagem há 7 dias ou mais');
+  const push = (nivel, tipo, descricao) => { if (!nivel || !tipo) return; const t = limpa(tipo, 60); if (alertas.some((a) => a.tipo.toLowerCase() === t.toLowerCase())) return; alertas.push({ nivel, tipo: t, descricao: limpa(descricao, 160) }); };
+  for (const a of arr(ex.alertas)) {
+    if (!a) continue;
+    const c = canonAlerta(a.nivel, `${a.tipo || ''} ${a.descricao || ''}`);
+    if (c) push(c.nivel, c.tipo, a.descricao || a.tipo);
+  }
+  if (ameaca) push('CRÍTICO', TIPOS.ameaca, c4.evidencia || 'cliente ameaçou cancelar');
+  if (graveNaoResolvida) push('CRÍTICO', TIPOS.grave, c4.evidencia || 'reclamação grave sem resolução');
+  for (const p of arr(ex.perguntas_cliente_sem_resposta)) if (p) push('ALTO', TIPOS.perguntaSemResposta, p.o_que || p.descricao || p);
+  for (const p of (cod.semRespostaBibit || [])) push('ALTO', TIPOS.perguntaSemResposta, `${p.s}: ${p.m}`);
+  if (c2.pendentes) push('MODERADO', TIPOS.solicitacaoPendente, `${c2.pendentes} solicitação(ões) aguardando o cliente`);
+  if (delta != null && delta <= -10) push('MODERADO', TIPOS.queda, `IEC caiu ${Math.abs(delta)} pontos em relação a ${anterior.dia}`);
+  if (semMsgCliente) push('MODERADO', TIPOS.ausencia, 'cliente sem mensagem há 7 dias ou mais');
   const ordem = { 'CRÍTICO': 0, ALTO: 1, MODERADO: 2 };
   alertas.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
   const hojeStr = dia || new Date(agora - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -172,4 +202,4 @@ function montarResumo(r) {
   return txt;
 }
 
-module.exports = { PESOS_IEC, ptsPresenca, ptsResponsividade, ptsIniciativa, TOM_PTS, TOM_LBL, normTom, classificar, evolucao, parseExtracao, calcularIEC, montarResumo };
+module.exports = { PESOS_IEC, TIPOS, canonAlerta, ptsPresenca, ptsResponsividade, ptsIniciativa, TOM_PTS, TOM_LBL, normTom, classificar, evolucao, parseExtracao, calcularIEC, montarResumo };
