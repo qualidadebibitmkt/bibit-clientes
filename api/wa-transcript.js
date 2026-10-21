@@ -62,6 +62,7 @@ module.exports = async (req, res) => {
     const iecContexto = [
       `Agora: ${fmt(hoje)} (horário de Brasília). Janela avaliada: ${fmt(hoje - days * 86400000)} até agora (${days} dias corridos).`,
       `Últimas 24 horas: de ${fmt(hoje - 86400000)} até agora.`,
+      `ATENÇÃO a datas: qualquer data/hora depois de ${fmt(hoje)} está no FUTURO — prazo com data futura NÃO está vencido (prazo_vencido=false). Solicitação sem prazo feita há menos de 24 horas úteis também não está vencida.`,
       `Participantes da BIBIT (identificados pelo sistema): ${bibitNomes.length ? bibitNomes.join('; ') : 'nenhum escreveu na janela'}.`,
       `Participantes do CLIENTE (identificados pelo sistema): ${cli.remetentes.length ? cli.remetentes.join('; ') : 'nenhum escreveu na janela'}.`,
       `Contagem do sistema: cliente escreveu ${cli.msgs7d} mensagem(ns) em ${cli.nDiasAtivos} dia(s) distinto(s) (${cli.diasAtivos.join(', ') || '—'}); ${cli.msgs24h} nas últimas 24h. Bibit: ${cli.msgsBibit7d} mensagem(ns), ${cli.msgsBibit24h} nas últimas 24h.`,
