@@ -115,6 +115,9 @@
   // nunca respondeu CSAT (Bruno, 25/09/26): cliente sem nenhuma resposta na lista de CSAT; quem ainda está em briefing não conta
   // campanha de anúncios parada (Bruno, 28/09/26): Reportei ligado, coleta feita, mas sem investimento na última semana
   const semCampanha = (c) => !!(c.campanha && c.campanha.rodando === false) && stKeyOf(c) !== 'briefing';
+  // campanha parada: nos 7 primeiros dias de execução não pesa (carência); depois zera o tráfego (André, 21/10/26)
+  const campCarencia = (c) => semCampanha(c) && !(c.healthScore && c.healthScore.pilares && c.healthScore.pilares.trafego.nota === 0);
+  const campEfeito = (c) => (campCarencia(c) ? 'em carência (7 dias) — tráfego fora do score' : 'tráfego zerado no score');
   const nuncaCSAT = (c) => (!c.metrics || !c.metrics.respostas) && stKeyOf(c) !== 'briefing';
   function maduroDe(c) {
     const st = streakDe(c);
@@ -377,7 +380,7 @@
         <div class="balcao-rail"></div>
         ${comandaHTML()}
         <div class="balcao-row"><span class="balcao-l">por plano</span><div class="planos-grid">${planosRow}</div></div>
-        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}<button class="stat-status stat-btn st-expansao${state.flagFilter === 'expansao' ? ' is-selected' : ''}" data-flag="expansao" title="Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp"><strong>${nExp}</strong> Possibilidade de expansão</button><button class="stat-status stat-btn st-semcsat${state.flagFilter === 'semcsat' ? ' is-selected' : ''}" data-flag="semcsat" title="clientes sem nenhuma resposta de CSAT (quem está em briefing não conta)"><strong>${nSemCsat}</strong> Nunca respondeu CSAT</button><button class="stat-status stat-btn st-semcampanha${state.flagFilter === 'semcampanha' ? ' is-selected' : ''}" data-flag="semcampanha" title="Reportei ligado, mas sem investimento em anúncios na última semana — o pilar de tráfego não entra no score"><strong>${nSemCamp}</strong> Sem campanha rodando</button></div></div>
+        <div class="balcao-row"><span class="balcao-l">por status</span><div class="chips">${statusRow}<button class="stat-status stat-btn st-expansao${state.flagFilter === 'expansao' ? ' is-selected' : ''}" data-flag="expansao" title="Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp"><strong>${nExp}</strong> Possibilidade de expansão</button><button class="stat-status stat-btn st-semcsat${state.flagFilter === 'semcsat' ? ' is-selected' : ''}" data-flag="semcsat" title="clientes sem nenhuma resposta de CSAT (quem está em briefing não conta)"><strong>${nSemCsat}</strong> Nunca respondeu CSAT</button><button class="stat-status stat-btn st-semcampanha${state.flagFilter === 'semcampanha' ? ' is-selected' : ''}" data-flag="semcampanha" title="Reportei ligado, mas sem investimento em anúncios na última semana — tráfego zerado no score (fora só nos 7 primeiros dias de execução)"><strong>${nSemCamp}</strong> Sem campanha rodando</button></div></div>
         ${temSquad ? `<div class="balcao-row"><span class="balcao-l">por squad</span><div class="chips">${squadChips}</div></div>` : ''}
         <div class="balcao-row balcao-ordem"><span class="balcao-l">ordenar</span><div class="chips chips-metal">${ordemRow}</div></div>
       </section>
@@ -403,7 +406,7 @@
       <div class="card-head">${glass(flagDe(c), 26)}
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
-          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}${nuncaCSAT(c) ? '<span class="card-nocsat" title="nenhuma resposta de CSAT até hoje">sem CSAT</span>' : ''}${semCampanha(c) ? `<span class="card-nocamp" title="sem investimento em anúncios na última semana${c.campanha.desde ? ' (último gasto na semana de ' + fmtCurto(c.campanha.desde) + ')' : ''} — tráfego fora do score">sem campanha</span>` : ''}</div>
+          <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}${nuncaCSAT(c) ? '<span class="card-nocsat" title="nenhuma resposta de CSAT até hoje">sem CSAT</span>' : ''}${semCampanha(c) ? `<span class="card-nocamp" title="sem investimento em anúncios na última semana${c.campanha.desde ? ' (último gasto na semana de ' + fmtCurto(c.campanha.desde) + ')' : ''} — ${campEfeito(c)}">sem campanha</span>` : ''}</div>
           <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
           ${maduro}
         </div>
@@ -457,7 +460,7 @@
     const linhas = Object.entries(hs.pilares).map(([k, p]) => {
       let det = '';
       if (k === 'trafego' && p.detalhe?.length) det = p.detalhe.map((f) => `${f.rotulo} ${fmtV(f.rotulo, f.valor)} → ${f.nota != null ? f.nota : '—'} <span class="hs-regua">(${f.regua})</span>`).join(' · ');
-      else if (k === 'trafego' && semCampanha(c)) det = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · não pesa no score</span>`;
+      else if (k === 'trafego' && semCampanha(c)) det = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · ${campEfeito(c)}</span>`;
       else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
       if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
       if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} no prazo (30 dias)`;
@@ -574,7 +577,7 @@
     else if (diasSemResposta != null && diasSemResposta > 20) sin.push({ bad: true, txt: `Sem resposta de CSAT há ${diasSemResposta} dias` });
     if (temCalendario(c)) add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
     if (!c.temReportei) sin.push({ bad: true, txt: 'Sem Reportei Project ID no card — tráfego não é coletado' });
-    else if (semCampanha(c)) sin.push({ bad: true, txt: `Sem campanha rodando: nenhum investimento em anúncios na última semana${c.campanha.desde ? ` — último gasto na semana de ${fmtCurto(c.campanha.desde)}` : ''}. O pilar de tráfego não entra no score.` });
+    else if (semCampanha(c)) sin.push({ bad: true, txt: `Sem campanha rodando: ${c.campanha.nuncaColetado ? 'Reportei ID preenchido, mas nenhuma métrica de anúncios coletada até hoje (conferir a integração Meta no Reportei)' : 'nenhum investimento em anúncios na última semana'}${c.campanha.desde ? ` — último gasto na semana de ${fmtCurto(c.campanha.desde)}` : ''}. ${campCarencia(c) ? 'Cliente nos 7 primeiros dias de execução: o tráfego ainda não pesa no score.' : 'Passada a carência de 7 dias, o pilar de tráfego fica zerado até a campanha voltar.'}` });
     else if (!c.hs) sin.push({ bad: true, txt: 'Reportei ligado, mas sem métrica de Meta na última semana (integração inativa, sem Meta Ads ou sem coleta ainda)' });
     return `<p class="eyebrow">Sinais do copo</p>
       <div class="sinais">${sin.map((x) => `<span class="sinal ${x.bad ? 'is-bad' : 'is-ok'}">${x.bad ? '⚠' : '✓'} ${esc(x.txt)}</span>`).join('')}</div>

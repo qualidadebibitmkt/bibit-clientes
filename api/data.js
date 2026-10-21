@@ -216,7 +216,9 @@ function shapeCliente(task) {
     campanha: (() => {
       if (!cfText(getCF(task, CF_REPORTEI_ID))) return null;
       const at = cfDate(getCF(task, CF_HS_ATUALIZADO));
-      if (!at) return null;
+      // Reportei ID preenchido e NUNCA coletado (sem integração Meta no Reportei, caso Mare Nostrum) = não está
+      // rodando anúncios (André, 21/10/26) — passada a carência de 7 dias em execução, zera o tráfego
+      if (!at) return { rodando: false, coletadoEm: null, desde: null, nuncaColetado: true };
       const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0; };
       const temMetrica = n(CF_HS_CPM) || n(CF_HS_ROAS) || n(CF_HS_CONVERSA) || n(CF_HS_LEAD);
       const velha = Date.now() - at > HS_VALIDADE_DIAS * 864e5;
@@ -425,10 +427,14 @@ module.exports = async (req, res) => {
       const late = abertas.filter(isLateT).length + concl.filter(conclForaT).length;
       return Math.round(((total - late) / total) * 1000) / 10;
     };
+    // campanha parada (André, 21/10/26): zera o tráfego depois de 7 dias em execução; briefing nunca conta
+    const stKey = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
     const hsResultados = calcularTodos(clients.map((c) => ({
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs,
       csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
       contato: c.contato?.nota ?? null,
+      campanhaParada: !!(c.campanha && c.campanha.rodando === false) && stKey(c) !== 'briefing',
+      diasExec: c.dataEntradaExec ? (Date.now() - c.dataEntradaExec) / 864e5 : null,
     })));
     for (const c of clients) c.healthScore = hsResultados[c.id] || null;
 

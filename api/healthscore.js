@@ -22,9 +22,14 @@
 //  - Produtividade: 100% → 100 · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · <85 → 0.
 //    Conta abertas vencidas + concluídas fora do prazo nos últimos 30 dias (André, 20/10/26; cálculo em api/data.js).
 //  - Contato: nota 0–100 da análise semanal do grupo por IA (prompt em revisão pelo André).
+//  - Campanha PARADA (Reportei ligado e nenhum investimento na última semana) — André, 21/10/26:
+//      nos primeiros 7 dias de execução (carência pra campanha começar a rodar) o pilar fica
+//      FORA do score (renormaliza); passada a carência, Tráfego = 0 (substitui a regra de 28/09,
+//      em que "sem campanha" nunca pesava). Sem Data de Entrada em Execução = carência vencida.
 //  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
 
 const PESOS = { trafego: 30, satisfacao: 25, produtividade: 20, contato: 25 };
+const CARENCIA_TRAFEGO_DIAS = 7; // dias em execução antes de "campanha parada" zerar o tráfego (André, 21/10/26)
 // Calibração 04/09/26 (1ª rodada): com 1 pilar só, o score inflava (cliente sem
 // tráfego e sem CSAT ganhava verde por não ter tarefa atrasada). Abaixo de 2
 // pilares o score é "insuficiente" e a flag do Growth NÃO é sobrescrita.
@@ -79,8 +84,16 @@ const fmtX = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits
 
 // ---- Pilar TRÁFEGO --------------------------------------------------------
 // hs = { cpm, roas, custoConversa, custoLead } do cliente.
-function notaTrafego(tipo, hs) {
-  if (!hs) return { nota: null, detalhe: [] };
+// ctx = { campanhaParada: bool, diasExec: number|null } — campanha parada só pesa após a carência.
+function notaTrafego(tipo, hs, ctx) {
+  if (!hs) {
+    if (ctx && ctx.campanhaParada) {
+      const emCarencia = ctx.diasExec != null && ctx.diasExec <= CARENCIA_TRAFEGO_DIAS;
+      if (emCarencia) return { nota: null, detalhe: [{ rotulo: 'Campanha', valor: null, nota: null, regua: `sem campanha rodando · carência de ${CARENCIA_TRAFEGO_DIAS} dias de execução (${Math.max(0, Math.floor(ctx.diasExec))}º dia) — não pesa no score` }] };
+      return { nota: 0, detalhe: [{ rotulo: 'Campanha', valor: null, nota: 0, regua: `sem campanha rodando após a carência de ${CARENCIA_TRAFEGO_DIAS} dias de execução — tráfego zerado` }] };
+    }
+    return { nota: null, detalhe: [] };
+  }
   const frentes = [];
   const add = (rotulo, valor, chave, fmt) => {
     if (valor == null || valor <= 0) return;
@@ -155,11 +168,12 @@ function compor(pilares) {
 }
 
 // Calcula o health score de todos os clientes de uma vez.
-// entrada: [{ id, tipoRelatorio, hs:{cpm,roas,custoConversa,custoLead}, csat, nps, prodPct, contato }]
+// entrada: [{ id, tipoRelatorio, hs:{cpm,roas,custoConversa,custoLead}, csat, nps, prodPct, contato,
+//             campanhaParada (bool), diasExec (dias desde a entrada em execução; null = desconhecido) }]
 function calcularTodos(clientes) {
   const out = {};
   for (const c of clientes) {
-    const tr = notaTrafego(c.tipoRelatorio, c.hs);
+    const tr = notaTrafego(c.tipoRelatorio, c.hs, { campanhaParada: !!c.campanhaParada, diasExec: c.diasExec ?? null });
     const sa = notaSatisfacao(c.csat, c.nps);
     const pr = notaProdutividade(c.prodPct);
     const ct = c.contato != null ? round0(clamp(c.contato, 0, 100)) : null; // nota 0–100 da análise do grupo
@@ -177,4 +191,4 @@ function calcularTodos(clientes) {
   return out;
 }
 
-module.exports = { calcularTodos, notaFaixa, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore };
+module.exports = { calcularTodos, notaFaixa, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS };
