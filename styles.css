@@ -1429,3 +1429,21 @@ body::before {
 .cb-foco-kpis { grid-template-columns: repeat(5, minmax(90px, 1fr)); margin: 6px 0 18px; }
 .cb-foco .pl-pareto { margin-bottom: 22px; }
 @media (max-width: 900px) { .cb-foco-kpis { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------- v91: IEC diário (Índice de Engajamento do Cliente) na ficha ---------- */
+.iec-box { margin-top: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--creme) 14%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--garrafa-2) 70%, transparent); font-size: 12.5px; }
+.iec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--creme); }
+.iec-head > b { font-family: var(--display); font-size: 15px; }
+.iec-class { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--creme-70); }
+.iec-evo { font-size: 12px; } .iec-evo.g { color: var(--flag-green); } .iec-evo.y { color: var(--flag-yellow); } .iec-evo.r { color: var(--flag-red); } .iec-evo.na { color: var(--creme-45); }
+.iec-spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; }
+.iec-spark i { display: block; width: 5px; border-radius: 1px; background: var(--creme-45); } .iec-spark i.g { background: var(--flag-green); } .iec-spark i.y { background: var(--flag-yellow); } .iec-spark i.r { background: var(--flag-red); }
+.iec-crits { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; color: var(--creme-70); }
+.iec-crit b { color: var(--creme); font-variant-numeric: tabular-nums; margin-left: 3px; } .iec-crit i { display: block; font-style: normal; font-size: 11px; color: var(--creme-45); max-width: 240px; }
+.iec-crit.na { opacity: .7; }
+.iec-alertas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.iec-alerta { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; border: 1px solid; color: var(--creme); }
+.iec-alerta i { display: block; font-style: normal; color: var(--creme-70); font-size: 11px; }
+.iec-alerta.n-c { border-color: var(--flag-red); background: color-mix(in srgb, var(--flag-red) 18%, transparent); }
+.iec-alerta.n-a { border-color: color-mix(in srgb, var(--flag-red) 60%, var(--flag-yellow)); background: color-mix(in srgb, var(--flag-red) 10%, transparent); }
+.iec-alerta.n-m { border-color: var(--flag-yellow); background: color-mix(in srgb, var(--flag-yellow) 12%, transparent); }

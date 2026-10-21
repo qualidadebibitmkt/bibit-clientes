@@ -443,7 +443,9 @@ module.exports = async (req, res) => {
         // Só números e nomes saem ao navegador — nenhum texto de mensagem.
         const DIAS = 7, hoje = Date.now();
         const cmds = [];
-        for (const c of comGrupo) { const g = wa.normGrupo(c._waGrupo); for (let i = 0; i < DIAS; i++) cmds.push(['LRANGE', wa.keyFor(g, wa.dayKey(hoje - i * 86400000)), '0', '-1']); cmds.push(['GET', 'wa:parecer:' + g]); }
+        // + IEC diário (André, 21/10/26): últimos 14 registros wa:iec:<grupo>:<dia> gravados pelo /api/iec
+        const IEC_DIAS = 14;
+        for (const c of comGrupo) { const g = wa.normGrupo(c._waGrupo); for (let i = 0; i < DIAS; i++) cmds.push(['LRANGE', wa.keyFor(g, wa.dayKey(hoje - i * 86400000)), '0', '-1']); cmds.push(['GET', 'wa:parecer:' + g]); for (let i = 0; i < IEC_DIAS; i++) cmds.push(['GET', `wa:iec:${g}:${wa.dayKeyBR(hoje - i * 86400000)}`]); }
         const r2 = await wa.redisPipeline(cmds);
         let k = 0;
         for (const c of comGrupo) {
@@ -452,9 +454,21 @@ module.exports = async (req, res) => {
           const par = r2[k++]; let pareceres = null; try { pareceres = par && par.result ? JSON.parse(par.result) : null; } catch {}
           if (pareceres && !(pareceres.pessoas || []).length && pareceres.raw) pareceres.pessoas = wa.parsePareceres(pareceres.raw); // docs gravados antes do parser aceitar "|" no nome
           if (pareceres) delete pareceres.raw; // texto da IA não vai ao navegador além do parecer por pessoa
+          const hist = [];
+          for (let i = 0; i < IEC_DIAS; i++) { const r = r2[k++]; if (r && r.result) { try { hist.push(JSON.parse(r.result)); } catch {} } }
+          hist.sort((a, b) => (a.dia < b.dia ? 1 : -1));
           msgs.sort((a, b) => a.t - b.t);
           const met = wa.metricasEquipe(msgs, hoje, c.name);
-          if (c.contato) { c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres; }
+          if (c.contato) {
+            c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres;
+            const ult = hist[0] || null;
+            // só números, rótulos e os textos já curados (resumo/alertas) saem ao navegador — nunca a transcrição
+            c.contato.iec = ult ? {
+              dia: ult.dia, em: ult.em, iec: ult.iec, classificacao: ult.classificacao, delta: ult.delta, evolucao: ult.evolucao, anterior: ult.anterior,
+              criterios: ult.criterios, tetos: ult.tetos, tetoAplicado: ult.tetoAplicado, alertas: ult.alertas, resolvidos: ult.resolvidos, nivelAlerta: ult.nivelAlerta, ultimas24h: ult.ultimas24h,
+              historico: hist.map((h) => ({ dia: h.dia, iec: h.iec, classificacao: h.classificacao, nivelAlerta: h.nivelAlerta })).reverse(),
+            } : null;
+          }
         }
       }
     } catch (e) { /* opcional */ }

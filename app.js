@@ -110,7 +110,8 @@
   const streakLabel = (st) => (!st ? null : st.dias === 0 ? 'mudou hoje' : `há ${st.piso ? '≥ ' : ''}${st.dias} dia${st.dias === 1 ? '' : 's'}`);
   // maduro pra expandir: Green Flag há ≥ 28 dias + CSAT ≥ 9 + sem sinal de risco no WhatsApp
   const ALERTA_RX = /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i;
-  const temAlertaWA = (c) => !!(c.contato && c.contato.resumo && ALERTA_RX.test(c.contato.resumo));
+  // com IEC diário (21/10/26) o alerta vem classificado pelo motor (CRÍTICO/ALTO contam; MODERADO não trava expansão); sem IEC, regex no resumo
+  const temAlertaWA = (c) => !!(c.contato && (c.contato.iec ? /CRÍTICO|ALTO/.test(c.contato.iec.nivelAlerta || '') : (c.contato.resumo && ALERTA_RX.test(c.contato.resumo))));
   // nunca respondeu CSAT (Bruno, 25/09/26): cliente sem nenhuma resposta na lista de CSAT; quem ainda está em briefing não conta
   // campanha de anúncios parada (Bruno, 28/09/26): Reportei ligado, coleta feita, mas sem investimento na última semana
   const semCampanha = (c) => !!(c.campanha && c.campanha.rodando === false) && stKeyOf(c) !== 'briefing';
@@ -431,6 +432,24 @@
     return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
   }
 
+  // detalhe do IEC (Índice de Engajamento do Cliente, diário desde 21/10/26): critérios, evolução, alertas e tendência
+  function iecDetalheHTML(iec) {
+    if (!iec) return '';
+    const cr = iec.criterios || {};
+    const crit = (lbl, c, extra) => c ? `<span class="iec-crit${c.aplicavel ? '' : ' na'}" title="${lbl}">${lbl} <b>${c.aplicavel ? `${c.pts}/${c.max}` : 'N/A'}</b>${extra ? `<i>${esc(extra)}</i>` : ''}</span>` : '';
+    const evo = iec.delta == null ? 'sem histórico anterior' : `${iec.delta > 0 ? '+' : ''}${iec.delta} pt vs ${iec.anterior ? fmtCurto(new Date(iec.anterior.dia + 'T12:00:00Z').getTime()) : 'anterior'} · ${(iec.evolucao || '').toLowerCase()}`;
+    const evoCls = iec.delta == null ? 'na' : iec.delta >= 1 ? 'g' : iec.delta === 0 ? 'y' : 'r';
+    const alertas = (iec.alertas || []).map((a) => `<span class="iec-alerta n-${a.nivel === 'CRÍTICO' ? 'c' : a.nivel === 'ALTO' ? 'a' : 'm'}" title="${a.status === 'persistente' ? 'identificado em ' + fmtCurto(new Date(a.desde + 'T12:00:00Z').getTime()) : 'novo hoje'}">${a.nivel} · ${esc(a.tipo)}${a.descricao ? `<i>${esc(a.descricao)}</i>` : ''}</span>`).join('');
+    const hist = (iec.historico || []).filter((h) => h.iec != null);
+    const spark = hist.length > 1 ? `<span class="iec-spark" title="IEC dos últimos ${hist.length} dias">${hist.map((h) => `<i class="${h.iec >= 80 ? 'g' : h.iec >= 60 ? 'y' : 'r'}" style="height:${Math.max(2, Math.round(h.iec / 100 * 18))}px" title="${fmtCurto(new Date(h.dia + 'T12:00:00Z').getTime())}: ${h.iec}"></i>`).join('')}</span>` : '';
+    const teto = iec.tetoAplicado != null ? `<span class="iec-crit na" title="${esc((iec.tetos || []).map((t) => t.motivo).join('; '))}">teto <b>${iec.tetoAplicado}</b></span>` : '';
+    return `<div class="iec-box">
+      <div class="iec-head"><b>IEC ${iec.iec}</b> <span class="iec-class">${esc(iec.classificacao || '')}</span> <span class="iec-evo ${evoCls}">${evo}</span>${spark}</div>
+      <div class="iec-crits">${crit('Presença', cr.presenca, cr.presenca ? `${cr.presenca.dias} dia(s)` : '')}${crit('Responsividade', cr.responsividade, cr.responsividade?.aplicavel ? `${cr.responsividade.taxa}% (${cr.responsividade.respondidas}/${cr.responsividade.elegiveis})` : 'sem solicitação vencida')}${crit('Iniciativa', cr.iniciativa, cr.iniciativa ? `${cr.iniciativa.n}` : '')}${crit('Tom', cr.tom, cr.tom?.aplicavel ? (cr.tom.evidencia || cr.tom.nivel) : 'cliente não escreveu')}${teto}</div>
+      ${alertas ? `<div class="iec-alertas">${alertas}</div>` : ''}
+    </div>`;
+  }
+
   function hsFichaHTML(hs, c) {
     if (!hs || hs.score == null) return `<p class="eyebrow">Health Score</p><div class="fn-empty">Sem dados suficientes pra calcular o score deste cliente (sem tráfego coletado, CSAT ou tarefas).</div>`;
     const diverge = c.flag && hs.flag && c.flag !== hs.flag;
@@ -444,8 +463,8 @@
       if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} no prazo (30 dias)`;
       const ctAt = c.contato?.atualizadoEm ? `<span class="hs-regua"> · atualizado ${fmtCurto(c.contato.atualizadoEm)} ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>` : '';
       if (k === 'contato') det = p.nota != null
-        ? esc(c.contato?.resumo || 'análise semanal do grupo de WhatsApp') + ctAt
-        : (c.contato?.resumo ? `<span class="hs-regua">prévia (sem nota até a análise semanal):</span> ${esc(c.contato.resumo)}` : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>');
+        ? esc(c.contato?.resumo || 'análise diária do grupo de WhatsApp') + ctAt + iecDetalheHTML(c.contato?.iec)
+        : (c.contato?.resumo ? `<span class="hs-regua">prévia (sem nota até a análise diária):</span> ${esc(c.contato.resumo)}` : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>');
       return `<div class="hs-row ${p.nota == null ? 'off' : ''}">
         <span class="hs-row-l"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i></span>
         <span class="hs-row-det">${det}</span>
@@ -801,7 +820,7 @@
         <div><b>Tráfego</b> última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Cada métrica vira pontos por faixa fixa (100 · 80 · 60 · 40 · 0): ROAS ≥ 7x · 5–6,9 · 3,5–4,9 · 2,5–3,49 · &lt; 2,5 — CPM ≤ R$ 4 · 4,1–6 · 6,1–8 · 8,1–11,9 · ≥ 12 — custo por conversa ≤ R$ 3 · 3,1–5 · 5,1–7 · 7,1–9,99 · ≥ 10 — custo por lead ≤ R$ 10 · 10–15 · 15–20 · 20–30 · ≥ 30. Objetivo com investimento e sem resultado = 0.</div>
         <div><b>Satisfação</b> CSAT (e NPS, quando houver) na escala 0–10, por faixa fixa: 10 → 100 pontos · 9–9,9 → 80 · 8–8,9 → 60 · 7–7,9 → 40 · abaixo de 7 → 0.</div>
         <div><b>Produtividade</b> tarefas no prazo ÷ tarefas (abertas + concluídas nos últimos 30 dias); conta abertas vencidas e concluídas fora do prazo. Por faixa fixa: 100% → 100 pontos · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · abaixo de 85 → 0.</div>
-        <div><b>Contato</b> análise semanal do grupo de WhatsApp por IA (engajamento do cliente, 1–100).</div>
+        <div><b>Contato</b> IEC — Índice de Engajamento do Cliente, calculado todo dia (22h) sobre os últimos 7 dias do grupo de WhatsApp: a IA só extrai os fatos (pedidos da Bibit e se foram respondidos, iniciativas, tom, alertas) e a nota sai por fórmula — Presença 20 (dias com mensagem do cliente: 4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Responsividade 20 (% de pedidos vencidos respondidos: 100% → 20 · ≥90 → 15 · ≥80 → 10 · ≥70 → 5; sem pedido = N/A) · Iniciativa 20 (4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Tom 40 (elogio 40 · cordial 30 · neutro 20 · insatisfação 10 · grave 0). Critério N/A redistribui. Tetos: 7 dias sem mensagem do cliente → máx. 40 · reclamação grave não resolvida → máx. 30 · ameaça de cancelamento → máx. 20. Classificação: ≥90 excelente · 80–89 engajado · 60–79 morno · 40–59 baixo · &lt;40 crítico.</div>
         <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow · &lt; ${FLAG_FAIXAS.yellow} Red (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
         <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
         <div><b>Sem campanha</b> Reportei ligado mas sem investimento em anúncios na última semana (ou métrica com mais de 10 dias): o pilar de tráfego sai da conta e o peso redistribui; o card e o balcão sinalizam.</div>
@@ -829,7 +848,7 @@
     trafego:       { lbl: 'Tráfego',       meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — a régua é a faixa fixa de pontos da métrica do objetivo (ROAS, CPM, custo por conversa ou por lead), igual pra toda a carteira' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 (escala 0–10 do Typeform) — 10 vale 100 pontos, 9–9,9 vale 80; 8–8,9 amarelo (60); 7–7,9 vermelho (40); abaixo de 7 zera' },
     produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score); 100% vale 100 pontos, 95–99,9 vale 80' },
-    contato:       { lbl: 'Contato',       meta: 70, unid: 'pts', desc: 'nota de engajamento do grupo de WhatsApp ≥ 70 (análise semanal por IA, 1–100); 50–69 amarelo; abaixo de 50 vermelho' },
+    contato:       { lbl: 'Contato',       meta: 70, unid: 'pts', desc: 'IEC (Índice de Engajamento do Cliente) ≥ 70 — calculado todo dia sobre os últimos 7 dias do grupo de WhatsApp (presença 20 · responsividade 20 · iniciativa 20 · tom 40); 50–69 amarelo; abaixo de 50 vermelho' },
   };
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
   const pctFmt = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');

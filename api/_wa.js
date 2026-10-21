@@ -86,12 +86,15 @@ function horasUteis(a, b) {
   return Math.round(h * 10) / 10;
 }
 
-async function lerMsgs(grupo, days) {
-  const hoje = Date.now(); const keys = [];
-  for (let i = 0; i < days; i++) keys.push(keyFor(grupo, dayKey(hoje - i * 86400000)));
+// Janela MÓVEL de `days` × 24h a partir de `agora` (IEC diário, André 21/10/26): as chaves são por dia UTC,
+// então lemos um dia a mais e cortamos pelo carimbo de hora. TTL do buffer é 8 dias → máx. 7 dias exatos.
+async function lerMsgs(grupo, days, agora = Date.now()) {
+  const keys = [];
+  for (let i = 0; i <= days; i++) keys.push(keyFor(grupo, dayKey(agora - i * 86400000)));
   const out = await redisPipeline(keys.map((k) => ['LRANGE', k, '0', '-1']));
+  const ini = agora - days * 86400000;
   const msgs = [];
-  for (const r of out) for (const raw of (r.result || [])) { try { msgs.push(JSON.parse(raw)); } catch {} }
+  for (const r of out) for (const raw of (r.result || [])) { try { const m = JSON.parse(raw); if (m && m.t >= ini && m.t <= agora + 60000) msgs.push(m); } catch {} }
   return msgs.sort((a, b) => a.t - b.t);
 }
 
@@ -128,6 +131,44 @@ function metricasEquipe(msgs, agora = Date.now(), nomeCliente = '') {
   return { pessoas: lista, grupo: { ...g, remetentesCliente: g.remetentesCliente.size } };
 }
 
+// ---------- métricas do CLIENTE contadas por código (Etapa B do IEC, André 21/10/26) ----------
+// Dia em Brasília (UTC-3, sem horário de verão) — a janela do IEC e o histórico diário usam esta data.
+const dayKeyBR = (ms) => new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 10);
+// mensagem humana do cliente: não é da Bibit, não é do número oficial, não é automação nem reação
+const ehCliente = (m) => !m.me && !ehBibit(m) && !ehAutomacao(m) && !ehReacao(m);
+// msgs ordenadas → presença do cliente, volume, últimas 24h e turnos do cliente sem resposta da Bibit
+function metricasCliente(msgs, agora = Date.now(), nomeCliente = '') {
+  const nc = normTxt(nomeCliente);
+  const ehNomeDoGrupo = (m) => { const n = normTxt(pessoaDe(m.s)); return !!nc && !!n && (n === nc || n.includes(nc) || nc.includes(n)); };
+  const ini24 = agora - 86400000;
+  const dias = new Set(); const remetentes = new Set();
+  let msgs7d = 0, msgs24h = 0, msgsBibit7d = 0, msgsBibit24h = 0, ultimaCliente = null, ultimaBibit = null;
+  const semResposta = []; // turnos do cliente que a Bibit não respondeu (>24h úteis)
+  let turno = null;
+  for (const m of msgs) {
+    if (ehAutomacao(m)) continue;
+    const bibit = !!m.me || ehBibit(m) || ehNomeDoGrupo(m);
+    if (bibit) {
+      if (ehReacao(m)) continue;
+      msgsBibit7d++; if (m.t >= ini24) msgsBibit24h++; ultimaBibit = m.t;
+      if (turno) turno = null;
+    } else {
+      if (ehReacao(m)) continue;
+      msgs7d++; if (m.t >= ini24) msgs24h++; ultimaCliente = m.t;
+      dias.add(dayKeyBR(m.t)); remetentes.add(pessoaDe(m.s));
+      const txt = String(m.m || '').slice(0, 120);
+      if (!turno) turno = { t: m.t, s: pessoaDe(m.s), m: txt };
+      else if (/\?/.test(txt) || !/\?/.test(turno.m)) { turno.s = pessoaDe(m.s); turno.m = txt; turno.tUlt = m.t; } // mostra a pergunta mais recente do turno aberto
+    }
+  }
+  if (turno && horasUteis(turno.t, agora) > 24) semResposta.push(turno);
+  return {
+    diasAtivos: [...dias].sort(), nDiasAtivos: dias.size, remetentes: [...remetentes],
+    msgs7d, msgs24h, msgsBibit7d, msgsBibit24h, ultimaCliente, ultimaBibit,
+    semRespostaBibit: semResposta,
+  };
+}
+
 // parecer individual da IA: "NOME | NOTA | PARECER" por linha. O nome pode vir com o cargo e o próprio "|" do WhatsApp
 // ("Will - Social media & Designer | Bibit Mkt | 87 | ..."), então a NOTA é o primeiro campo que é um inteiro 1–100.
 function parsePareceres(txt) {
@@ -143,4 +184,4 @@ function parsePareceres(txt) {
   return out;
 }
 
-module.exports = { redisReady, redis, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, ehBibit, pessoaDe, horasUteis, parsePareceres };
+module.exports = { redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };
