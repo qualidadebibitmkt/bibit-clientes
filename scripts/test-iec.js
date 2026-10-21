@@ -126,13 +126,17 @@ t('dayKeyBR: 02:00 UTC é dia anterior em Brasília', () => { assert.strictEqual
 
 // ---- alertas canônicos e marca do cliente (correções do teste seco de 21/10) ----
 t('canonAlerta: wording livre da IA cai nos tipos do spec, nível pela regra', () => {
-  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Solicitação sem resposta com prazo vencido'), { nivel: 'MODERADO', tipo: I.TIPOS.solicitacaoPendente });
-  assert.deepStrictEqual(I.canonAlerta('MODERADO', 'Aprovação do calendário editorial pendente'), { nivel: 'MODERADO', tipo: I.TIPOS.aprovacaoPendente });
-  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Pergunta importante do cliente sem resposta da Bibit'), { nivel: 'ALTO', tipo: I.TIPOS.perguntaSemResposta });
-  assert.deepStrictEqual(I.canonAlerta('CRITICO', 'Cliente falou em cancelar o contrato'), { nivel: 'CRÍTICO', tipo: I.TIPOS.ameaca });
-  assert.strictEqual(I.canonAlerta('MODERADO', 'Ausência de cliente nas últimas 24 horas'), null);
-  assert.strictEqual(I.canonAlerta('MODERADO', 'Gestor de tráfego em período de férias'), null);
-  assert.strictEqual(I.canonAlerta('MODERADO', 'Conteúdo de resposta indecifrado'), null);
+  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Solicitação sem resposta com prazo vencido', ''), { nivel: 'MODERADO', tipo: I.TIPOS.solicitacaoPendente });
+  assert.deepStrictEqual(I.canonAlerta('MODERADO', 'Aprovação do calendário editorial pendente', ''), { nivel: 'MODERADO', tipo: I.TIPOS.aprovacaoPendente });
+  assert.deepStrictEqual(I.canonAlerta('ALTO', 'Pergunta importante do cliente sem resposta da Bibit', ''), { nivel: 'ALTO', tipo: I.TIPOS.perguntaSemResposta });
+  assert.deepStrictEqual(I.canonAlerta('CRITICO', 'Cliente falou em cancelar o contrato', ''), { nivel: 'CRÍTICO', tipo: I.TIPOS.ameaca });
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Ausência de cliente nas últimas 24 horas', ''), null);
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Gestor de tráfego em período de férias', ''), null);
+  assert.strictEqual(I.canonAlerta('MODERADO', 'Conteúdo de resposta indecifrado', ''), null);
+  // caso Macaíba (21/10): "prazo encerra em 23/10" na descrição NÃO é ameaça de cancelamento
+  assert.deepStrictEqual(I.canonAlerta('MODERADO', 'Solicitação sem resposta do cliente', 'Aprovação do calendário aguarda retorno. Prazo para ajustes encerra em 23/10.'), { nivel: 'MODERADO', tipo: I.TIPOS.solicitacaoPendente });
+  assert.deepStrictEqual(I.canonAlerta('CRITICO', 'Risco de churn', 'Cliente disse que vai encerrar o contrato'), { nivel: 'CRÍTICO', tipo: I.TIPOS.ameaca });
+  assert.deepStrictEqual(I.canonAlerta('CRITICO', 'Coisa estranha', 'texto sem palavra-chave'), { nivel: 'ALTO', tipo: 'Coisa estranha' });
 });
 t('alertas da IA + código não duplicam o mesmo tipo', () => {
   const r = I.calcularIEC({ extracao: ex({ alertas: [{ nivel: 'MODERADO', tipo: 'Solicitação sem resposta do cliente' }, { nivel: 'ALTO', tipo: 'Aprovação pendente com prazo crítico' }], solicitacoes_bibit: [{ o_que: 'aprovar post', respondida: false, prazo_vencido: true }] }), codigo: base, anterior: null, dia: DIA });

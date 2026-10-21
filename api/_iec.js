@@ -52,10 +52,13 @@ const TIPOS = {
 };
 // Alerta livre da IA → tipo canônico + nível da regra. Devolve null pro que não é alerta de engajamento do cliente
 // (ex.: "ausência nas últimas 24h" — o spec proíbe penalizar silêncio de 1 dia; "gestor em férias").
-function canonAlerta(nivelIA, texto) {
-  const t = String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  if (/24 ?h|24 horas|ultimo dia|ferias|descanso|licenca/.test(t) && !/vencid|prazo/.test(t)) return null;
-  if (/cancel|nao renov|encerr/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ameaca };
+// Classifica primeiro pelo TIPO curto que a IA deu; a descrição só entra se o tipo não disser nada (a descrição é
+// longa e cheia de palavras soltas — "prazo encerra em 23/10" não é ameaça de encerrar contrato).
+const normA = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function classificaAlerta(t) {
+  if (!t) return null;
+  if (/24 ?h|24 horas|ultimo dia|ferias|descanso|licenca|indecifr/.test(t) && !/vencid/.test(t)) return null;
+  if (/cancel|nao renov|rescis|encerr(ar|amento)? (o |a |d[oa] )?(contrato|parceria|servico|trabalho|projeto)|ameaca/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ameaca };
   if (/ruptura|confianca/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ruptura };
   if (/reclama.*grave|grave.*reclama|reclama.*nao resolvid/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.grave };
   if (/reuniao.*(emergenc|urgent)|(emergenc|urgent).*reuniao/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.reuniaoEmergencial };
@@ -66,8 +69,16 @@ function canonAlerta(nivelIA, texto) {
   if (/ausencia|silenci|inativ|sem intera|nao particip/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.ausencia };
   if (/aprova|calendari|valida/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.aprovacaoPendente };
   if (/solicita|pedido|pend|prazo|vencid|confirma|sem resposta|aguard|retorno/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.solicitacaoPendente };
-  const n = /crit/i.test(nivelIA) ? 'CRÍTICO' : /alto/i.test(nivelIA) ? 'ALTO' : /moder/i.test(nivelIA) ? 'MODERADO' : null;
-  return n === 'CRÍTICO' || n === 'ALTO' ? { nivel: n, tipo: limpa(texto, 60) } : null; // moderado genérico vira ruído: descarta
+  return undefined; // não reconheceu
+}
+function canonAlerta(nivelIA, tipo, descricao) {
+  const porTipo = classificaAlerta(normA(tipo));
+  if (porTipo !== undefined) return porTipo;
+  const porDesc = classificaAlerta(normA(descricao));
+  if (porDesc !== undefined) return porDesc;
+  // não reconhecido: só sobrevive se a IA achou grave, e nunca acima de ALTO (CRÍTICO é só pros 3 tipos do spec)
+  const n = /crit|alto/i.test(nivelIA) ? 'ALTO' : null;
+  return n ? { nivel: n, tipo: limpa(tipo || descricao, 60) } : null;
 }
 
 // ---- parse da saída da IA (JSON, possivelmente com cercas de código ou texto em volta) ----
@@ -141,7 +152,7 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   const push = (nivel, tipo, descricao) => { if (!nivel || !tipo) return; const t = limpa(tipo, 60); if (alertas.some((a) => a.tipo.toLowerCase() === t.toLowerCase())) return; alertas.push({ nivel, tipo: t, descricao: limpa(descricao, 160) }); };
   for (const a of arr(ex.alertas)) {
     if (!a) continue;
-    const c = canonAlerta(a.nivel, `${a.tipo || ''} ${a.descricao || ''}`);
+    const c = canonAlerta(a.nivel, a.tipo, a.descricao);
     if (c) push(c.nivel, c.tipo, a.descricao || a.tipo);
   }
   if (ameaca) push('CRÍTICO', TIPOS.ameaca, c4.evidencia || 'cliente ameaçou cancelar');
