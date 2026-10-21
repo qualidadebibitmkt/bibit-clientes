@@ -2,26 +2,29 @@
 // Usado pelo painel (api/data.js) e pelo endpoint /api/hs que o Make consome
 // pra fechar o score e gravar a flag no Growth toda segunda.
 //
-// Decisões do Bruno (04/09/26):
-//  - 3 pilares por enquanto (contato fica desenhado, entra depois com peso 15):
-//      Tráfego 40 · Satisfação 30 · Produtividade 15   (+ Contato 15 quando houver)
+// Reestruturação do André (21/10/26) — matriz de pesos e faixas FIXAS de pontos:
+//  - Pesos: Tráfego 30 · Satisfação 25 · Produtividade 20 · Contato 25.
 //    Pilar sem dado NÃO zera o cliente: renormaliza entre os disponíveis
 //    e o resultado informa a cobertura (ex.: "3/4 pilares").
 //  - Tráfego olha a ÚLTIMA SEMANA, sem média — se a campanha foi mal, o
 //    painel tem que gritar essa semana.
 //  - Tráfego é medido pelo OBJETIVO do cliente (Tipo de Relatório):
 //      trafego (reconhecimento) → CPM · conversas → custo/conversa
-//      ecommerce → ROAS · completo → média das frentes que rodar
-//  - Réguas de custo: percentil da carteira quando o objetivo tem ≥10 pares
-//    com dado; senão baseline do próprio cliente (fase 2, precisa histórico);
-//    sem nenhum dos dois → faixa de mercado.
-//  - CSAT e NPS na escala 0–10 do Typeform: verde ≥9 · amarelo 8–8,9 · vermelho <8.
-//  - Produtividade: verde ≥95% · amarelo 85–94 · vermelho <85.
+//      ecommerce → ROAS · leads/lp → custo/lead · completo → média das frentes que rodar
+//  - Cada métrica vira pontos por FAIXA FIXA (100/80/60/40/0) — substitui o
+//    percentil da carteira (Bruno/04/09) e as faixas de mercado:
+//      ROAS            ≥7 → 100 · 5–6,9 → 80 · 3,5–4,9 → 60 · 2,5–3,49 → 40 · <2,5 → 0
+//      Custo/conversa  ≤R$3 → 100 · 3,1–5 → 80 · 5,1–7 → 60 · 7,1–9,99 → 40 · ≥10 → 0
+//      Custo/lead      ≤R$10 → 100 · 10–15 → 80 · 15–20 → 60 · 20–30 → 40 · ≥30 → 0
+//      CPM             ≤R$4 → 100 · 4,1–6 → 80 · 6,1–8 → 60 · 8,1–11,9 → 40 · ≥12 → 0
+//  - CSAT (0–10): 10 → 100 · 9–9,9 → 80 · 8–8,9 → 60 · 7–7,9 → 40 · <7 → 0
+//    (NPS, quando houver, usa a mesma régua; a nota do pilar é a média dos dois).
+//  - Produtividade: 100% → 100 · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · <85 → 0.
 //    Conta abertas vencidas + concluídas fora do prazo nos últimos 30 dias (André, 20/10/26; cálculo em api/data.js).
+//  - Contato: nota 0–100 da análise semanal do grupo por IA (prompt em revisão pelo André).
 //  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
 
-const PESOS = { trafego: 40, satisfacao: 30, contato: 15, produtividade: 15 };
-const MIN_PARES_PERCENTIL = 10;
+const PESOS = { trafego: 30, satisfacao: 25, produtividade: 20, contato: 25 };
 // Calibração 04/09/26 (1ª rodada): com 1 pilar só, o score inflava (cliente sem
 // tráfego e sem CSAT ganhava verde por não ter tarefa atrasada). Abaixo de 2
 // pilares o score é "insuficiente" e a flag do Growth NÃO é sobrescrita.
@@ -31,55 +34,59 @@ const MIN_PILARES = 2;
 const FLAG_FAIXAS = { green: 90, yellow: 70 };
 const flagDoScore = (s) => (s == null ? null : s >= FLAG_FAIXAS.green ? 'green' : s >= FLAG_FAIXAS.yellow ? 'yellow' : 'red');
 
-// Faixas de mercado (fallback quando não há base suficiente). Valores em R$ pra
-// custos são propositalmente conservadores — o percentil da carteira substitui.
+// Faixas fixas de pontos (André, 21/10/26). Cada lista vai da melhor pra pior faixa:
+// [limite, pontos] — pra métrica "maior melhor" o valor precisa ser ≥ limite;
+// pra "menor melhor" precisa ser ≤ limite. Quem não entra em nenhuma faixa leva 0.
+// Os limites fecham os "buracos" da tabela do André (ex.: ROAS 6,95 cai em 5–6,9 → 80).
 const FAIXAS = {
-  roas: { ruim: 1.5, bom: 2.5 },          // ↑ melhor
-  cpm: { bom: 10, ruim: 30 },              // ↓ melhor (R$/mil) — apertado em 04/09: 15 deixava reconhecimento verde demais
-  custoConversa: { bom: 8, ruim: 25 },     // ↓ melhor (R$)
-  custoLead: { bom: 25, ruim: 80 },        // ↓ melhor (R$)
+  roas:          { menorMelhor: false, faixas: [[7, 100], [5, 80], [3.5, 60], [2.5, 40]] },
+  custoConversa: { menorMelhor: true,  faixas: [[3, 100], [5, 80], [7, 60], [9.99, 40]] },
+  custoLead:     { menorMelhor: true,  faixas: [[10, 100], [15, 80], [20, 60], [29.99, 40]] },
+  cpm:           { menorMelhor: true,  faixas: [[4, 100], [6, 80], [8, 60], [11.99, 40]] },
+  csat:          { menorMelhor: false, faixas: [[10, 100], [9, 80], [8, 60], [7, 40]] },
+  produtividade: { menorMelhor: false, faixas: [[100, 100], [95, 80], [90, 60], [85, 40]] },
 };
+// Casa decimal de tolerância pra não cair de faixa por ruído de arredondamento
+// (ex.: produtividade 94,99999 lida como 95; ROAS 4,999 como 5).
+const EPS = 1e-6;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const round0 = (n) => Math.round(n);
 
-// nota linear entre piso (0) e meta (100)
-function notaCrescente(v, ruim, bom) {
-  if (v == null) return null;
-  return round0(clamp(((v - ruim) / (bom - ruim)) * 100, 0, 100));
+// nota por faixa fixa: devolve 100/80/60/40/0, ou null sem valor
+function notaFaixa(v, regua) {
+  if (v == null || Number.isNaN(Number(v))) return null;
+  const x = Number(v);
+  for (const [lim, pts] of regua.faixas) {
+    if (regua.menorMelhor ? x <= lim + EPS : x >= lim - EPS) return pts;
+  }
+  return 0;
 }
-function notaDecrescente(v, bom, ruim) {
-  if (v == null) return null;
-  return round0(clamp(((ruim - v) / (ruim - bom)) * 100, 0, 100));
+// rótulo legível da faixa em que o valor caiu (pra ficha do cliente)
+function faixaLabel(v, regua, fmt) {
+  const pts = notaFaixa(v, regua);
+  if (pts == null) return null;
+  const i = regua.faixas.findIndex(([, p]) => p === pts);
+  const ult = regua.faixas[regua.faixas.length - 1][0];
+  if (i < 0) return regua.menorMelhor ? `≥ ${fmt(Math.ceil(ult))}` : `< ${fmt(ult)}`;
+  const [lim] = regua.faixas[i];
+  const ant = i > 0 ? regua.faixas[i - 1][0] : null;
+  if (regua.menorMelhor) return ant == null ? `≤ ${fmt(lim)}` : `${fmt(ant)}–${fmt(lim)}`;
+  return ant == null ? `≥ ${fmt(lim)}` : `${fmt(lim)}–${fmt(ant)}`;
 }
-
-// Percentil da carteira: posição do cliente entre os pares do MESMO objetivo.
-// Retorna nota 0–100 onde estar no melhor terço ≈ 100 e no pior terço ≈ 0.
-function notaPercentil(valor, pares, menorMelhor) {
-  if (valor == null || pares.length < MIN_PARES_PERCENTIL) return null;
-  const ordenados = [...pares].sort((a, b) => a - b);
-  const idx = ordenados.findIndex((x) => (menorMelhor ? x >= valor : x > valor));
-  const pos = idx < 0 ? ordenados.length : idx; // quantos são "piores ou iguais"
-  const pct = pos / ordenados.length;            // 0 = melhor extremo, 1 = pior
-  const nota = menorMelhor ? (1 - pct) * 100 : pct * 100;
-  return round0(clamp(nota, 0, 100));
-}
+const fmtRS = (n) => `R$ ${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`;
+const fmtX = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x`;
 
 // ---- Pilar TRÁFEGO --------------------------------------------------------
-// hs = { cpm, roas, custoConversa, custoLead } do cliente; base = mesmos campos
-// de todos os clientes do mesmo Tipo de Relatório (pra o percentil).
-function notaTrafego(tipo, hs, base) {
+// hs = { cpm, roas, custoConversa, custoLead } do cliente.
+function notaTrafego(tipo, hs) {
   if (!hs) return { nota: null, detalhe: [] };
   const frentes = [];
-  const add = (rotulo, valor, chave, menorMelhor, faixa) => {
+  const add = (rotulo, valor, chave, fmt) => {
     if (valor == null || valor <= 0) return;
-    const pares = (base[chave] || []).filter((x) => x != null && x > 0);
-    const p = notaPercentil(valor, pares, menorMelhor);
-    const f = menorMelhor
-      ? notaDecrescente(valor, faixa.bom, faixa.ruim)
-      : notaCrescente(valor, faixa.ruim, faixa.bom);
-    const nota = p != null ? p : f;
-    frentes.push({ rotulo, valor, nota, regua: p != null ? `percentil (${pares.length} pares)` : 'faixa de mercado' });
+    const regua = FAIXAS[chave];
+    const nota = notaFaixa(valor, regua);
+    frentes.push({ rotulo, valor, nota, regua: `faixa fixa ${faixaLabel(valor, regua, fmt)}` });
   };
   const t = (tipo || '').toLowerCase();
   const gastou = hs.cpm != null && hs.cpm > 0; // CPM presente = houve investimento na semana
@@ -90,22 +97,22 @@ function notaTrafego(tipo, hs, base) {
   // (campanha rodou e não entregou), nunca "sem dado".
   const zero = (rotulo) => frentes.push({ rotulo, valor: 0, nota: gastou ? 0 : null, regua: gastou ? 'investiu na semana e não gerou resultado' : 'sem investimento na semana' });
   if (t === 'ecommerce') {
-    add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
+    add('ROAS', hs.roas, 'roas', fmtX);
     if (!frentes.length) zero('ROAS');
   } else if (t === 'conversas') {
-    add('Custo por conversa', hs.custoConversa, 'custoConversa', true, FAIXAS.custoConversa);
+    add('Custo por conversa', hs.custoConversa, 'custoConversa', fmtRS);
     // LP de lead cadastrada como "conversas" (caso 18K) — enquanto não existir a opção "leads"
-    if (!frentes.length && hs.custoLead) { add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead); frentes[0].regua += ' · tipo "conversas" sem conversa; usando lead'; }
+    if (!frentes.length && hs.custoLead) { add('Custo por lead', hs.custoLead, 'custoLead', fmtRS); frentes[0].regua += ' · tipo "conversas" sem conversa; usando lead'; }
     if (!frentes.length) zero('Custo por conversa');
   } else if (t === 'leads' || t === 'lp') {
-    add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
+    add('Custo por lead', hs.custoLead, 'custoLead', fmtRS);
     if (!frentes.length) zero('Custo por lead');
   } else if (t === 'trafego') {
-    add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
+    add('CPM', hs.cpm, 'cpm', fmtRS);
   } else { // completo (ou sem tipo): resultado (ROAS/lead) quando houver + eficiência (CPM); conversa fica fora por ser incidental
-    add('ROAS', hs.roas, 'roas', false, FAIXAS.roas);
-    add('Custo por lead', hs.custoLead, 'custoLead', true, FAIXAS.custoLead);
-    add('CPM', hs.cpm, 'cpm', true, FAIXAS.cpm);
+    add('ROAS', hs.roas, 'roas', fmtX);
+    add('Custo por lead', hs.custoLead, 'custoLead', fmtRS);
+    add('CPM', hs.cpm, 'cpm', fmtRS);
   }
   const validas = frentes.filter((f) => f.nota != null);
   if (!validas.length) return { nota: null, detalhe: frentes };
@@ -114,9 +121,9 @@ function notaTrafego(tipo, hs, base) {
 }
 
 // ---- Pilar SATISFAÇÃO (CSAT + NPS, 0–10) --------------------------------
-// 7 → 0 pontos · 9 → 100 pontos (verde), linear entre; 8 = 50 (amarelo). Acima de 9 satura.
-// (calibração 04/09: piso em 8 zerava CSAT 8,5 — injusto; é amarelo, não vermelho)
-const notaNota10 = (n) => (n == null ? null : round0(clamp(((n - 7) / 2) * 100, 0, 100)));
+// Faixa fixa: 10 → 100 · 9–9,9 → 80 · 8–8,9 → 60 · 7–7,9 → 40 · <7 → 0.
+// NPS (quando houver) usa a mesma régua; nota do pilar = média de CSAT e NPS.
+const notaNota10 = (n) => notaFaixa(n, FAIXAS.csat);
 function notaSatisfacao(csat, nps) {
   const partes = [notaNota10(csat), notaNota10(nps)].filter((x) => x != null);
   if (!partes.length) return { nota: null, detalhe: { csat, nps } };
@@ -124,10 +131,11 @@ function notaSatisfacao(csat, nps) {
 }
 
 // ---- Pilar PRODUTIVIDADE (% no prazo: abertas + concluídas 30d) --------
-// 85% → 0 · 95% → 100, linear; acima satura. Sem tarefas abertas = 100%.
+// Faixa fixa: 100% → 100 · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · <85 → 0.
+// Sem tarefas = 100%.
 function notaProdutividade(prodPct) {
   if (prodPct == null) return { nota: null, detalhe: { prodPct } };
-  return { nota: round0(clamp(((prodPct - 85) / 10) * 100, 0, 100)), detalhe: { prodPct } };
+  return { nota: notaFaixa(prodPct, FAIXAS.produtividade), detalhe: { prodPct } };
 }
 
 // ---- Composição -----------------------------------------------------------
@@ -146,20 +154,12 @@ function compor(pilares) {
   return { score, flag, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: false };
 }
 
-// Calcula o health score de todos os clientes de uma vez (precisa da base pro percentil).
-// entrada: [{ id, tipoRelatorio, hs:{cpm,roas,custoConversa,custoLead}, csat, nps, prodPct }]
+// Calcula o health score de todos os clientes de uma vez.
+// entrada: [{ id, tipoRelatorio, hs:{cpm,roas,custoConversa,custoLead}, csat, nps, prodPct, contato }]
 function calcularTodos(clientes) {
-  // base por objetivo pra o percentil
-  const basePorTipo = {};
-  for (const c of clientes) {
-    const t = (c.tipoRelatorio || 'completo').toLowerCase();
-    if (!basePorTipo[t]) basePorTipo[t] = { cpm: [], roas: [], custoConversa: [], custoLead: [] };
-    if (c.hs) for (const k of Object.keys(basePorTipo[t])) if (c.hs[k] != null && c.hs[k] > 0) basePorTipo[t][k].push(c.hs[k]);
-  }
   const out = {};
   for (const c of clientes) {
-    const t = (c.tipoRelatorio || 'completo').toLowerCase();
-    const tr = notaTrafego(c.tipoRelatorio, c.hs, basePorTipo[t] || {});
+    const tr = notaTrafego(c.tipoRelatorio, c.hs);
     const sa = notaSatisfacao(c.csat, c.nps);
     const pr = notaProdutividade(c.prodPct);
     const ct = c.contato != null ? round0(clamp(c.contato, 0, 100)) : null; // nota 0–100 da análise do grupo
@@ -177,4 +177,4 @@ function calcularTodos(clientes) {
   return out;
 }
 
-module.exports = { calcularTodos, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore };
+module.exports = { calcularTodos, notaFaixa, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore };
