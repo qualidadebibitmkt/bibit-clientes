@@ -32,7 +32,21 @@ module.exports = async (req, res) => {
   const agora = Date.now();
   res.setHeader('Cache-Control', 'no-store');
   try {
-    if (req.method === 'GET') { res.status(200).json({ grupo, historico: await lerHistorico(grupo, agora) }); return; }
+    if (req.method === 'GET') {
+      if (req.query.dry) { // resultado do último teste seco deste grupo (ou de todos, com grupo=all)
+        if (grupo === 'all') {
+          const keys = []; let cursor = '0';
+          do { const r = await wa.redisPipeline([['SCAN', cursor, 'MATCH', 'wa:iecdry:*', 'COUNT', '500']]); const [next, ks] = r[0].result; cursor = String(next); keys.push(...ks); } while (cursor !== '0' && keys.length < 500);
+          const out = keys.length ? await wa.redisPipeline(keys.map((k) => ['GET', k])) : [];
+          const docs = out.map((r) => { try { return JSON.parse(r.result); } catch { return null; } }).filter(Boolean);
+          res.status(200).json({ count: docs.length, resultados: docs.map((d) => ({ cliente: d.cliente, grupo: d.grupo, iec: d.iec, classificacao: d.classificacao, delta: d.delta, nivelAlerta: d.nivelAlerta, criterios: { presenca: d.criterios.presenca.pts, resp: d.criterios.responsividade.aplicavel ? d.criterios.responsividade.taxa : null, inic: d.criterios.iniciativa.n, tom: d.criterios.tom.nivel }, tetoAplicado: d.tetoAplicado, alertas: (d.alertas || []).map((a) => `${a.nivel}: ${a.tipo}`), resumo: d.resumo, participantes: d.participantes })) });
+          return;
+        }
+        const r = await wa.redisPipeline([['GET', 'wa:iecdry:' + grupo]]);
+        res.status(200).json(r[0] && r[0].result ? JSON.parse(r[0].result) : null); return;
+      }
+      res.status(200).json({ grupo, historico: await lerHistorico(grupo, agora) }); return;
+    }
 
     let b = req.body;
     if (b == null || b === '') b = await new Promise((ok) => { let acc = ''; req.on('data', (c) => { acc += c; }); req.on('end', () => ok(acc)); req.on('error', () => ok('')); });
@@ -52,11 +66,12 @@ module.exports = async (req, res) => {
     r.grupo = grupo; r.cliente = nomeCliente || null; r.msgsJanela = msgs.length;
 
     if (!req.query.dry) {
-      const doc = { ...r, extracaoRaw: undefined };
       await wa.redisPipeline([
-        ['SET', KEY(grupo, dia), JSON.stringify(doc)], ['EXPIRE', KEY(grupo, dia), String(TTL)],
+        ['SET', KEY(grupo, dia), JSON.stringify(r)], ['EXPIRE', KEY(grupo, dia), String(TTL)],
         ['SET', `wa:iec:${grupo}:last`, dia], ['EXPIRE', `wa:iec:${grupo}:last`, String(TTL)],
       ]);
+    } else { // teste seco: guarda à parte por 2 dias (inspeção via GET ?dry=1), sem tocar no histórico
+      await wa.redisPipeline([['SET', 'wa:iecdry:' + grupo, JSON.stringify({ ...r, extracao })], ['EXPIRE', 'wa:iecdry:' + grupo, String(2 * 86400)]]);
     }
     res.status(200).json({ ok: true, nota: r.notaClickUp, resumo: r.resumo, ...r, dry: !!req.query.dry });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
