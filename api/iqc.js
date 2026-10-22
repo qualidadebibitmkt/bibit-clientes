@@ -46,7 +46,7 @@ async function lerBody(req) {
 
 // avalia todos os posts do painel (todos os meses) — base de tudo
 async function avaliarTudo(painel, agora) {
-  const posts = D.postsDoPainel(painel);
+  const posts = D.postsDoPainel(painel, { todos: true });
   const [regs, metas, cfg] = await Promise.all([D.lerRegistros(posts.map((p) => p.taskId)), D.lerMetas(), D.lerConfig()]);
   const avaliados = posts.map((p) => D.avaliarPost(p, regs[p.taskId], metas, cfg, agora));
   return { posts: avaliados, regs, metas, cfg };
@@ -112,6 +112,8 @@ async function pendentes(req, res, agora) {
 }
 async function gravarMetricas(req, res, agora) {
   const b = await lerBody(req);
+  // diagnóstico: últimas 30 chamadas (corpo cru) — ?acao=log
+  try { await wa.redisPipeline([['LPUSH', 'iqc:log', JSON.stringify({ em: agora, corpo: typeof b === 'string' ? b.slice(0, 600) : JSON.stringify(b).slice(0, 600) })], ['LTRIM', 'iqc:log', '0', '29']]); } catch {}
   const taskId = String(b.taskId || '').trim();
   const tipo = ['d2', 'd7', 'manual'].includes(b.tipo) ? b.tipo : null;
   if (!taskId || !tipo) { res.status(400).json({ error: 'taskId e tipo (d2|d7|manual) obrigatórios' }); return; }
@@ -156,7 +158,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, sem cercas de c
 
 async function aprovInsumo(req, res, agora) {
   const painel = await lerPainel(req);
-  const posts = D.postsDoPainel(painel);
+  const posts = D.postsDoPainel(painel, { todos: true });
   const regs = await D.lerRegistros(posts.map((p) => p.taskId));
   const mesAtual = hojeBRT(agora).slice(0, 7);
   const alvo = new Set([mesAtual, mesSeguinte(mesAtual)]);
@@ -182,7 +184,7 @@ async function aprovInsumo(req, res, agora) {
     try { msgs = await wa.lerMsgs(grupo, 7, agora); } catch { continue; }
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
     if (!uteis.length) continue;
-    const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
+    const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`).join('\n');
     const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCalendário: ${g.mes} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada)\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (últimos 7 dias, ${uteis.length} mensagens):\n${transcricao}`;
     out.push({ clienteId: g.clienteId, cliente: g.cliente, mes: g.mes, posts: g.posts.length, pendentes: g.pendentes, mensagens: uteis.length, prompt });
@@ -206,7 +208,7 @@ async function aprovResultado(req, res, agora) {
   let ia;
   try { ia = parseJsonIA(await lerBody(req)); } catch (e) { res.status(422).json({ ok: false, error: e.message }); return; }
   const painel = await lerPainel(req);
-  const posts = D.postsDoPainel(painel).filter((p) => p.clienteId === clienteId && p.mes === mes);
+  const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.clienteId === clienteId && p.mes === mes);
   const regs = await D.lerRegistros(posts.map((p) => p.taskId));
   const resposta = String((ia.calendario && ia.calendario.resposta) || 'nao_identificado');
   const porTask = new Map(), porNumero = new Map();
@@ -374,6 +376,7 @@ module.exports = async (req, res) => {
     if (!wa.tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
     const post = req.method === 'POST';
     if (acao === 'pendentes') return await pendentes(req, res, agora);
+    if (acao === 'log') { const l = await wa.redis(['LRANGE', 'iqc:log', '0', '29']); res.status(200).json({ log: (l || []).map((x) => { try { return JSON.parse(x); } catch { return x; } }) }); return; }
     if (acao === 'metricas' && post) return await gravarMetricas(req, res, agora);
     if (acao === 'aprov-insumo') return await aprovInsumo(req, res, agora);
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
@@ -382,6 +385,19 @@ module.exports = async (req, res) => {
     if (acao === 'metas-provisorias' && post) return await metasProvisorias(req, res, agora);
     if (acao === 'auditoria' && post) return await auditoria(req, res, agora);
     if (acao === 'auditoria-revisao' && post) return await auditoriaRevisao(req, res, agora);
+    if (acao === 'config') {
+      const cfg = await D.lerConfig();
+      if (!post) { res.status(200).json({ config: cfg }); return; }
+      const b = await lerBody(req);
+      const novo = { ...cfg };
+      if (b.aprovacaoTacitaDias !== undefined) novo.aprovacaoTacitaDias = b.aprovacaoTacitaDias == null || b.aprovacaoTacitaDias === '' ? null : Math.max(1, Number(b.aprovacaoTacitaDias) || 0) || null;
+      if (b.janelaDias) novo.janelaDias = Math.max(1, Number(b.janelaDias) || 7);
+      if (b.janelaProvisoriaDias) novo.janelaProvisoriaDias = Math.max(1, Number(b.janelaProvisoriaDias) || 2);
+      if (b.amostraAuditoria) novo.amostraAuditoria = Math.max(1, Number(b.amostraAuditoria) || 3);
+      novo.alteradoEm = agora; novo.alteradoPor = String(b.por || 'gestor').slice(0, 60);
+      await D.gravarConfig(novo);
+      res.status(200).json({ ok: true, config: novo }); return;
+    }
     if (acao === 'fechar' && post) return await fechar(req, res, agora, false);
     if (acao === 'fechar-auto') return await fechar(req, res, agora, true);
     res.status(400).json({ error: 'ação desconhecida' });

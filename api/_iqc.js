@@ -31,20 +31,28 @@ function formatoDe(tipoPost) {
 const FORMATO_LBL = { estatico: 'Estático', carrossel: 'Carrossel', reel: 'Reel' };
 
 // ---------- posts a partir do painel (/api/data) ----------
-// Elegível = card de Social/Audiovisual/RP com id do Instagram (publicado) e Data de Agendamento.
-function postsDoPainel(painel) {
+// Publicado = card de Social/Audiovisual/RP com id do Instagram e Data de Agendamento (entra em performance).
+// Não publicado = card "Post N - Cliente - MM/AA" com data (agendamento ou vencimento) — entra só na aprovação
+// (o calendário é aprovado antes de publicar; TASA é sobre a entrega, não sobre a publicação).
+const RX_POST = /^post\s*\d+\s*-/i;
+function postsDoPainel(painel, { todos = false } = {}) {
   const porId = new Map((painel.clients || []).map((c) => [c.id, c]));
   const out = [];
   for (const t of painel.tasks || []) {
-    if (!AREAS[t.listKey] || !t.igId || !t.dataAgendamento || !t.clienteId) continue;
+    if (!AREAS[t.listKey] || !t.clienteId) continue;
+    const publicado = !!(t.igId && t.dataAgendamento);
+    if (!publicado && !(todos && RX_POST.test(String(t.name || '')) && (t.dataAgendamento || t.calDate || t.dueDate))) continue;
+    if (!publicado && /descart|cancel/i.test((t.status && t.status.label) || '')) continue;
+    const quando = publicado ? t.dataAgendamento : (t.dataAgendamento || t.calDate || t.dueDate);
     const c = porId.get(t.clienteId);
     const resp = (t.assignees || [])[0] || null;
+    const num = (String(t.name).match(/post\s*(\d+)/i) || [])[1];
     out.push({
-      taskId: t.id, nome: t.name, url: t.url, area: t.listKey, funcao: AREAS[t.listKey].funcao,
-      clienteId: t.clienteId, cliente: (c && c.name) || t.clienteName, igId: t.igId, tipoPost: t.tipoPost, formato: formatoDe(t.tipoPost),
+      taskId: t.id, nome: t.name, url: t.url, area: t.listKey, funcao: AREAS[t.listKey].funcao, publicado,
+      clienteId: t.clienteId, cliente: (c && c.name) || t.clienteName, igId: t.igId || null, tipoPost: t.tipoPost, formato: formatoDe(t.tipoPost),
       responsavel: resp ? { id: String((t.assigneeIds || [])[0] || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
-      publicadoEm: t.dataAgendamento, mes: mesDe(t.dataAgendamento), status: t.status ? t.status.label : null,
-      numero: (String(t.name).match(/post\s*(\d+)/i) || [])[1] ? Number((String(t.name).match(/post\s*(\d+)/i) || [])[1]) : null,
+      publicadoEm: quando, mes: mesDe(quando), status: t.status ? t.status.label : null,
+      numero: num ? Number(num) : null,
     });
   }
   return out;
@@ -71,7 +79,10 @@ async function lerMetas() {
 async function gravarMetas(lista) { await wa.redis(['SET', 'iqc:metas', JSON.stringify(lista)]); }
 async function lerConfig() {
   const raw = await wa.redis(['GET', 'iqc:config']);
-  const base = { janelaDias: E.JANELA_DIAS, janelaProvisoriaDias: E.JANELA_PROVISORIA_DIAS, amostraAuditoria: 3, versao: E.VERSAO_REGRAS };
+  // aprovacaoTacitaDias: null = desligado (silêncio não é aprovação — regra do documento). Se ligado (N dias), post PUBLICADO
+  // sem decisão registrada há N dias após a publicação vira "sem ajustes" (tácita) — espelha o aviso do próprio calendário
+  // da Bibit ("sem retorno no prazo, considerado aprovado"). Decisão do André pendente.
+  const base = { janelaDias: E.JANELA_DIAS, janelaProvisoriaDias: E.JANELA_PROVISORIA_DIAS, amostraAuditoria: 3, aprovacaoTacitaDias: null, versao: E.VERSAO_REGRAS };
   if (!raw) return base;
   try { return { ...base, ...JSON.parse(raw) }; } catch { return base; }
 }
@@ -98,11 +109,14 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
   const d2 = r.d2 && num(r.d2.alcance) != null ? r.d2 : null;
   const manual = r.manual && num(r.manual.alcance) != null ? r.manual : null;
   const fonte = manual ? 'manual' : d7 ? 'definitiva' : d2 ? 'provisoria' : null;
-  const metricas = manual || d7 || d2 || null;
+  const metricas = post.publicado ? (manual || d7 || d2 || null) : null;
   const meta = metaVigente(metas, post.clienteId, post.formato, post.publicadoEm);
   const perf = metricas ? E.performancePost(metricas, meta ? { engajamento: meta.engajamento, compartilhamento: meta.compartilhamento } : {}) : null;
-  const janelaFechou = agora >= post.publicadoEm + jan;
-  const aprov = r.aprovacao || { status: 'pendente', fonte: null };
+  const janelaFechou = post.publicado && agora >= post.publicadoEm + jan;
+  let aprov = r.aprovacao || { status: 'pendente', fonte: null };
+  if (post.publicado && aprov.status === 'pendente' && !aprov.revisar && cfg.aprovacaoTacitaDias && agora >= post.publicadoEm + cfg.aprovacaoTacitaDias * 86400000) {
+    aprov = { status: 'sem_ajustes', revisar: false, fonte: 'tacita', motivo: `sem pedido de ajuste até ${cfg.aprovacaoTacitaDias} dias após a publicação (aprovação tácita)`, evidencia: null };
+  }
   const aud = r.auditoria || null;
   const qual = aud && aud.notas ? E.qualidade(aud.notas) : null;
   return {
@@ -187,4 +201,5 @@ function conteudoPorCliente(postsAvaliados, agora = Date.now(), dias = 30) {
   return out;
 }
 
-module.exports = { AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerMetas, gravarMetas, lerConfig, metaVigente, avaliarPost, consolidarMes, conteudoPorCliente };
+async function gravarConfig(cfg) { await wa.redis(['SET', 'iqc:config', JSON.stringify(cfg)]); }
+module.exports = { AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerMetas, gravarMetas, lerConfig, gravarConfig, metaVigente, avaliarPost, consolidarMes, conteudoPorCliente };
