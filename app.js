@@ -931,7 +931,9 @@
   // no cliente, a pessoa é SÓ Web Designer (não está em social/tráfego/RP/AV) → contato opcional (Bruno, 09/10/26)
   const contatoOpcional = (c, id) => { const t = c.team || {}; const em = (l) => (l || []).some((p) => String(p.id || p.name) === id); return em(t.webdesign) && !em(t.social) && !em(t.trafego) && !em(t.rp) && !em(t.audiovisual); };
   // fora das análises por colaborador (Bruno, 28/09/26): Will (Head de Operação, não é mais operacional) e Gabriel Beltrão (saiu)
-  const FORA_PLACAR = ['willian pereira', 'will', 'gabriel beltrao', 'gabriel beltrão'];
+  // (André, 22/10/26) Will volta às análises por colaborador — ele responde pelos posts de Social e precisa aparecer no Resultado
+  // com a frente dele; Beltrão (saiu) continua fora. Antes (Bruno, 28/09/26) Will também ficava fora.
+  const FORA_PLACAR = ['gabriel beltrao', 'gabriel beltrão'];
   const normNome = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const foraPlacar = (nome) => { const n = normNome(nome); return FORA_PLACAR.some((x) => n === normNome(x) || n.startsWith(normNome(x) + ' ')); };
   const semExcluidos = (lista) => lista.filter((p) => !foraPlacar(p.name || p.nome));
@@ -952,10 +954,16 @@
 
     // ---- corte: tipo de campanha (tráfego) ou colaborador (demais) ----
     let chips = '', filtrados = base, filtroLbl = '';
+    let pessoaSel = null; // Resultado: filtro pode ser tipo de campanha OU colaborador (a medida vira a frente da pessoa: tráfego, social, AV ou RP)
     if (k === 'trafego') {
       const tipos = [...new Set(base.map((c) => (c.tipoRelatorio || 'completo').toLowerCase()))].sort();
-      chips = tipos.map((t) => { const n = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === t).length; return `<button class="hs-chip pl-chip${filtro === t ? ' is-on' : ''}" data-pl-f="${t}">${esc(t)}<i>${n}</i></button>`; }).join('');
-      if (filtro) { filtrados = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === filtro); filtroLbl = `tipo de campanha: ${filtro}`; }
+      const pessoas = new Map();
+      for (const c of base) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!pessoas.has(id)) pessoas.set(id, { p, n: 0 }); pessoas.get(id).n++; }
+      pessoaSel = filtro && pessoas.has(filtro) ? filtro : null;
+      chips = `<span class="balcao-l">campanha</span>` + tipos.map((t) => { const n = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === t).length; return `<button class="hs-chip pl-chip${filtro === t ? ' is-on' : ''}" data-pl-f="${t}">${esc(t)}<i>${n}</i></button>`; }).join('')
+        + `<span class="balcao-l pl-sep">colaborador</span>` + [...pessoas.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, { p, n }]) => `<button class="hs-chip pl-chip${filtro === id ? ' is-on' : ''}" data-pl-f="${esc(id)}">${avatarHTML(p, 'avatar avatar-xs')}${esc(p.name.split(' ')[0])}<i>${n}</i></button>`).join('');
+      if (pessoaSel) { filtrados = base.filter((c) => pessoasPilar(k, c).some((p) => String(p.id || p.name) === filtro)); filtroLbl = `colaborador: ${pessoas.get(filtro).p.name} (frente dele em cada cliente)`; }
+      else if (filtro) { filtrados = base.filter((c) => (c.tipoRelatorio || 'completo').toLowerCase() === filtro); filtroLbl = `tipo de campanha: ${filtro}`; }
     } else {
       const pessoas = new Map();
       for (const c of base) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!pessoas.has(id)) pessoas.set(id, { p, n: 0 }); pessoas.get(id).n++; }
@@ -966,8 +974,8 @@
     const limpar = filtro ? `<button class="hs-chip pl-chip pl-limpar" data-pl-f="">limpar</button>` : '';
 
     // ---- medidas ----
-    const linhas = filtrados.map((c) => ({ c, m: medidaPilar(k, c, k !== 'trafego' ? filtro : null) }));
-    const porPessoaSel = k !== 'trafego' && !!filtro;
+    const linhas = filtrados.map((c) => ({ c, m: k === 'trafego' ? (pessoaSel ? medidaColab('trafego', c, { id: pessoaSel }) : medidaPilar(k, c)) : medidaPilar(k, c, filtro) }));
+    const porPessoaSel = k === 'trafego' ? !!pessoaSel : !!filtro;
     const com = linhas.filter((x) => x.m);
     const sem = linhas.filter((x) => !x.m);
     const media = com.length ? com.reduce((s, x) => s + x.m.valor, 0) / com.length : null;
@@ -1015,8 +1023,10 @@
         ${temParecer ? `<div class="pl-pareceres">${rows.filter((a) => a.pareceres.length).sort((x, y) => (x.notaIA ?? 101) - (y.notaIA ?? 101)).map((a) => `<details class="pl-parecer"><summary>${a.p ? avatarHTML(a.p, 'avatar avatar-xs') : ''}<b>${esc(a.p ? a.p.name.split(' ')[0] : a.nome)}</b><span class="pl-parecer-n ${cIA(a.notaIA)}">${a.notaIA}</span><small>média de ${a.pareceres.length} grupo${a.pareceres.length === 1 ? '' : 's'}</small></summary><ul>${a.pareceres.sort((x, y) => x.nota - y.nota).map((x) => `<li><b class="${cIA(x.nota)}">${x.nota}</b> <span class="na">${esc(x.cliente)}</span> — ${esc(x.txt)}</li>`).join('')}</ul></details>`).join('')}</div>` : '<div class="fn-empty">O parecer individual da IA entra a partir da próxima análise de domingo.</div>'}`;
     } else if (k !== 'produtividade') {
       const agg = new Map();
-      for (const { c, m } of com) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); a.vals.push(m.valor); a.lac += m.lacuna; if (m.lacuna > 0) a.abaixo++; a.clientes++; }
-      for (const { c } of sem) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (agg.has(id)) agg.get(id).semDado++; }
+      // Resultado: cada pessoa entra com a FRENTE dela no cliente (Will → social, Daniel → tráfego, Rômulo → AV, Gabi → RP), não com a nota mista do pilar
+      const medidaDe = (c, p, m) => (k === 'trafego' ? medidaColab('trafego', c, { id: String(p.id || p.name) }) : m);
+      for (const { c, m } of [...com, ...sem]) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); const mm = m || k === 'trafego' ? medidaDe(c, p, m) : null; if (!mm) { a.semDado++; continue; } a.vals.push(mm.valor); a.lac += mm.lacuna; if (mm.lacuna > 0) a.abaixo++; a.clientes++; }
+      for (const [id, a] of [...agg.entries()]) if (!a.vals.length) agg.delete(id);
       const rows = [...agg.values()].map((a) => ({ ...a, media: a.vals.reduce((x, y) => x + y, 0) / a.vals.length })).sort((a, b) => a.media - b.media);
       const clsDe = (v) => (k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
       const metaV = k === 'satisfacao' ? 9 : 70;
@@ -1089,7 +1099,7 @@
   // ===================== VISÃO POR COLABORADOR (v81) =====================
   // Em vez de filtrar por área (pilar), filtrar por PESSOA (Bruno, 09/10/26): escolhe o colaborador e vê tudo dele de uma vez —
   // clientes que atende, nota em cada pilar (a mesma medida por pessoa das abas de pilar), o que está abaixo da meta,
-  // silêncio nos grupos, tarefas atrasadas e os pareceres da IA. Will e Beltrão continuam fora (FORA_PLACAR).
+  // silêncio nos grupos, tarefas atrasadas e os pareceres da IA. Beltrão continua fora (FORA_PLACAR); Will entrou em 22/10/26.
   const PAPEL_LBL = { trafego: 'Tráfego', social: 'Social Media', rp: 'RP', audiovisual: 'Audiovisual', webdesign: 'Web Designer' };
   const META_V = { trafego: 70, satisfacao: 9, produtividade: 95, contato: 70 };
   const ESC_V = { trafego: 100, satisfacao: 10, produtividade: 100, contato: 100 };

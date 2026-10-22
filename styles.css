@@ -1477,3 +1477,4 @@ body::before {
 .iqc-alerta .hs-chip { margin: 4px 4px 0 0; }
 .iqc-regras div { margin-bottom: 8px; }
 .hs-table td .g { color: var(--flag-green); } .hs-table td .y { color: var(--flag-yellow); } .hs-table td .r { color: var(--flag-red); }
+.pl-sep { margin-left: 14px; }
