@@ -197,6 +197,9 @@ async function aprovInsumo(req, res, agora) {
     try { msgs = await wa.lerMsgs(grupo, 7, agora); } catch { continue; }
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
     if (!uteis.length) continue;
+    // economia: se já houve análise e ninguém do lado do cliente escreveu desde então, não repete a chamada à IA
+    let estado = null; try { const raw = await wa.redis(['GET', `iqc:aprov:${g.clienteId}:${g.mes}`]); estado = raw ? JSON.parse(raw) : null; } catch {}
+    if (estado && estado.em && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m)) && !req.query.forcar) continue;
     const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
