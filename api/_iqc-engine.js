@@ -112,8 +112,9 @@ function consolidar({ performance, aprovacao, qualidade: qual }) {
   const parcial = [p != null ? p * PESOS.performance : null, a != null ? a * PESOS.aprovacao : null, q != null ? q * PESOS.qualidade : null];
   if (faltando.length) {
     // prévia: só informa quanto já soma dos critérios disponíveis (não é nota oficial)
-    const soma = parcial.filter((x) => x != null).reduce((s, x) => s + x, 0);
-    return { iqc: null, incompleto: true, faltando, previa: round1(soma), classificacao: null };
+    const disponiveis = parcial.filter((x) => x != null);
+    const soma = disponiveis.reduce((s, x) => s + x, 0);
+    return { iqc: null, incompleto: true, faltando, previa: disponiveis.length ? round1(soma) : null, classificacao: null };
   }
   const iqc = round1(p * PESOS.performance + a * PESOS.aprovacao + q * PESOS.qualidade);
   return { iqc, incompleto: false, faltando: [], previa: iqc, classificacao: classificar(iqc) };

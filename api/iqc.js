@@ -45,10 +45,16 @@ async function lerBody(req) {
 }
 
 // avalia todos os posts do painel (todos os meses) — base de tudo
+// Post não publicado pelo ClickUp só entra enquanto está no calendário em aprovação (data futura / últimos 3 dias) ou se já
+// tem decisão de aprovação registrada; card antigo sem publicação (post feito à mão, fora do publicador) fica fora do IQC.
+const GRACE_NAO_PUBLICADO = 3 * 86400000;
+function elegivel(p, reg, agora) { return p.publicado || p.publicadoEm >= agora - GRACE_NAO_PUBLICADO || !!(reg && reg.aprovacao); }
 async function avaliarTudo(painel, agora) {
-  const posts = D.postsDoPainel(painel, { todos: true });
-  const [regs, metas, cfg] = await Promise.all([D.lerRegistros(posts.map((p) => p.taskId)), D.lerMetas(), D.lerConfig()]);
+  const todos = D.postsDoPainel(painel, { todos: true });
+  const [regs, metas, cfg] = await Promise.all([D.lerRegistros(todos.map((p) => p.taskId)), D.lerMetas(), D.lerConfig()]);
+  const posts = todos.filter((p) => elegivel(p, regs[p.taskId], agora));
   const avaliados = posts.map((p) => D.avaliarPost(p, regs[p.taskId], metas, cfg, agora));
+  avaliados.foraDoIqc = todos.length - posts.length;
   return { posts: avaliados, regs, metas, cfg };
 }
 
@@ -76,6 +82,7 @@ async function painelMes(req, res, agora) {
     semMeta: doMes.filter((p) => !p.meta).length,
     aguardandoJanela: doMes.filter((p) => !p.janela.fechou).length,
     semMetrica: doMes.filter((p) => p.janela.fechou && !p.metricas).length,
+    foraDoIqc: posts.foraDoIqc || 0,
     auditoriaPendente: cons.porCliente.reduce((s, g) => s + g.amostra.filter((id) => { const p = doMes.find((x) => x.taskId === id); return !(p && p.auditoria && p.auditoria.nota != null); }).length, 0),
   };
   res.setHeader('Cache-Control', 'no-store');
@@ -159,8 +166,9 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, sem cercas de c
 
 async function aprovInsumo(req, res, agora) {
   const painel = await lerPainel(req);
-  const posts = D.postsDoPainel(painel, { todos: true });
-  const regs = await D.lerRegistros(posts.map((p) => p.taskId));
+  const todos = D.postsDoPainel(painel, { todos: true });
+  const regs = await D.lerRegistros(todos.map((p) => p.taskId));
+  const posts = todos.filter((p) => elegivel(p, regs[p.taskId], agora));
   const mesAtual = hojeBRT(agora).slice(0, 7);
   const alvo = new Set([mesAtual, mesSeguinte(mesAtual)]);
   // calendários em aprovação: (cliente, mês) com posts pendentes/revisar, mês atual ou seguinte
@@ -383,7 +391,7 @@ module.exports = async (req, res) => {
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
     if (acao === 'aprovacao' && post) return await aprovacaoManual(req, res, agora);
     if (acao === 'metas') return post ? await metasPost(req, res, agora) : await metasGet(req, res);
-    if (acao === 'metas-provisorias' && post) return await metasProvisorias(req, res, agora);
+    if (acao === 'metas-provisorias') return await metasProvisorias(req, res, agora);
     if (acao === 'auditoria' && post) return await auditoria(req, res, agora);
     if (acao === 'auditoria-revisao' && post) return await auditoriaRevisao(req, res, agora);
     if (acao === 'config') {

@@ -52,7 +52,7 @@ t('nota fora da escala é inválida', () => assert.strictEqual(E.qualidade({ cla
 // ---- Consolidação ----
 t('pesos principais somam 100%', () => assert.strictEqual(Math.round((E.PESOS.performance + E.PESOS.aprovacao + E.PESOS.qualidade) * 100), 100));
 t('IQC = 92×0,4 + 80×0,4 + 84×0,2 = 85,6 → Muito bom', () => { const r = E.consolidar({ performance: 92, aprovacao: 80, qualidade: 84 }); assert.strictEqual(r.iqc, 85.6); assert.strictEqual(r.classificacao, 'Muito bom'); assert.strictEqual(r.incompleto, false); });
-t('dado ausente → incompleto, sem zero, sem redistribuir', () => { const r = E.consolidar({ performance: 92, aprovacao: null, qualidade: 84 }); assert.strictEqual(r.iqc, null); assert.ok(r.incompleto); assert.deepStrictEqual(r.faltando, ['aprovacao']); assert.strictEqual(r.previa, 53.6); });
+t('dado ausente → incompleto, sem zero, sem redistribuir', () => { const r = E.consolidar({ performance: 92, aprovacao: null, qualidade: 84 }); assert.strictEqual(r.iqc, null); assert.ok(r.incompleto); assert.deepStrictEqual(r.faltando, ['aprovacao']); assert.strictEqual(r.previa, 53.6); assert.strictEqual(E.consolidar({}).previa, null); });
 t('classificação', () => { assert.strictEqual(E.classificar(90), 'Excelente'); assert.strictEqual(E.classificar(89.9), 'Muito bom'); assert.strictEqual(E.classificar(70), 'Bom'); assert.strictEqual(E.classificar(60), 'Regular'); assert.strictEqual(E.classificar(59.9), 'Insatisfatório'); });
 t('média simples entre clientes', () => assert.strictEqual(E.media([80, 90, null]), 85));
 t('mediana pra meta provisória', () => { assert.strictEqual(E.mediana([1, 5, 3]), 3); assert.strictEqual(E.mediana([1, 2, 3, 4]), 2.5); assert.strictEqual(E.mediana([]), null); });

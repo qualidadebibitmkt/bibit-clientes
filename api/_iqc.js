@@ -179,7 +179,7 @@ function consolidarMes(posts, { amostraN = 3 } = {}) {
       ...c, iqc, classificacao: E.classificar(iqc), previa, performance: perf, aprovacao: apr, qualidade: qual,
       status: !c.clientes.length ? 'sem_posts' : incompletos ? 'incompleto' : 'completo',
       clientesTotal: c.clientes.length, clientesValidos: validos.length, posts: c.clientes.reduce((s, x) => s + x.posts, 0),
-      faltando: [...new Set(c.clientes.flatMap((x) => x.faltando))],
+      faltando: [...new Set(c.clientes.flatMap((x) => x.faltando.map((f) => f.replace(/\s*\(.*$/, ''))))],
     };
   }).sort((a, b) => (b.iqc ?? b.previa ?? -1) - (a.iqc ?? a.previa ?? -1));
   return { porCliente, colaboradores };

@@ -1258,7 +1258,7 @@
   }
 
   function render() {
-    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab') };
+    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), iqc: $('#viewIQC') };
     const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     pilarEl.hidden = !PILARES.includes(state.view);
@@ -1273,6 +1273,7 @@
     if (state.view === 'funcoes') renderFuncoes(views.funcoes);
     if (state.view === 'health') renderHealth(views.health);
     if (state.view === 'colab') renderColab(views.colab);
+    if (state.view === 'iqc' && window.IQC) window.IQC.render(views.iqc); // aba IQC (iqc-view.js)
   }
 
   async function boot() {
