@@ -170,8 +170,12 @@ async function aprovInsumo(req, res, agora) {
   const regs = await D.lerRegistros(todos.map((p) => p.taskId));
   const posts = todos.filter((p) => elegivel(p, regs[p.taskId], agora));
   const mesAtual = hojeBRT(agora).slice(0, 7);
-  const alvo = new Set([mesAtual, mesSeguinte(mesAtual)]);
-  // calendários em aprovação: (cliente, mês) com posts pendentes/revisar, mês atual ou seguinte
+  // janela de aprovação do calendário do mês M: do dia 15 de M-1 (envio é dia 20) até o dia 10 de M. Fora disso não se
+  // analisa — evita aplicar a resposta do calendário de novembro aos posts de outubro (e as mensagens do buffer só
+  // cobrem 7 dias, então um calendário antigo não tem mais evidência no grupo).
+  const emJanela = (mes) => { const [y, m] = mes.split('-').map(Number); const ini = Date.UTC(y, m - 2, 15) + BRT_OFF; const fim = Date.UTC(y, m - 1, 11) + BRT_OFF; return agora >= ini && agora < fim; };
+  const alvo = new Set([mesAtual, mesSeguinte(mesAtual)].filter(emJanela));
+  // calendários em aprovação: (cliente, mês) com posts pendentes/revisar, dentro da janela
   const grupos = new Map();
   for (const p of posts) {
     if (!alvo.has(p.mes)) continue;
@@ -195,7 +199,9 @@ async function aprovInsumo(req, res, agora) {
     if (!uteis.length) continue;
     const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`).join('\n');
-    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCalendário: ${g.mes} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada)\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (últimos 7 dias, ${uteis.length} mensagens):\n${transcricao}`;
+    const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    const mesNome = `${MESES[Number(g.mes.slice(5)) - 1].toUpperCase()}/${g.mes.slice(0, 4)}`;
+    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (últimos 7 dias, ${uteis.length} mensagens):\n${transcricao}`;
     out.push({ clienteId: g.clienteId, cliente: g.cliente, mes: g.mes, posts: g.posts.length, pendentes: g.pendentes, mensagens: uteis.length, prompt });
   }
   res.setHeader('Cache-Control', 'no-store');
@@ -390,6 +396,14 @@ module.exports = async (req, res) => {
     if (acao === 'log') { const l = await wa.redis(['LRANGE', 'iqc:log', '0', '29']); res.status(200).json({ log: (l || []).map((x) => { try { return JSON.parse(x); } catch { return x; } }) }); return; }
     if (acao === 'metricas' && post) return await gravarMetricas(req, res, agora);
     if (acao === 'aprov-insumo') return await aprovInsumo(req, res, agora);
+    if (acao === 'aprov-limpar') { // remove as aprovações automáticas (whatsapp/tácita) dos posts de um mês — decisão de gestor fica
+      const mes = String(req.query.mes || ''); if (!/^\d{4}-\d{2}$/.test(mes)) { res.status(400).json({ error: 'mes' }); return; }
+      const painel = await lerPainel(req); const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.mes === mes);
+      const regs = await D.lerRegistros(posts.map((p) => p.taskId)); let n = 0;
+      for (const p of posts) { const r = regs[p.taskId]; if (r && r.aprovacao && r.aprovacao.fonte !== 'gestor') { delete r.aprovacao; await D.gravarRegistro(p.taskId, r, mes); n++; } }
+      const cl = [...new Set(posts.map((p) => p.clienteId))]; if (cl.length) await wa.redisPipeline(cl.map((c) => ['DEL', `iqc:aprov:${c}:${mes}`]));
+      res.status(200).json({ ok: true, mes, limpos: n }); return;
+    }
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
     if (acao === 'aprovacao' && post) return await aprovacaoManual(req, res, agora);
     if (acao === 'metas') return post ? await metasPost(req, res, agora) : await metasGet(req, res);
