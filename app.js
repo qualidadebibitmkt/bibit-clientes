@@ -1268,7 +1268,7 @@
   }
 
   function render() {
-    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), iqc: $('#viewIQC') };
+    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), ranking: $('#viewRanking'), iqc: $('#viewIQC') };
     const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     pilarEl.hidden = !PILARES.includes(state.view);
@@ -1284,6 +1284,8 @@
     if (state.view === 'health') renderHealth(views.health);
     if (state.view === 'colab') renderColab(views.colab);
     if (state.view === 'iqc' && window.IQC) window.IQC.render(views.iqc); // aba IQC (iqc-view.js)
+    // aba Ranking dos colaboradores (ranking-view.js): mesmos pilares do Health Score, por pessoa (André, 22/10/26)
+    if (state.view === 'ranking' && window.RANKING) window.RANKING.render(views.ranking, { irColab: (id) => { state.colab = id; state.colabFoco = null; state.view = 'colab'; render(); }, irCliente: (id) => { state.cliente = id; state.view = 'geral'; render(); } });
   }
 
   async function boot() {

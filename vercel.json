@@ -1,4 +1,5 @@
 {
+  "crons": [{ "path": "/api/ranking?snap=1", "schedule": "0 11 * * *" }],
   "headers": [
     {
       "source": "/",

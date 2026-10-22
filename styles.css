@@ -1478,3 +1478,36 @@ body::before {
 .iqc-regras div { margin-bottom: 8px; }
 .hs-table td .g { color: var(--flag-green); } .hs-table td .y { color: var(--flag-yellow); } .hs-table td .r { color: var(--flag-red); }
 .pl-sep { margin-left: 14px; }
+
+/* ---------- v95: aba Ranking (colaboradores da Operação) ---------- */
+.rk-termo .pl-meta-box { max-width: 420px; }
+.rk-kpis { grid-template-columns: repeat(4, minmax(90px, 1fr)); }
+.rk-podio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 26px; }
+.rk-pod { display: grid; justify-items: center; gap: 6px; padding: 18px 14px 16px; border-radius: var(--radius); background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.12); color: var(--creme); cursor: pointer; text-align: center; font-family: var(--ui); }
+.rk-pod:hover { background: var(--garrafa-3); }
+.rk-pod.is-1 { border-color: color-mix(in srgb, var(--rolha) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rolha) 35%, transparent) inset; }
+.rk-pod.g { border-color: color-mix(in srgb, var(--flag-green) 40%, transparent); } .rk-pod.y { border-color: color-mix(in srgb, var(--flag-yellow) 40%, transparent); } .rk-pod.r { border-color: color-mix(in srgb, var(--flag-red) 40%, transparent); }
+.rk-pod-pos { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rolha); }
+.rk-pod-avatar { width: 56px; height: 56px; font-size: 20px; }
+.rk-pod-nome { font-family: var(--display); font-size: 17px; font-weight: 600; }
+.rk-pod-papel { font-size: 11.5px; color: var(--creme-45); }
+.rk-pod-score { font-family: var(--display); font-size: 44px; font-weight: 600; line-height: 1; margin-top: 4px; }
+.rk-pod-score.g { color: var(--flag-green); } .rk-pod-score.y { color: var(--flag-yellow); } .rk-pod-score.r { color: var(--flag-red); }
+.rk-pod-sub { font-size: 11.5px; color: var(--creme-45); }
+.rk-pod-sub .g { color: var(--flag-green); } .rk-pod-sub .r { color: var(--flag-red); } .rk-pod-sub .na { color: var(--creme-45); }
+.rk-pos { font-family: var(--display); font-size: 16px; font-weight: 600; white-space: nowrap; }
+.rk-pos small { margin-left: 3px; font-family: var(--ui); font-size: 10px; }
+.rk-nota { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rk-bruto, .rk-ab { display: block; font-size: 10.5px; line-height: 1.2; }
+.rk-td-delta { white-space: nowrap; font-weight: 600; }
+.rk-tr.is-open { background: var(--garrafa-3); } .rk-tr.is-open td, .rk-tr.is-open:hover td { background: transparent; }
+.rk-sem td { opacity: 0.7; }
+.rk-det td { background: rgba(0,0,0,0.18) !important; padding: 14px 18px 16px; cursor: default; }
+.rk-det-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 22px; }
+.rk-det-p { min-width: 0; }
+.rk-det-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+.rk-det-h b { font-family: var(--display); font-size: 15px; color: var(--creme); }
+.rk-det-h small { font-size: 11.5px; }
+.rk-det-acoes { display: flex; gap: 8px; margin-top: 14px; }
+.rk-regras div { margin-bottom: 8px; }
+@media (max-width: 900px) { .rk-podio { grid-template-columns: 1fr; } .rk-det-grid { grid-template-columns: 1fr; } .rk-kpis { grid-template-columns: repeat(2, 1fr); } }

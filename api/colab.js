@@ -119,10 +119,10 @@ function acao(x) {
   return '';
 }
 
-function colaboradores(clients, tasksOf) {
+function colaboradores(clients, tasksOf, excluir = foraPlacar) {
   const map = new Map();
   const add = (p, c, papel) => {
-    if (!p || foraPlacar(p.name)) return;
+    if (!p || excluir(p.name)) return;
     const id = pid(p);
     if (!map.has(id)) map.set(id, { id, p, papeis: new Set(), clientes: new Map() });
     const a = map.get(id); a.clientes.set(c.id, c); if (papel) a.papeis.add(papel);
@@ -259,3 +259,5 @@ module.exports = async (req, res) => {
 
 // reutilizado por /api/acoes-dia (números do Time - Operação)
 module.exports.whatsapps = whatsapps;
+// reutilizado por /api/ranking (mesma medida por pessoa × cliente × pilar)
+Object.assign(module.exports, { colaboradores, medida, resumo, equipeDe, PILARES, LBL, META, PAPEL_LBL, norm, pid, stKey, flagDe, cls, isOpen, isLate, concluida, conclFora });
