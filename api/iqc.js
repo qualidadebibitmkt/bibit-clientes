@@ -303,8 +303,10 @@ async function metasProvisorias(req, res, agora) {
     const [c, f] = k.split('|');
     const minimo = c === 'PADRAO' ? 5 : 3;
     if (arr.length < minimo || temManual(c, f)) continue;
-    const eng = E.mediana(arr.map((x) => x.e)), sh = E.mediana(arr.map((x) => x.s));
-    if (!eng || !sh || eng <= 0 || sh <= 0) continue; // mediana zero não vira meta (dividiria por zero)
+    // mediana; se der zero (metade dos posts sem compartilhamento, comum), cai pra média e, por fim, piso de 0,05% — meta zero não existe
+    const comPiso = (vals) => { const med = E.mediana(vals); if (med > 0) return med; const m = E.media(vals); return m > 0 ? Math.round(m * 100) / 100 : 0.05; };
+    const eng = comPiso(arr.map((x) => x.e)), sh = comPiso(arr.map((x) => x.s));
+    if (!eng || !sh || eng <= 0 || sh <= 0) continue;
     for (const m of metas) if (m.clienteId === c && (m.formato || '*') === f && m.origem === 'mediana' && !m.ate) m.ate = agora - 1;
     const nova = { id: 'm' + agora.toString(36) + Math.random().toString(36).slice(2, 6), clienteId: c, formato: f, engajamento: eng, compartilhamento: sh, de: 0, ate: null, origem: 'mediana', provisoria: true, por: 'sistema', em: agora, obs: `mediana de ${arr.length} posts (90 dias)` };
     metas.push(nova); criadas.push(nova);
