@@ -114,6 +114,7 @@ async function gravarMetricas(req, res, agora) {
   const b = await lerBody(req);
   // diagnóstico: últimas 30 chamadas (corpo cru) — ?acao=log
   try { await wa.redisPipeline([['LPUSH', 'iqc:log', JSON.stringify({ em: agora, corpo: typeof b === 'string' ? b.slice(0, 600) : JSON.stringify(b).slice(0, 600) })], ['LTRIM', 'iqc:log', '0', '29']]); } catch {}
+  if (b && b.diag) { res.status(200).json({ ok: true, diag: true }); return; } // só registra no log
   const taskId = String(b.taskId || '').trim();
   const tipo = ['d2', 'd7', 'manual'].includes(b.tipo) ? b.tipo : null;
   if (!taskId || !tipo) { res.status(400).json({ error: 'taskId e tipo (d2|d7|manual) obrigatórios' }); return; }
