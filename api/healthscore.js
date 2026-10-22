@@ -27,6 +27,11 @@
 //      FORA do score (renormaliza); passada a carência, Tráfego = 0 (substitui a regra de 28/09,
 //      em que "sem campanha" nunca pesava). Sem Data de Entrada em Execução = carência vencida.
 //  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
+//  - RESULTADO (André, 22/10/26): o pilar "Tráfego" passou a se chamar Resultado e reúne TODAS as áreas da operação:
+//      frente Tráfego (régua acima) + frente por área de conteúdo (Social Media, Audiovisual, RP) = performance média
+//      dos posts do cliente com janela de 7 dias fechada nos últimos 30 dias (motor do IQC: engajamento 60 · compartilhamento 40
+//      vs. meta do cliente × formato). Nota do pilar = média simples das frentes que têm dado; frente sem dado fica fora.
+//      A chave interna continua "trafego" (snapshots/painel); o rótulo é Resultado. Contato → Relacionamento (só rótulo).
 
 const PESOS = { trafego: 30, satisfacao: 25, produtividade: 20, contato: 25 };
 const CARENCIA_TRAFEGO_DIAS = 7; // dias em execução antes de "campanha parada" zerar o tráfego (André, 21/10/26)
@@ -167,13 +172,30 @@ function compor(pilares) {
   return { score, flag, cobertura: `${n}/${Object.keys(PESOS).length}`, insuficiente: false };
 }
 
+// ---- Pilar RESULTADO = frente Tráfego + frentes de conteúdo por área ----
+// conteudo = { social: {nota, n}, audiovisual: {nota, n}, rp: {nota, n} } (api/_iqc.js conteudoPorCliente)
+const FRENTES_CONTEUDO = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager' };
+function notaResultado(tr, conteudo) {
+  const frentes = { trafego: { nota: tr.nota, n: null } };
+  const detalhe = [...(tr.detalhe || [])];
+  for (const [k, lbl] of Object.entries(FRENTES_CONTEUDO)) {
+    const c = conteudo && conteudo[k];
+    if (!c || c.nota == null) continue;
+    frentes[k] = { nota: c.nota, n: c.n };
+    detalhe.push({ rotulo: lbl, valor: c.nota, nota: c.nota, unid: 'pts', frente: k, regua: `performance média de ${c.n} post${c.n === 1 ? '' : 's'} (janela de 7 dias, últimos 30 dias) — engajamento 60 · compartilhamento 40 vs. meta do cliente` });
+  }
+  const notas = Object.values(frentes).map((f) => f.nota).filter((n) => n != null);
+  return { nota: notas.length ? round0(notas.reduce((a, b) => a + b, 0) / notas.length) : null, detalhe, frentes };
+}
+
 // Calcula o health score de todos os clientes de uma vez.
 // entrada: [{ id, tipoRelatorio, hs:{cpm,roas,custoConversa,custoLead}, csat, nps, prodPct, contato,
 //             campanhaParada (bool), diasExec (dias desde a entrada em execução; null = desconhecido) }]
 function calcularTodos(clientes) {
   const out = {};
   for (const c of clientes) {
-    const tr = notaTrafego(c.tipoRelatorio, c.hs, { campanhaParada: !!c.campanhaParada, diasExec: c.diasExec ?? null });
+    const tr0 = notaTrafego(c.tipoRelatorio, c.hs, { campanhaParada: !!c.campanhaParada, diasExec: c.diasExec ?? null });
+    const tr = notaResultado(tr0, c.conteudo);
     const sa = notaSatisfacao(c.csat, c.nps);
     const pr = notaProdutividade(c.prodPct);
     const ct = c.contato != null ? round0(clamp(c.contato, 0, 100)) : null; // nota 0–100 da análise do grupo
@@ -181,7 +203,7 @@ function calcularTodos(clientes) {
     out[c.id] = {
       ...comp,
       pilares: {
-        trafego: { nota: tr.nota, peso: PESOS.trafego, detalhe: tr.detalhe },
+        trafego: { nota: tr.nota, peso: PESOS.trafego, detalhe: tr.detalhe, frentes: tr.frentes, rotulo: 'Resultado' },
         satisfacao: { nota: sa.nota, peso: PESOS.satisfacao, detalhe: sa.detalhe },
         produtividade: { nota: pr.nota, peso: PESOS.produtividade, detalhe: pr.detalhe },
         contato: { nota: ct, peso: PESOS.contato, detalhe: null },
@@ -191,4 +213,4 @@ function calcularTodos(clientes) {
   return out;
 }
 
-module.exports = { calcularTodos, notaFaixa, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS };
+module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO };

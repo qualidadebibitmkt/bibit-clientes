@@ -34,6 +34,15 @@ const CF_CSAT_NOTAS = [
 // Custom fields — space Operação
 const CF_CLIENTE = 'b8d37b88-3192-4ec7-be2e-5efac5401179';
 const CF_DATA_AGENDAMENTO = 'df70c49b-b84b-418f-a0f9-df8c53e24fe2';
+// IQC (André, 22/10/26): id do post no Meta (gravado pelo publicador) e tipo do post — só ids/rótulos saem ao navegador
+const CF_ID_POST_META = '8e5227c0-2a2d-4200-8d3c-8e9477c64c75';
+const CF_TIPO_POST = 'd94df729-10bc-4f9f-9abd-3755ccff3254';
+// "IG: 123 | FB: 456_789" (IG+FB / carrossel) ou só "123" (foto / reel). Post só de Facebook (tem "_") não tem insight do Instagram.
+function igIdDe(txt) {
+  const s = String(txt || '').trim(); if (!s) return null;
+  if (/IG:/i.test(s)) { const m = s.match(/IG:\s*([0-9]+)/i); return m ? m[1] : null; }
+  return /^[0-9]+$/.test(s) ? s : null;
+}
 
 // Custom fields — lista Growth (apenas os aprovados)
 const CF_FLAG = 'b56ccf8c-4a74-46f5-b339-5cd577653866';
@@ -166,6 +175,10 @@ function shapeOperacaoTask(task, listKey) {
     clienteId: cliente ? cliente.id : null,
     clienteName: cliente ? cliente.name : null,
     assignees: (task.assignees || []).map(person).filter(Boolean),
+    assigneeIds: (task.assignees || []).map((u) => u && u.id).filter(Boolean),
+    // IQC: só nas listas de conteúdo
+    igId: ['social', 'audiovisual', 'rp'].includes(listKey) ? igIdDe(cfText(getCF(task, CF_ID_POST_META))) : null,
+    tipoPost: ['social', 'audiovisual', 'rp'].includes(listKey) ? (cfDropdown(getCF(task, CF_TIPO_POST))?.name || null) : null,
   };
 }
 
@@ -429,8 +442,23 @@ module.exports = async (req, res) => {
     };
     // campanha parada (André, 21/10/26): zera o tráfego depois de 7 dias em execução; briefing nunca conta
     const stKey = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+    // Resultado (André, 22/10/26): performance de conteúdo por área (IQC) entra no pilar junto com o tráfego.
+    // Métricas por post vivem no Redis; se o Redis não responder, o pilar segue só com tráfego.
+    let conteudoPorCliente = {};
+    try {
+      const IQC = require('./_iqc'); const wa0 = require('./_wa');
+      if (wa0.redisReady()) {
+        const posts = IQC.postsDoPainel({ clients, tasks });
+        if (posts.length) {
+          const [regs, metas, cfg] = await Promise.all([IQC.lerRegistros(posts.map((p) => p.taskId)), IQC.lerMetas(), IQC.lerConfig()]);
+          const avaliados = posts.map((p) => IQC.avaliarPost(p, regs[p.taskId], metas, cfg, now));
+          conteudoPorCliente = IQC.conteudoPorCliente(avaliados, now, 30);
+        }
+      }
+    } catch (e) { conteudoPorCliente = {}; }
+    for (const c of clients) c.conteudo = conteudoPorCliente[c.id] ? Object.fromEntries(Object.entries(conteudoPorCliente[c.id]).map(([k, v]) => [k, { nota: v.nota, n: v.n }])) : null;
     const hsResultados = calcularTodos(clients.map((c) => ({
-      id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs,
+      id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs, conteudo: c.conteudo,
       csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
       contato: c.contato?.nota ?? null,
       campanhaParada: !!(c.campanha && c.campanha.rodando === false) && stKey(c) !== 'briefing',

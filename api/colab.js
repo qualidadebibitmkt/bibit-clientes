@@ -18,7 +18,7 @@ const CF_RH_WHATSAPP = '4e85aad8-c307-4016-8d52-dd4c13c44064';
 
 // ---- regras (iguais ao app.js) ----
 const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
-const LBL = { trafego: 'Tráfego', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Contato' };
+const LBL = { trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento' };
 const EMOJI = { trafego: '📈', satisfacao: '😊', produtividade: '✅', contato: '💬' };
 const META = { trafego: 70, satisfacao: 9, produtividade: 95, contato: 70 };
 const PAPEL_LBL = { trafego: 'Tráfego', social: 'Social Media', rp: 'RP', audiovisual: 'Audiovisual', webdesign: 'Web Designer' };
@@ -64,12 +64,14 @@ function contatoOpcional(c, id) {
 // medida da pessoa num cliente, por pilar (porta fiel de medidaPilar/medidaColab do app.js)
 function medida(k, c, a, tasksOf) {
   const hs = c.healthScore;
-  if (k === 'trafego') {
-    if (!((c.team && c.team.trafego) || []).some((p) => pid(p) === a.id)) return null;
-    if (!hs || hs.pilares.trafego.nota == null) return null;
-    const n = hs.pilares.trafego.nota;
-    const det = (hs.pilares.trafego.detalhe || []).filter((f) => f.valor != null).map((f) => `${f.rotulo} ${f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`).join(' · ');
-    return { valor: n, lacuna: Math.max(0, META.trafego - n), cls: cls(k, n), txt: `nota ${n} pts${det ? ' · ' + det : ''}` };
+  if (k === 'trafego') { // Resultado: a frente da pessoa (tráfego, social, audiovisual ou rp)
+    const t = c.team || {}; const em = (l) => (l || []).some((p) => pid(p) === a.id);
+    const frente = em(t.trafego) ? 'trafego' : em(t.social) ? 'social' : em(t.audiovisual) ? 'audiovisual' : em(t.rp) ? 'rp' : null;
+    const fr = (hs && hs.pilares && hs.pilares.trafego.frentes) || {};
+    if (!frente || !fr[frente] || fr[frente].nota == null) return null;
+    const n = fr[frente].nota;
+    const det = frente === 'trafego' ? (hs.pilares.trafego.detalhe || []).filter((f) => f.valor != null && !f.frente).map((f) => `${f.rotulo} ${f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`).join(' · ') : `${fr[frente].n} post(s) nos últimos 30 dias`;
+    return { valor: n, lacuna: Math.max(0, META.trafego - n), cls: cls(k, n), txt: `nota ${n} pts · frente ${frente}${det ? ' · ' + det : ''}`, frente };
   }
   if (k === 'satisfacao') {
     const pp = (c.metrics && c.metrics.porPapel) || {}; const t = c.team || {};
