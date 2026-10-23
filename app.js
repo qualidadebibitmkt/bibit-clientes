@@ -949,7 +949,7 @@
   // pessoas do pilar num cliente (pra o corte por colaborador)
   function pessoasPilar(k, c) { return semExcluidos(pessoasPilar0(k, c)); }
   function pessoasPilar0(k, c) {
-    if (k === 'trafego') { const t = c.team || {}; const seen = new Map(); for (const kk of ['trafego', 'social', 'audiovisual', 'rp', 'webdesign']) for (const p of t[kk] || []) seen.set(String(p.id || p.name), p); return seen.size ? [...seen.values()] : equipeDe(c); } // Resultado: gestor de tráfego + donos das áreas de conteúdo + web (IQW)
+    if (k === 'trafego') { const t = c.team || {}; return (t.trafego || []).slice(); } // aba Tráfego Pago (André, 23/10/26): só o Gestor de Tráfego do card; as outras áreas têm as próprias sub-abas
     if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t) || concluida(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
     return equipeDe(c);
   }
