@@ -120,6 +120,84 @@ async function salvarProjeto(req, res, agora) {
   res.status(200).json({ ok: true, projeto: D.avaliar(p) });
 }
 
+// ---- Técnica automática (Lighthouse / PageSpeed Insights, gratuito) ----
+// GET ?acao=tecnica&projetoId=  → roda o PSI mobile (e desktop, só pro print), guarda em p.tecnicaAuto e pré-preenche as notas do critério
+// Técnica: desempenho ← Performance · estabilidade ← Boas práticas · responsividade ← audits de viewport/tap-targets/font-size ·
+// interativos ← links quebrados (HEAD nos links internos da página) · integracoes → não aplicável (só o gestor sabe o escopo).
+// Pixel/GA4/GTM nunca entram. Régua nota PSI (0–100) → 100/80/60/40/0: ≥90 →100 · 80–89 →80 · 70–79 →60 · 50–69 →40 · <50 →0.
+const faixaPSI = (v) => (v == null ? null : v >= 90 ? 100 : v >= 80 ? 80 : v >= 70 ? 60 : v >= 50 ? 40 : 0);
+async function psi(url, strategy) {
+  const cats = ['performance', 'accessibility', 'best-practices', 'seo'].map((c) => 'category=' + c).join('&');
+  const r = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&${cats}&locale=pt_BR${process.env.PSI_API_KEY ? '&key=' + process.env.PSI_API_KEY : ''}`);
+  const j = await r.json();
+  if (!r.ok || !j.lighthouseResult) throw new Error((j.error && j.error.message) || 'PSI ' + r.status);
+  const L = j.lighthouseResult; const sc = (k) => (L.categories[k] && L.categories[k].score != null ? Math.round(L.categories[k].score * 100) : null);
+  const au = L.audits || {}; const pass = (k) => (au[k] ? au[k].score : null);
+  const shot = au['final-screenshot'] && au['final-screenshot'].details && au['final-screenshot'].details.data || null;
+  return { performance: sc('performance'), acessibilidade: sc('accessibility'), boasPraticas: sc('best-practices'), seo: sc('seo'), viewport: pass('viewport'), tapTargets: pass('tap-targets') ?? pass('target-size'), fontSize: pass('font-size'), https: pass('is-on-https'), errosConsole: pass('errors-in-console'), urlFinal: L.finalUrl || url, screenshot: shot, em: Date.now() };
+}
+async function linksQuebrados(url) {
+  try {
+    const r = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'Mozilla/5.0 (bibit-iqw)' } }); const html = await r.text();
+    const base = new URL(r.url || url); const hrefs = new Set();
+    for (const m of html.matchAll(/href=["']([^"'#?]+)[^"']*["']/gi)) { try { const u = new URL(m[1], base); if (/^https?:/.test(u.protocol) && u.host === base.host) hrefs.add(u.href); } catch {} }
+    const lista = [...hrefs].slice(0, 25); const quebrados = [];
+    await Promise.all(lista.map(async (h) => { try { const x = await fetch(h, { method: 'HEAD', redirect: 'follow' }); if (x.status >= 400) quebrados.push({ url: h, status: x.status }); } catch { quebrados.push({ url: h, status: 'erro' }); } }));
+    const whatsapp = /wa\.me|api\.whatsapp\.com|whatsapp:\/\//i.test(html); const form = /<form[\s>]/i.test(html);
+    return { testados: lista.length, quebrados, whatsapp, form, status: r.status };
+  } catch (e) { return { testados: 0, quebrados: [], erro: String(e.message || e) }; }
+}
+async function tecnicaAuto(req, res, agora) {
+  const p = await D.ler(String(req.query.projetoId || ''));
+  if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  if (!p.url) { res.status(422).json({ error: 'projeto sem URL final' }); return; }
+  let mobile, desktop = null, links;
+  try { mobile = await psi(p.url, 'mobile'); } catch (e) { res.status(502).json({ error: 'Lighthouse falhou: ' + String(e.message || e) }); return; }
+  try { desktop = await psi(p.url, 'desktop'); } catch { /* print desktop é opcional */ }
+  links = await linksQuebrados(p.url);
+  const notas = {
+    desempenho: faixaPSI(mobile.performance),
+    estabilidade: faixaPSI(mobile.boasPraticas),
+    responsividade: mobile.viewport == null ? null : (mobile.viewport >= 1 && (mobile.tapTargets ?? 1) >= 0.9 && (mobile.fontSize ?? 1) >= 0.9 ? 100 : mobile.viewport >= 1 ? 80 : 40),
+    interativos: links.testados ? (links.quebrados.length === 0 ? 100 : links.quebrados.length <= 1 ? 80 : links.quebrados.length <= 3 ? 60 : 40) : null,
+    integracoes: 'na',
+  };
+  const jus = {
+    desempenho: `Lighthouse mobile · Performance ${mobile.performance}${desktop ? ` (desktop ${desktop.performance})` : ''} · SEO ${mobile.seo} · Acessibilidade ${mobile.acessibilidade}`,
+    estabilidade: `Lighthouse · Boas práticas ${mobile.boasPraticas}${mobile.errosConsole != null ? ` · erros no console: ${mobile.errosConsole >= 1 ? 'nenhum' : 'sim'}` : ''}`,
+    responsividade: `viewport ${mobile.viewport >= 1 ? 'ok' : 'falha'} · alvos de toque ${mobile.tapTargets == null ? '—' : mobile.tapTargets >= 0.9 ? 'ok' : 'pequenos'} · fonte legível ${mobile.fontSize == null ? '—' : mobile.fontSize >= 0.9 ? 'ok' : 'pequena'}`,
+    interativos: links.testados ? `${links.testados} links internos testados · ${links.quebrados.length} quebrado${links.quebrados.length === 1 ? '' : 's'}${links.quebrados.length ? ' (' + links.quebrados.slice(0, 3).map((q) => q.url.replace(/^https?:\/\//, '') + ' ' + q.status).join(', ') + ')' : ''} · formulário ${links.form ? 'presente' : 'não encontrado'} · WhatsApp ${links.whatsapp ? 'presente' : 'não encontrado'}` : 'não foi possível ler a página',
+    integracoes: null,
+  };
+  const naJus = { integracoes: 'integração operacional depende do escopo — avaliar à mão quando houver (CRM, checkout, frete)' };
+  p.tecnicaAuto = { mobile: { ...mobile, screenshot: undefined }, desktop: desktop ? { ...desktop, screenshot: undefined } : null, links, notas, em: agora, screenshots: { mobile: mobile.screenshot || null, desktop: desktop ? desktop.screenshot : null } };
+  const av = p.avaliacao || { notas: {}, justificativas: {}, naJustificativas: {}, evidencias: {}, ocorrencias: [], por: 'sistema', em: agora, versao: E.VERSAO_REGRAS };
+  av.notas.tecnica = { ...(av.notas.tecnica || {}) }; av.justificativas.tecnica = { ...(av.justificativas.tecnica || {}) }; av.naJustificativas.tecnica = { ...(av.naJustificativas.tecnica || {}) }; av.evidencias.tecnica = { ...(av.evidencias.tecnica || {}) };
+  for (const k of Object.keys(notas)) { if (notas[k] == null) continue; if (av.notas.tecnica[k] != null && av.justificativas.tecnica[k] && !/^Lighthouse|^viewport|links internos/.test(av.justificativas.tecnica[k] || '') && av.por !== 'sistema') continue; av.notas.tecnica[k] = notas[k]; if (notas[k] === 'na') av.naJustificativas.tecnica[k] = naJus[k]; else av.justificativas.tecnica[k] = jus[k]; av.evidencias.tecnica[k] = `PageSpeed Insights (${new Date(agora).toLocaleDateString('pt-BR')}) · ${mobile.urlFinal}`; }
+  av.parcial = true; av.em = agora; p.avaliacao = av;
+  p.historico = [...(p.historico || []), { em: agora, por: 'sistema (Lighthouse)', o: 'técnica automática atualizada' }].slice(-60);
+  await D.gravar(p);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ ok: true, projetoId: p.id, notas, lighthouse: { mobile: p.tecnicaAuto.mobile, desktop: p.tecnicaAuto.desktop }, links });
+}
+// GET ?acao=print&projetoId=&tela=mobile|desktop → print da página (base64) guardado pelo Lighthouse, pra avaliação visual pela tarefa agendada
+async function printPagina(req, res) {
+  const p = await D.ler(String(req.query.projetoId || ''));
+  if (!p || !p.tecnicaAuto || !p.tecnicaAuto.screenshots) { res.status(404).json({ error: 'sem print — rode acao=tecnica antes' }); return; }
+  const tela = req.query.tela === 'desktop' ? 'desktop' : 'mobile';
+  const data = p.tecnicaAuto.screenshots[tela]; if (!data) { res.status(404).json({ error: 'sem print ' + tela }); return; }
+  const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(data);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ projetoId: p.id, tela, mime: m ? m[1] : 'image/jpeg', b64: m ? m[2] : data, url: p.url });
+}
+// GET ?acao=fila-tecnica&limite=  → projetos com URL e sem técnica automática (ou com mais de 30 dias)
+async function filaTecnica(req, res, agora) {
+  const todos = await D.lerTodos();
+  const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ total: fila.length, fila: fila.slice(0, Math.min(Number(req.query.limite) || 10, 40)).map((p) => ({ id: p.id, cliente: p.cliente, tipo: p.tipo, url: p.url })) });
+}
+
 async function avaliarProjeto(req, res, agora) {
   const b = await lerBody(req);
   const p = await D.ler(String(b.projetoId || ''));
@@ -160,6 +238,9 @@ module.exports = async (req, res) => {
   try {
     if (!acao) return await painel(req, res, agora);
 
+    if (acao === 'tecnica') return await tecnicaAuto(req, res, agora);
+    if (acao === 'print') return await printPagina(req, res);
+    if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
     if (req.method !== 'POST') { res.status(405).json({ error: 'POST' }); return; }
     if (acao === 'projeto') return await salvarProjeto(req, res, agora);
     if (acao === 'avaliar') return await avaliarProjeto(req, res, agora);
