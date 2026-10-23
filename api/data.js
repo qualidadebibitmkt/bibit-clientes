@@ -21,6 +21,11 @@ const UPSELL_LIST = '901713575176';
 // O valor em R$ nunca é enviado ao navegador (regra do painel: financeiro fora).
 const CF_VALOR_REC = '65f9eee2-b80d-4a6b-959f-61395ae91b02';
 const CSAT_LIST = '901713333681'; // CSAT - Envios
+// CSAT - WD (André, 23/10/26): enviado ao cliente após CADA entrega de web (LP, Website, E-Commerce). Vira a nota de
+// Satisfação da Web Designer (porPapel.wd) e o bloco "web" na ficha do cliente. NÃO entra no CSAT geral do cliente
+// (que segue só com o CSAT - Envios mensal) — decisão pendente do André.
+const CSAT_WD_LIST = '901714454129';
+const CF_CSAT_WD = 'efeba1c8-217b-45d5-b739-94b32733ee69'; // CSAT - Web Designer
 
 // Custom fields — CSAT - Envios (mesmo campo Cliente do restante do workspace)
 const CF_NPS = '93264d0a-8fe6-429a-b8e8-1366e21fcf55';
@@ -297,11 +302,12 @@ module.exports = async (req, res) => {
   try {
     const listKeys = Object.keys(LISTS);
     const safe = (p) => p.catch(() => []); // sem permissão nas listas de venda? painel segue vivo, sem expansões
-    const [growthTasks, csatTasks, crossTasks, upsellTasks, ...opResults] = await Promise.all([
+    const [growthTasks, csatTasks, crossTasks, upsellTasks, wdTasks, ...opResults] = await Promise.all([
       fetchAllTasks(token, GROWTH_LIST),
       fetchAllTasks(token, CSAT_LIST, true), // respostas fechadas também contam
       safe(fetchAllTasks(token, CROSS_LIST, true)),
       safe(fetchAllTasks(token, UPSELL_LIST, true)),
+      safe(fetchAllTasks(token, CSAT_WD_LIST, true)), // CSAT - WD (respondidos estão concluídos)
       ...listKeys.map((k) => fetchAllTasks(token, LISTS[k].id)),
     ]);
 
@@ -375,6 +381,27 @@ module.exports = async (req, res) => {
         detalhe: a.det.sort((x, y) => (y.q || 0) - (x.q || 0)).slice(0, 12),
         porPapel: Object.fromEntries(Object.entries(a.pp).map(([k, [soma, n]]) => [k, n ? round1(soma / n) : null])),
       } : { csat: null, nps: null, respostas: 0, ultimaResposta: null, detalhe: [], porPapel: { tr: null, so: null, rp: null, av: null } };
+    }
+    // ---- CSAT - WD: nota por entrega de web (LP / Website / E-Commerce) ----
+    // Só respostas (nota > 0). Tipo da entrega vem do nome: "CSAT - <tipo> - <cliente> - <contato>".
+    const wdAgg = new Map();
+    for (const t of wdTasks) {
+      const nota = cfNumber(getCF(t, CF_CSAT_WD));
+      if (nota == null || nota <= 0) continue;
+      const cli = cfDropdown(getCF(t, CF_CLIENTE));
+      let key = cli ? cli.id : null;
+      if (!key) { const m = matcher(t.name); if (m) key = m.id; }
+      if (!key || key === TESTE_CLIENTE_OPTION) continue;
+      const tipo = (String(t.name || '').split(' - ')[1] || '').trim() || null;
+      const q = Number(t.date_closed) || Number(t.date_done) || Number(t.date_updated) || null;
+      if (!wdAgg.has(key)) wdAgg.set(key, []);
+      wdAgg.get(key).push({ q, tipo, nota, taskId: t.id });
+    }
+    for (const c of clients) {
+      const e = (wdAgg.get(c.id) || []).sort((x, y) => (y.q || 0) - (x.q || 0));
+      const media = e.length ? round1(e.reduce((s, x) => s + x.nota, 0) / e.length) : null;
+      c.metrics.wd = { nota: media, respostas: e.length, ultimaResposta: e[0] ? e[0].q : null, entregas: e };
+      c.metrics.porPapel.wd = media;
     }
 
     // ---- Expansões (cross/upsell) e NRR % — SEM valores em R$ no navegador ----

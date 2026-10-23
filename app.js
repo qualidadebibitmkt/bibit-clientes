@@ -604,12 +604,19 @@
       ${lateTasks.length > shown.length ? `<p class="sinais-nota">+ ${lateTasks.length - shown.length} atrasadas na aba Funções.</p>` : ''}`;
   }
 
+  // CSAT - WD: nota por entrega de web (não entra no CSAT geral do cliente; é a Satisfação da Web Designer)
+  function csatWdHTML(m) {
+    const w = m.wd; if (!w || !w.respostas) return '';
+    const nf = (n) => `<span class="csat-n${n >= 9 ? ' hit' : n < 7 ? ' low' : ''}">${fmtNota(n)}</span>`;
+    return `<p class="eyebrow">Satisfação com o web design <span class="hs-hist-info">CSAT - WD, enviado após cada entrega · média ${fmtNota(w.nota)}</span></p>
+      <div class="hs-pilar-list" style="margin-bottom:24px">${w.entregas.map((x) => `<span class="hs-chip">${esc(x.tipo || 'entrega')} ${nf(x.nota)}<i>${x.q ? fmtCurto(x.q) : ''}</i></span>`).join('')}</div>`;
+  }
   function csatDetalheHTML(m, diasSemResposta) {
     const det = m.detalhe || [];
     const alerta = m.respostas === 0
       ? '<span class="csat-alert">nunca respondeu</span>'
       : (diasSemResposta != null && diasSemResposta > 20 ? `<span class="csat-alert">sem resposta há ${diasSemResposta}d</span>` : '');
-    if (!det.length) return `<p class="eyebrow">Respostas de satisfação ${alerta}</p><div class="fn-empty">Nenhuma resposta de CSAT registrada para este cliente.</div>`;
+    if (!det.length) return `<p class="eyebrow">Respostas de satisfação ${alerta}</p><div class="fn-empty">Nenhuma resposta de CSAT registrada para este cliente.</div>${csatWdHTML(m)}`;
     const nf = (n) => (n == null || n <= 0 ? '<span class="csat-nul">—</span>' : `<span class="csat-n${n >= 9 ? ' hit' : n < 7 ? ' low' : ''}">${fmtNota(n)}</span>`);
     const rows = det.map((r) => `<tr><td>${r.q ? fmtCurto(r.q) : '—'}</td><td>${nf(r.tr)}</td><td>${nf(r.so)}</td><td>${nf(r.rp)}</td><td>${nf(r.av)}</td><td>${nf(r.nps)}</td></tr>`).join('');
     const pp = m.porPapel || {};
@@ -618,7 +625,7 @@
         <thead><tr><th>Quando</th><th>Tráfego</th><th>Social</th><th>RP</th><th>AV</th><th>NPS</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><td>Média da função</td><td>${nf(pp.tr)}</td><td>${nf(pp.so)}</td><td>${nf(pp.rp)}</td><td>${nf(pp.av)}</td><td>${nf(m.nps)}</td></tr></tfoot>
-      </table></div>`;
+      </table></div>${csatWdHTML(m)}`;
   }
 
   function expansoesHTML(c) {
@@ -880,12 +887,14 @@
       // com colaborador selecionado a medida é a nota que o cliente dá ao PAPEL dele no CSAT (tráfego/social/RP/AV)
       const pp = (c.metrics && c.metrics.porPapel) || {}; const t = c.team || {};
       const em = (lista) => (lista || []).some((x) => String(x.id || x.name) === pessoa);
-      const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : null;
+      // web designer (23/10/26): a nota vem do CSAT - WD, enviado após cada entrega de web (LP, Website, E-Commerce)
+      const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : em(t.webdesign) ? 'wd' : null;
       const v = papel && pp[papel] != null && pp[papel] > 0 ? pp[papel] : null;
       if (v == null) return null;
-      const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual' };
+      const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual', wd: 'web' };
       const cls = v >= 9 ? 'g' : v >= 8 ? 'y' : 'r';
-      return { valor: v, txt: `nota ao ${PAP[papel]}: ${fmtNota(v)}`, lacuna: Math.max(0, 9 - v), nota: null, cls, pessoa: true };
+      const wd = papel === 'wd' && c.metrics.wd ? ` (${c.metrics.wd.entregas.map((x) => `${x.tipo || 'entrega'} ${fmtNota(x.nota)}`).join(', ')})` : '';
+      return { valor: v, txt: `nota ao ${PAP[papel]}: ${fmtNota(v)}${wd}`, lacuna: Math.max(0, 9 - v), nota: null, cls, pessoa: true };
     }
     if (k === 'satisfacao') {
       const m = c.metrics || {}; const partes = [m.csat, m.nps].filter((x) => x != null);
@@ -1050,8 +1059,8 @@
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
-      const PAP = { tr: 'Tráfego', so: 'Social', rp: 'RP', av: 'Audiovisual' };
-      const acc = { tr: [], so: [], rp: [], av: [] };
+      const PAP = { tr: 'Tráfego', so: 'Social', rp: 'RP', av: 'Audiovisual', wd: 'Web Designer (CSAT - WD, por entrega)' };
+      const acc = { tr: [], so: [], rp: [], av: [], wd: [] };
       for (const c of filtrados) { const pp = (c.metrics && c.metrics.porPapel) || {}; for (const p of Object.keys(acc)) if (pp[p] != null && pp[p] > 0) acc[p].push(pp[p]); }
       const rows = Object.keys(acc).filter((p) => acc[p].length).map((p) => { const v = acc[p].reduce((a, b) => a + b, 0) / acc[p].length; return { p, v, n: acc[p].length }; }).sort((a, b) => a.v - b.v);
       if (rows.length) porPessoa = `<p class="eyebrow">Por função <span class="hs-hist-info">média das notas que o cliente dá a cada papel no CSAT${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>

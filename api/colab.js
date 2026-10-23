@@ -76,10 +76,10 @@ function medida(k, c, a, tasksOf) {
   if (k === 'satisfacao') {
     const pp = (c.metrics && c.metrics.porPapel) || {}; const t = c.team || {};
     const em = (l) => (l || []).some((x) => pid(x) === a.id);
-    const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : null;
+    const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : em(t.webdesign) ? 'wd' : null; // wd = CSAT - WD (por entrega)
     const v = papel && pp[papel] != null && pp[papel] > 0 ? pp[papel] : null;
     if (v == null) return null;
-    const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual' };
+    const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual', wd: 'web design' };
     return { valor: v, lacuna: Math.max(0, 9 - v), cls: cls(k, v), txt: `nota ${fmtNota(v)} ao ${PAP[papel]} no CSAT`, papel: PAP[papel] };
   }
   if (k === 'produtividade') {
