@@ -28,8 +28,9 @@ const SNAP_TTL = 400 * 86400;
 const BRT = 'America/Sao_Paulo';
 const diaBR = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: BRT, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
 
-// fora do ranking: só quem saiu (Beltrão). Will entra (André, 22/10/26) — por isso não usa o FORA_PLACAR do colab.js
-const FORA = ['gabriel beltrao', 'gabriel beltrão'];
+// fora do ranking: quem saiu (Beltrão) e a Web Designer (Michelle) — decisão do André em 23/10/26: Web Design não entra no
+// Ranking (ela segue na aba Colaborador e nos pilares). Will entra (André, 22/10/26) — por isso não usa o FORA_PLACAR do colab.js
+const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle'];
 const fora = (nome) => { const n = norm(nome); return FORA.some((x) => n === norm(x) || n.startsWith(norm(x) + ' ')); };
 
 const round0 = (n) => Math.round(n);

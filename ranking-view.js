@@ -117,7 +117,7 @@
       <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'score ao vivo · clique na linha pra ver como a nota de cada pilar foi formada, cliente a cliente' : 'média das fotos diárias do mês · a posição é pela média'}</span></p>
       ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem foto diária neste mês ainda — a primeira foto é tirada na primeira abertura do painel de cada dia.'}</div>`}
 
-      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t, i) => `<div><b>${['Nota por pilar', 'Score', 'Faixas', 'Posição', 'Mês'][i] || 'Regra'}</b> ${esc(t)}</div>`).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit. Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
+      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t, i) => `<div><b>${['Nota por pilar', 'Score', 'Faixas', 'Posição', 'Mês'][i] || 'Regra'}</b> ${esc(t)}</div>`).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit e a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
     bind(el);
   }
 
