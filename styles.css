@@ -1511,3 +1511,7 @@ body::before {
 .rk-det-acoes { display: flex; gap: 8px; margin-top: 14px; }
 .rk-regras div { margin-bottom: 8px; }
 @media (max-width: 900px) { .rk-podio { grid-template-columns: 1fr; } .rk-det-grid { grid-template-columns: 1fr; } .rk-kpis { grid-template-columns: repeat(2, 1fr); } }
+
+/* v96: IQC dentro de Resultado (sub-aba) */
+.pl-sub { margin: 0 0 18px; }
+.pl-sub .balcao-l { color: var(--rolha); }

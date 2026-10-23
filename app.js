@@ -945,6 +945,10 @@
     return equipeDe(c);
   }
 
+  // sub-abas do Resultado: o pilar (régua por cliente/colaborador) ou o IQC (índice de qualidade do conteúdo, iqc-view.js)
+  const subResultadoHTML = () => { const sub = state.resultadoSub === 'iqc' ? 'iqc' : 'pilar'; return `<div class="pl-filtros pl-sub"><span class="balcao-l">resultado</span><div class="chips"><button class="hs-chip pl-chip${sub === 'pilar' ? ' is-on' : ''}" data-rsub="pilar">pilar</button><button class="hs-chip pl-chip${sub === 'iqc' ? ' is-on' : ''}" data-rsub="iqc">IQC · conteúdo<i>social · AV · RP</i></button></div></div>`; };
+  const bindSubResultado = (el) => el.querySelectorAll('[data-rsub]').forEach((n) => n.addEventListener('click', () => { state.resultadoSub = n.dataset.rsub; render(); }));
+
   function renderPilar(el, k) {
     const M = METAS_PILAR[k];
     const { clients } = state.data;
@@ -1066,6 +1070,7 @@
     const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? f.valor + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
+      ${k === 'trafego' ? subResultadoHTML() : ''}
       <div class="pl-head">
         <div class="hs-termo pl-termo">
           <div class="hs-termo-media"><span class="hs-big ${mediaCls}">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador' : k === 'satisfacao' ? 'nota ao papel dele' : 'média do colaborador') : 'média da carteira'}<br><span>${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
@@ -1094,6 +1099,7 @@
 
     el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[k] = n.dataset.plF || null; renderPilar(el, k); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
+    bindSubResultado(el);
   }
 
   // ===================== VISÃO POR COLABORADOR (v81) =====================
@@ -1268,11 +1274,17 @@
   }
 
   function render() {
-    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), ranking: $('#viewRanking'), iqc: $('#viewIQC') };
+    const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), ranking: $('#viewRanking') };
     const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     pilarEl.hidden = !PILARES.includes(state.view);
-    if (PILARES.includes(state.view)) renderPilar(pilarEl, state.view);
+    // IQC mora dentro de Resultado (André, 23/10/26): sub-aba "pilar" | "IQC · conteúdo"; a seção do IQC só aparece nesse corte
+    const iqcEl = $('#viewIQC'); const iqcOn = state.view === 'trafego' && state.resultadoSub === 'iqc';
+    iqcEl.hidden = !iqcOn;
+    if (PILARES.includes(state.view)) {
+      if (iqcOn) { pilarEl.innerHTML = subResultadoHTML(); bindSubResultado(pilarEl); if (window.IQC) window.IQC.render(iqcEl); }
+      else renderPilar(pilarEl, state.view);
+    }
     document.querySelectorAll('.tab').forEach((t) => {
       const on = t.dataset.view === state.view;
       t.classList.toggle('is-active', on);
@@ -1283,7 +1295,6 @@
     if (state.view === 'funcoes') renderFuncoes(views.funcoes);
     if (state.view === 'health') renderHealth(views.health);
     if (state.view === 'colab') renderColab(views.colab);
-    if (state.view === 'iqc' && window.IQC) window.IQC.render(views.iqc); // aba IQC (iqc-view.js)
     // aba Ranking dos colaboradores (ranking-view.js): mesmos pilares do Health Score, por pessoa (André, 22/10/26)
     if (state.view === 'ranking' && window.RANKING) window.RANKING.render(views.ranking, { irColab: (id) => { state.colab = id; state.colabFoco = null; state.view = 'colab'; render(); }, irCliente: (id) => { state.cliente = id; state.view = 'geral'; render(); } });
   }
