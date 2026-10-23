@@ -1,13 +1,33 @@
 {
-  "crons": [{ "path": "/api/ranking?snap=1", "schedule": "0 11 * * *" }],
+  "crons": [
+    {
+      "path": "/api/ranking?snap=1",
+      "schedule": "0 11 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     },
     {
       "source": "/index.html",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     }
-  ]
+  ],
+  "functions": {
+    "api/iqw.js": {
+      "maxDuration": 300
+    }
+  }
 }

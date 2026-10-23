@@ -140,11 +140,12 @@ async function linksQuebrados(url) {
   try {
     const r = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'Mozilla/5.0 (bibit-iqw)' } }); const html = await r.text();
     const base = new URL(r.url || url); const hrefs = new Set();
-    for (const m of html.matchAll(/href=["']([^"'#?]+)[^"']*["']/gi)) { try { const u = new URL(m[1], base); if (/^https?:/.test(u.protocol) && u.host === base.host) hrefs.add(u.href); } catch {} }
+    for (const m of html.matchAll(/href=["']([^"'#?]+)[^"']*["']/gi)) { try { const u = new URL(m[1], base); if (/^https?:/.test(u.protocol) && u.host === base.host && !/\/(wp-json|xmlrpc|feed|wp-admin|wp-login|cdn-cgi)\b|\.(css|js|json|xml|ico|woff2?|ttf)$/i.test(u.pathname)) hrefs.add(u.href); } catch {} }
     const lista = [...hrefs].slice(0, 25); const quebrados = [];
     await Promise.all(lista.map(async (h) => { try { const x = await fetch(h, { method: 'HEAD', redirect: 'follow' }); if (x.status >= 400) quebrados.push({ url: h, status: x.status }); } catch { quebrados.push({ url: h, status: 'erro' }); } }));
     const whatsapp = /wa\.me|api\.whatsapp\.com|whatsapp:\/\//i.test(html); const form = /<form[\s>]/i.test(html);
-    return { testados: lista.length, quebrados, whatsapp, form, status: r.status };
+    const viewport = /<meta[^>]+name=["']viewport["'][^>]*width=device-width/i.test(html);
+    return { testados: lista.length, quebrados, whatsapp, form, viewport, status: r.status };
   } catch (e) { return { testados: 0, quebrados: [], erro: String(e.message || e) }; }
 }
 async function tecnicaAuto(req, res, agora) {
@@ -158,14 +159,14 @@ async function tecnicaAuto(req, res, agora) {
   const notas = {
     desempenho: faixaPSI(mobile.performance),
     estabilidade: faixaPSI(mobile.boasPraticas),
-    responsividade: mobile.viewport == null ? null : (mobile.viewport >= 1 && (mobile.tapTargets ?? 1) >= 0.9 && (mobile.fontSize ?? 1) >= 0.9 ? 100 : mobile.viewport >= 1 ? 80 : 40),
+    responsividade: (() => { const vp = mobile.viewport != null ? mobile.viewport >= 1 : links.viewport; if (vp == null) return null; if (!vp) return 40; const toque = mobile.tapTargets ?? 1, fonte = mobile.fontSize ?? 1; return toque >= 0.9 && fonte >= 0.9 ? 100 : 80; })(),
     interativos: links.testados ? (links.quebrados.length === 0 ? 100 : links.quebrados.length <= 1 ? 80 : links.quebrados.length <= 3 ? 60 : 40) : null,
     integracoes: 'na',
   };
   const jus = {
     desempenho: `Lighthouse mobile · Performance ${mobile.performance}${desktop ? ` (desktop ${desktop.performance})` : ''} · SEO ${mobile.seo} · Acessibilidade ${mobile.acessibilidade}`,
     estabilidade: `Lighthouse · Boas práticas ${mobile.boasPraticas}${mobile.errosConsole != null ? ` · erros no console: ${mobile.errosConsole >= 1 ? 'nenhum' : 'sim'}` : ''}`,
-    responsividade: `viewport ${mobile.viewport >= 1 ? 'ok' : 'falha'} · alvos de toque ${mobile.tapTargets == null ? '—' : mobile.tapTargets >= 0.9 ? 'ok' : 'pequenos'} · fonte legível ${mobile.fontSize == null ? '—' : mobile.fontSize >= 0.9 ? 'ok' : 'pequena'}`,
+    responsividade: `viewport ${(mobile.viewport != null ? mobile.viewport >= 1 : links.viewport) ? 'ok (adapta ao celular)' : 'ausente'} · alvos de toque ${mobile.tapTargets == null ? '—' : mobile.tapTargets >= 0.9 ? 'ok' : 'pequenos'} · fonte legível ${mobile.fontSize == null ? '—' : mobile.fontSize >= 0.9 ? 'ok' : 'pequena'}`,
     interativos: links.testados ? `${links.testados} links internos testados · ${links.quebrados.length} quebrado${links.quebrados.length === 1 ? '' : 's'}${links.quebrados.length ? ' (' + links.quebrados.slice(0, 3).map((q) => q.url.replace(/^https?:\/\//, '') + ' ' + q.status).join(', ') + ')' : ''} · formulário ${links.form ? 'presente' : 'não encontrado'} · WhatsApp ${links.whatsapp ? 'presente' : 'não encontrado'}` : 'não foi possível ler a página',
     integracoes: null,
   };
@@ -191,6 +192,19 @@ async function printPagina(req, res) {
   res.status(200).json({ projetoId: p.id, tela, mime: m ? m[1] : 'image/jpeg', b64: m ? m[2] : data, url: p.url });
 }
 // GET ?acao=fila-tecnica&limite=  → projetos com URL e sem técnica automática (ou com mais de 30 dias)
+// GET ?acao=tecnica-lote&limite=3 → roda a técnica automática em paralelo nos próximos da fila
+async function tecnicaLote(req, res, agora) {
+  const todos = await D.lerTodos();
+  const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
+  const lote = fila.slice(0, Math.min(Number(req.query.limite) || 3, 5));
+  const out = await Promise.all(lote.map(async (p) => {
+    let st = 200, body = null; const fake = { setHeader() {}, status(x) { st = x; return this; }, json(o) { body = o; return this; } };
+    try { await tecnicaAuto({ ...req, query: { projetoId: p.id } }, fake, agora); } catch (e) { st = 500; body = { error: String(e.message || e) }; }
+    return { id: p.id, cliente: p.cliente, tipo: p.tipo, ok: st === 200, notas: body && body.notas, perf: body && body.lighthouse && body.lighthouse.mobile && body.lighthouse.mobile.performance, erro: body && body.error };
+  }));
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ restantes: fila.length - lote.length, feitos: out });
+}
 async function filaTecnica(req, res, agora) {
   const todos = await D.lerTodos();
   const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
@@ -241,6 +255,7 @@ module.exports = async (req, res) => {
     if (acao === 'tecnica') return await tecnicaAuto(req, res, agora);
     if (acao === 'print') return await printPagina(req, res);
     if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
+    if (acao === 'tecnica-lote') return await tecnicaLote(req, res, agora);
     if (req.method !== 'POST') { res.status(405).json({ error: 'POST' }); return; }
     if (acao === 'projeto') return await salvarProjeto(req, res, agora);
     if (acao === 'avaliar') return await avaliarProjeto(req, res, agora);
