@@ -10,8 +10,7 @@
   const mesLbl = (m) => { if (!m) return ''; const [y, mm] = m.split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(mm) - 1] + '/' + y.slice(2); };
   const ST_LBL = { em_andamento: 'em andamento', concluido: 'concluído', em_avaliacao: 'em avaliação', avaliado: 'avaliado' };
 
-  const st = { mes: null, data: null, loading: false, erro: null, secao: 'mes', projeto: null, editando: null, token: null, busy: false, form: null };
-  try { st.token = localStorage.getItem('iqc:token') || null; } catch {}
+  const st = { mes: null, data: null, loading: false, erro: null, secao: 'mes', projeto: null, editando: null, token: true, busy: false, form: null };
   let rootEl = null;
 
   async function load(mes) {

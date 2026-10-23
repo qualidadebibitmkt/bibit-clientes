@@ -14,8 +14,7 @@
   const FMT = { estatico: 'estático', carrossel: 'carrossel', reel: 'reel' };
   const SUB = { clareza: 'Clareza', criatividade: 'Criatividade', identidade: 'Identidade', interesse: 'Interesse', tecnica: 'Técnica' };
 
-  const st = { mes: null, data: null, loading: false, colab: null, cliente: null, secao: 'placar', erro: null, token: null, busy: false };
-  try { st.token = localStorage.getItem('iqc:token') || null; } catch {}
+  const st = { mes: null, data: null, loading: false, colab: null, cliente: null, secao: 'placar', erro: null, token: true, busy: false };
 
   async function load(mes) {
     st.loading = true; st.erro = null;

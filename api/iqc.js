@@ -450,7 +450,6 @@ module.exports = async (req, res) => {
   try {
     if (!acao) return await painelMes(req, res, agora);
     if (acao === 'historico') return await historico(req, res);
-    if (!wa.tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
     const post = req.method === 'POST';
     if (acao === 'pendentes') return await pendentes(req, res, agora);
     if (acao === 'log') { const l = await wa.redis(['LRANGE', 'iqc:log', '0', '29']); res.status(200).json({ log: (l || []).map((x) => { try { return JSON.parse(x); } catch { return x; } }) }); return; }
