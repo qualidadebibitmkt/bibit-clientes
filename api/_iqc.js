@@ -45,12 +45,15 @@ function postsDoPainel(painel, { todos = false } = {}) {
     if (!publicado && /descart|cancel/i.test((t.status && t.status.label) || '')) continue;
     const quando = publicado ? t.dataAgendamento : (t.dataAgendamento || t.calDate || t.dueDate);
     const c = porId.get(t.clienteId);
-    const resp = (t.assignees || [])[0] || null;
+    // responsável = quem é da ÁREA no card do cliente (campo Equipe: Social Media / Audiovisual / RP Manager), não o assignee do post
+    // (André, 23/10/26: os posts de Social ficam todos no Will no ClickUp, mas o João responde por vários clientes). Fallback: assignee.
+    const daArea = c && c.team && (c.team[t.listKey] || [])[0];
+    const resp = daArea || (t.assignees || [])[0] || null;
     const num = (String(t.name).match(/post\s*(\d+)/i) || [])[1];
     out.push({
       taskId: t.id, nome: t.name, url: t.url, area: t.listKey, funcao: AREAS[t.listKey].funcao, publicado,
       clienteId: t.clienteId, cliente: (c && c.name) || t.clienteName, igId: t.igId || null, tipoPost: t.tipoPost, formato: formatoDe(t.tipoPost),
-      responsavel: resp ? { id: String((t.assigneeIds || [])[0] || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
+      responsavel: resp ? { id: String(resp.id || (daArea ? resp.name : (t.assigneeIds || [])[0]) || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
       publicadoEm: quando, mes: mesDe(quando), status: t.status ? t.status.label : null,
       numero: num ? Number(num) : null,
     });
