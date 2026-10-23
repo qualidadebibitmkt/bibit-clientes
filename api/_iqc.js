@@ -126,7 +126,7 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
     meta: meta ? { id: meta.id, engajamento: meta.engajamento, compartilhamento: meta.compartilhamento, origem: meta.origem, nivel: meta.clienteId === 'PADRAO' ? 'padrao' : 'cliente', provisoria: !!meta.provisoria } : null,
     performance: perf, performanceDefinitiva: !!(perf && perf.nota != null && (d7 || manual)),
     aprovacao: aprov,
-    auditoria: aud ? { notas: aud.notas, nota: qual ? qual.nota : null, incompleta: qual ? qual.incompleta : true, justificativas: aud.justificativas || null, positivos: aud.positivos || [], melhorias: aud.melhorias || [], limitacoes: aud.limitacoes || [], evidencias: aud.evidencias || [], modelo: aud.modelo, rubrica: aud.rubrica, em: aud.em, revisadoPor: aud.revisadoPor || null, amostra: !!aud.amostra } : null,
+    auditoria: aud ? { notas: aud.notas, nota: qual ? qual.nota : null, incompleta: qual ? qual.incompleta : true, justificativas: aud.justificativas || null, positivos: aud.positivos || [], melhorias: aud.melhorias || [], limitacoes: aud.limitacoes || [], evidencias: aud.evidencias || [], modelo: aud.modelo, rubrica: aud.rubrica, em: aud.em, revisadoPor: aud.revisadoPor || null, amostra: !!aud.amostra, fonteCowork: aud.fonte === 'cowork' } : null,
   };
 }
 

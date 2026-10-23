@@ -44,17 +44,29 @@ async function lerTask(token, taskId) {
 }
 
 // ---- Reel: frames + transcrição ----
-async function framesDoVideo(url, n = 3) {
-  let ffmpeg;
-  try { ffmpeg = require('ffmpeg-static'); } catch { return { frames: [], limitacao: 'ffmpeg indisponível no servidor (frames do vídeo não extraídos)' }; }
+function ffmpegBin() { try { return require('ffmpeg-static'); } catch { return null; } }
+function ffrun(args) {
+  const ffmpeg = ffmpegBin(); if (!ffmpeg) return Promise.resolve({ out: Buffer.alloc(0), err: 'sem ffmpeg' });
   const { spawn } = require('child_process');
-  const run = (args, bin = true) => new Promise((ok) => {
+  return new Promise((ok) => {
     const p = spawn(ffmpeg, args); const chunks = []; let err = '';
     p.stdout.on('data', (c) => chunks.push(c)); p.stderr.on('data', (c) => { err += c.toString(); });
     p.on('close', () => ok({ out: Buffer.concat(chunks), err }));
     p.on('error', () => ok({ out: Buffer.alloc(0), err: 'spawn' }));
     setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 40000);
   });
+}
+async function duracaoDe(url) {
+  const info = await ffrun(['-hide_banner', '-i', url, '-f', 'null', '-t', '0.1', '-']);
+  const m = info.err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+const pontosFrames = (dur, n) => (n === 1 ? [Math.min(1, dur / 2)] : [Math.min(1, dur * 0.1), dur / 2, Math.max(0, dur - 1.5)]);
+async function frameJpeg(url, t) { return (await ffrun(['-hide_banner', '-loglevel', 'error', '-ss', String(Number(t).toFixed(2)), '-i', url, '-frames:v', '1', '-vf', 'scale=720:-2', '-q:v', '4', '-f', 'image2', '-vcodec', 'mjpeg', 'pipe:1'])).out; }
+async function imagemJpeg(url) { return (await ffrun(['-hide_banner', '-loglevel', 'error', '-i', url, '-frames:v', '1', '-vf', 'scale=\'min(900,iw)\':-2', '-q:v', '4', '-f', 'image2', '-vcodec', 'mjpeg', 'pipe:1'])).out; }
+async function framesDoVideo(url, n = 3) {
+  if (!ffmpegBin()) return { frames: [], limitacao: 'ffmpeg indisponível no servidor (frames do vídeo não extraídos)' };
+  const run = ffrun;
   const info = await run(['-hide_banner', '-i', url, '-f', 'null', '-t', '0.1', '-']);
   const m = info.err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   const dur = m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
@@ -170,4 +182,36 @@ async function auditarPost(post, cliente, { token, agora = Date.now(), amostra =
   };
 }
 
-module.exports = { auditarPost, RUBRICA_VERSAO, MODELO };
+// ---- modo "tarefa agendada" (sem chave de API, André 23/10/26): o servidor só prepara o insumo (prompt + lista de mídias)
+// e serve cada mídia como JPEG reduzido em base64; quem avalia é o Claude do Cowork, que grava via auditoria-gravar.
+const ehVideoA = (a) => /mp4|mov|m4v|webm/i.test(String(a.extension || a.mimetype || ''));
+const ehImagemA = (a) => /jpe?g|png|webp/i.test(String(a.extension || a.mimetype || ''));
+async function midiasDoCard(token, post) {
+  const task = await lerTask(token, post.taskId);
+  const legenda = ((task.custom_fields || []).find((f) => f.id === CF_LEGENDA) || {}).value || null;
+  const anexos = (task.attachments || []).filter((a) => !a.deleted);
+  const v = anexos.find(ehVideoA);
+  if (post.formato === 'reel' || v) return { legenda, midias: v ? [{ tipo: 'video', url: v.url, titulo: v.title, frames: 3 }] : [], limitacoes: v ? [] : ['Reel sem vídeo anexado no card'] };
+  const imgs = anexos.filter(ehImagemA).sort((a, b) => String(a.title).localeCompare(String(b.title), 'pt-BR')).slice(0, 10);
+  return { legenda, midias: imgs.map((a) => ({ tipo: 'imagem', url: a.url, titulo: a.title })), limitacoes: imgs.length ? [] : ['nenhuma imagem anexada no card'] };
+}
+async function prepararPost(post, cliente, { token }) {
+  const { legenda, midias, limitacoes } = await midiasDoCard(token, post);
+  const obsMidia = midias[0] && midias[0].tipo === 'video' ? 'vídeo; as imagens são frames (abertura, meio e fim), sem transcrição de áudio' : midias.length > 1 ? `carrossel com ${midias.length} artes, na ordem dos arquivos` : '';
+  const prompt = montarPrompt({ ...post, legenda }, cliente, { formatoLbl: require('./_iqc').FORMATO_LBL[post.formato] || post.formato, transcricao: null, obsMidia });
+  // nº de imagens que a tarefa deve pedir em auditoria-midia (i = 0..n-1)
+  const n = midias.reduce((s, m) => s + (m.tipo === 'video' ? m.frames : 1), 0);
+  return { prompt, legenda, midias: midias.map((m, i) => ({ i, tipo: m.tipo, titulo: m.titulo })), imagens: n, limitacoes };
+}
+async function midiaJpeg(post, i, { token }) {
+  const { midias } = await midiasDoCard(token, post);
+  let idx = Number(i) || 0;
+  for (const m of midias) {
+    if (m.tipo === 'imagem') { if (idx === 0) { const b = await imagemJpeg(m.url); return b.length > 1000 ? { b64: b.toString('base64'), mime: 'image/jpeg', titulo: m.titulo } : { erro: 'não converteu a imagem', titulo: m.titulo }; } idx--; continue; }
+    if (idx < m.frames) { const dur = await duracaoDe(m.url); if (!dur) return { erro: 'não foi possível ler o vídeo' }; const t = pontosFrames(dur, m.frames)[idx]; const b = await frameJpeg(m.url, t); return b.length > 1000 ? { b64: b.toString('base64'), mime: 'image/jpeg', titulo: `${m.titulo} · frame ${idx + 1}/${m.frames} (${Math.round(t)} s de ${Math.round(dur)} s)` } : { erro: 'frame não extraído' }; }
+    idx -= m.frames;
+  }
+  return { erro: 'índice de mídia fora da lista' };
+}
+
+module.exports = { auditarPost, prepararPost, midiaJpeg, RUBRICA_VERSAO, MODELO };

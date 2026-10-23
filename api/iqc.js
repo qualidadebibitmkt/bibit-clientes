@@ -341,6 +341,63 @@ async function auditoria(req, res, agora) {
     res.status(200).json({ ok: true, taskId, auditoria: r });
   } catch (e) { res.status(e.status || 500).json({ ok: false, error: String(e.message || e) }); }
 }
+// ---------- auditoria pela tarefa agendada do Cowork (sem chave de API) ----------
+// GET ?acao=auditoria-fila&limite=8 → posts da amostra de auditoria (mês corrente + anterior aberto) ainda sem nota, com o prompt
+// e a lista de mídias; GET ?acao=auditoria-midia&taskId=&i= → uma imagem (JPEG reduzido, base64); GET ?acao=auditoria-gravar&taskId=
+// &clareza=&criatividade=&identidade=&interesse=&tecnica=&j=&pos=&mel=&ev= → grava a auditoria (tudo por GET: a tarefa só tem leitura de URL).
+async function auditoriaFila(req, res, agora) {
+  const A = require('./_iqc-audit');
+  const painel = await lerPainel(req);
+  const { posts, cfg } = await avaliarTudo(painel, agora);
+  const mesAtual = hojeBRT(agora).slice(0, 7);
+  const cand = [...new Set(posts.map((p) => p.mes))].filter((m) => m <= mesAtual).sort().reverse().slice(0, 3);
+  const fechRaw = cand.length ? await wa.redisPipeline(cand.map((m) => ['EXISTS', 'iqc:fech:' + m])) : [];
+  const meses = cand.filter((m, i) => !(fechRaw[i] && fechRaw[i].result)).slice(0, 2);
+  const fila = [];
+  for (const mes of meses) {
+    const doMes = posts.filter((p) => p.mes === mes);
+    const cons = D.consolidarMes(doMes, { amostraN: cfg.amostraAuditoria });
+    for (const g of cons.porCliente) for (const id of g.amostra) { const p = doMes.find((x) => x.taskId === id); if (p && !(p.auditoria && p.auditoria.nota != null) && !(p.auditoria && p.auditoria.incompleta && p.auditoria.fonteCowork)) fila.push(p); }
+  }
+  const limite = Math.min(Number(req.query.limite) || 8, 30);
+  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
+  const out = [];
+  for (const p of fila.slice(0, limite)) {
+    const cliente = (painel.clients || []).find((c) => c.id === p.clienteId) || null;
+    try { const prep = await A.prepararPost(p, cliente, { token }); out.push({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, funcao: p.funcao, area: p.area, formato: p.formato, mes: p.mes, responsavel: p.responsavel && p.responsavel.nome, ...prep }); }
+    catch (e) { out.push({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, mes: p.mes, erro: String(e.message || e) }); }
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ geradoEm: agora, meses, total: fila.length, fila: out });
+}
+async function auditoriaMidia(req, res) {
+  const A = require('./_iqc-audit');
+  const taskId = String(req.query.taskId || ''); if (!taskId) { res.status(400).json({ error: 'taskId obrigatório' }); return; }
+  const painel = await lerPainel(req);
+  const post = D.postsDoPainel(painel, { todos: true }).find((p) => p.taskId === taskId);
+  if (!post) { res.status(404).json({ error: 'post não encontrado' }); return; }
+  const r = await A.midiaJpeg(post, req.query.i, { token: process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN });
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(r.erro ? 422 : 200).json({ taskId, i: Number(req.query.i) || 0, ...r });
+}
+async function auditoriaGravar(req, res, agora) {
+  const q = req.query; const taskId = String(q.taskId || '');
+  const notas = { clareza: num(q.clareza), criatividade: num(q.criatividade), identidade: num(q.identidade), interesse: num(q.interesse), tecnica: num(q.tecnica) };
+  const incompleta = String(q.incompleta || '') === '1';
+  const qual = E.qualidade(notas);
+  if (!taskId || (!incompleta && qual.incompleta)) { res.status(400).json({ error: 'taskId e as 5 notas (100/80/60/40/0) obrigatórios (ou incompleta=1 com j=motivo)', faltando: qual.faltando }); return; }
+  const painel = await lerPainel(req);
+  const post = D.postsDoPainel(painel, { todos: true }).find((p) => p.taskId === taskId);
+  const reg = (await D.lerRegistros([taskId]))[taskId] || { taskId };
+  if (reg.auditoria && reg.auditoria.revisadoPor) { res.status(409).json({ error: 'já revisada pelo gestor — não sobrescreve', auditoria: reg.auditoria }); return; }
+  const lista = (x) => String(x || '').split('|').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  const jus = {}; for (const k of E.SUBCRITERIOS) jus[k] = String(q['j_' + k] || '').slice(0, 300) || null;
+  reg.auditoria = { incompleta, notas: incompleta ? null : notas, notasIA: incompleta ? null : notas, nota: incompleta ? null : qual.nota, justificativas: Object.values(jus).some(Boolean) ? jus : (q.j ? { geral: String(q.j).slice(0, 600) } : null), evidencias: lista(q.ev), positivos: lista(q.pos), melhorias: lista(q.mel), limitacoes: incompleta ? [String(q.j || 'não foi possível avaliar').slice(0, 300)] : lista(q.lim), modelo: String(q.modelo || 'claude · tarefa agendada (Cowork)').slice(0, 80), rubrica: require('./_iqc-audit').RUBRICA_VERSAO, fonte: 'cowork', em: agora, amostra: true };
+  if (post) { reg.mes = post.mes; reg.publicadoEm = post.publicadoEm; }
+  await D.gravarRegistro(taskId, reg, reg.mes || null);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ ok: true, taskId, nota: reg.auditoria.nota, auditoria: reg.auditoria });
+}
 async function auditoriaRevisao(req, res, agora) {
   const b = await lerBody(req);
   const taskId = String(b.taskId || '');
@@ -412,6 +469,9 @@ module.exports = async (req, res) => {
     if (acao === 'metas') return post ? await metasPost(req, res, agora) : await metasGet(req, res);
     if (acao === 'metas-provisorias') return await metasProvisorias(req, res, agora);
     if (acao === 'auditoria' && post) return await auditoria(req, res, agora);
+    if (acao === 'auditoria-fila') return await auditoriaFila(req, res, agora);
+    if (acao === 'auditoria-midia') return await auditoriaMidia(req, res);
+    if (acao === 'auditoria-gravar') return await auditoriaGravar(req, res, agora);
     if (acao === 'auditoria-revisao' && post) return await auditoriaRevisao(req, res, agora);
     if (acao === 'config') {
       const cfg = await D.lerConfig();
