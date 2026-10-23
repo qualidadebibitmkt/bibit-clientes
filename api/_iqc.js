@@ -53,7 +53,7 @@ function postsDoPainel(painel, { todos = false } = {}) {
     out.push({
       taskId: t.id, nome: t.name, url: t.url, area: t.listKey, funcao: AREAS[t.listKey].funcao, publicado,
       clienteId: t.clienteId, cliente: (c && c.name) || t.clienteName, igId: t.igId || null, tipoPost: t.tipoPost, formato: formatoDe(t.tipoPost),
-      responsavel: resp ? { id: String(resp.id || (daArea ? resp.name : (t.assigneeIds || [])[0]) || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
+      responsavel: resp ? { id: String(resp.id || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
       publicadoEm: quando, mes: mesDe(quando), status: t.status ? t.status.label : null,
       numero: num ? Number(num) : null,
     });

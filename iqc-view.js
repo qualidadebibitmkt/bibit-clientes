@@ -14,7 +14,7 @@
   const FMT = { estatico: 'estático', carrossel: 'carrossel', reel: 'reel' };
   const SUB = { clareza: 'Clareza', criatividade: 'Criatividade', identidade: 'Identidade', interesse: 'Interesse', tecnica: 'Técnica' };
 
-  const st = { mes: null, data: null, loading: false, colab: null, cliente: null, secao: 'placar', erro: null, token: true, busy: false };
+  const st = { mes: null, data: null, loading: false, colab: null, cliente: null, secao: 'simples', erro: null, token: true, busy: false };
 
   async function load(mes) {
     st.loading = true; st.erro = null;
@@ -46,8 +46,8 @@
 
   function renderInto(el) {
     rootEl = el;
-    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">IQC indisponível: ${esc(st.erro)}</div>`; return; }
-    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQC… (leva uns 20–30 s na primeira abertura)</div>'; return; }
+    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">Resultado indisponível: ${esc(st.erro)}</div>`; return; }
+    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo os posts… (leva uns 20–30 s na primeira abertura)</div>'; return; }
     const d0 = st.data; if (!d0) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
     // corte por área (sub-aba do Resultado: Social Media / RP Manager / Audiovisual) — André, 23/10/26
     const d = st.area ? { ...d0, colaboradores: (d0.colaboradores || []).filter((c) => c.area === st.area), posts: (d0.posts || []).filter((p) => p.area === st.area), porCliente: (d0.porCliente || []).filter((g) => g.area === st.area) } : d0;
@@ -60,26 +60,65 @@
     const posts = d.posts || [];
     const fechado = !!(d.fechamentos && d.fechamentos[d.mes]);
 
+    const AREA_LBL = { social: 'Social Media', rp: 'RP Manager', audiovisual: 'Audiovisual' };
+    const areaLbl = AREA_LBL[st.area] || 'Conteúdo';
+    const secoes = [['simples', 'Visão geral'], ['posts', 'Posts'], ['aprovacao', 'Aprovação dos clientes'], ['auditoria', 'Avaliação das artes'], ['metas', 'Metas de desempenho'], ['historico', 'Meses fechados'], ['regras', 'Como é calculado']];
+    if (!secoes.some(([k]) => k === st.secao)) st.secao = 'simples';
     el.innerHTML = `
       <div class="iqc-head">
-        <div><p class="eyebrow">IQC · Índice de Qualidade do Conteúdo <span class="hs-hist-info">Performance 40 · Aprovação sem ajustes 40 · Qualidade criativa 20 — por colaborador, consolidado por mês (média dos clientes)</span></p></div>
-        <div class="chips iqc-meses">${(d.meses || []).map((m) => `<button class="hs-chip${m === d.mes ? ' is-on' : ''}" data-iqc-mes="${m}">${mesLbl(m)}${d.fechamentos && d.fechamentos[m] ? ' <i title="fechado">🔒</i>' : m === d.mesAtual ? ' <i>em curso</i>' : ''}</button>`).join('')}${st.loading ? '<span class="iqc-loading">atualizando…</span>' : ''}</div>
+        <div><p class="eyebrow">Resultado de ${esc(areaLbl)} <span class="hs-hist-info">desempenho dos posts, aprovação dos clientes e qualidade das artes — por colaborador e por cliente</span></p></div>
+        <div class="chips iqc-meses">${(d.meses || []).map((m) => `<button class="hs-chip${m === d.mes ? ' is-on' : ''}" data-iqc-mes="${m}">${mesLbl(m)}${d.fechamentos && d.fechamentos[m] ? ' <i>fechado</i>' : m === d.mesAtual ? ' <i>em andamento</i>' : ''}</button>`).join('')}${st.loading ? '<span class="iqc-loading">atualizando…</span>' : ''}</div>
       </div>
-      <div class="hs-termo iqc-termo">
-        <div class="hs-termo-media"><span class="hs-big ${cls(media)}">${media == null ? '—' : n1(media)}</span><span class="hs-termo-l">IQC médio da equipe<br><span>${validos.length} de ${colabs.length} colaborador${colabs.length === 1 ? '' : 'es'} com nota oficial${fechado ? ' · mês fechado' : d.mes === d.mesAtual ? ' · prévia do mês em curso' : ' · mês não fechado'}</span></span></div>
-        <div class="hs-termo-pilares iqc-kpis">
-          ${Object.entries(porFuncao).map(([f, v]) => kpi(f, v.n ? n1(v.soma / v.n) : (v.np ? n1(v.prev / v.np) + '<small>*</small>' : '—'), v.n ? `${v.n} com nota` : v.np ? 'prévia' : 'sem dado', cls(v.n ? v.soma / v.n : null))).join('')}
-          ${kpi('posts no mês', posts.length, `${posts.filter((x) => x.publicado).length} publicados`, 'na')}
-          ${kpi('pendências', (p.revisar || []).length + (p.semResposta || []).length + (p.auditoriaPendente || 0), `${(p.revisar || []).length} revisar · ${(p.semResposta || []).length} sem resposta · ${p.auditoriaPendente || 0} auditoria`, ((p.revisar || []).length + (p.semResposta || []).length) ? 'y' : 'g')}
-        </div>
-      </div>
+      ${st.secao === 'simples' ? simplesHTML(d, areaLbl) : ''}
       <div class="chips iqc-secoes">
-        ${[['placar', 'Placar'], ['posts', 'Posts'], ['aprovacao', 'Aprovações'], ['auditoria', 'Auditoria criativa'], ['metas', 'Metas'], ['historico', 'Histórico'], ['regras', 'Regras']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqc-secao="${k}">${l}</button>`).join('')}
+        ${secoes.map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqc-secao="${k}">${l}</button>`).join('')}
         ${st.colab ? `<button class="hs-chip pl-limpar" data-iqc-colab="">× ${esc((colabs.find((c) => c.id === st.colab) || {}).nome || 'colaborador')}</button>` : ''}
         ${st.cliente ? `<button class="hs-chip pl-limpar" data-iqc-cliente="">× ${esc((posts.find((x) => x.clienteId === st.cliente) || {}).cliente || 'cliente')}</button>` : ''}
       </div>
-      <div id="iqcSecao">${secaoHTML(d)}</div>`;
+      <div id="iqcSecao">${st.secao === 'simples' ? simplesTabelasHTML(d) : secaoHTML(d)}</div>`;
     bind(el, d);
+  }
+
+  // ---- visão simples (André, 23/10/26): sem siglas, o que já tem e o que falta, em português ----
+  const PESO = { perf: 40, aprov: 40, qual: 20 };
+  function ateAgora(perf, aprov, qual) { let s = 0, w = 0; if (perf != null) { s += perf * PESO.perf; w += PESO.perf; } if (aprov != null) { s += aprov * PESO.aprov; w += PESO.aprov; } if (qual != null) { s += qual * PESO.qual; w += PESO.qual; } return w ? s / w : null; }
+  const v0 = (x) => (x == null ? null : Math.round(x));
+  const celN = (x, vazio) => (x == null ? `<td class="hs-td na">${vazio || '—'}</td>` : `<td class="hs-td ${cls(x)}">${Math.round(x)}</td>`);
+  function situacao(g) {
+    const f = [];
+    if (g.performance == null) f.push(g.postsAguardando ? `desempenho: ${g.postsAguardando} post${g.postsAguardando === 1 ? '' : 's'} esperando completar 7 dias` : 'desempenho: sem post publicado ainda');
+    if (g.aprovacao.nota == null) f.push(g.aprovacao.pendentes ? 'aprovação: sem resposta do cliente no WhatsApp' : 'aprovação: sem calendário');
+    if (g.qualidade == null) f.push(g.amostra.length ? `artes: ${g.amostra.length - g.auditados} a avaliar (sistema, toda manhã)` : 'artes: sem post');
+    return f.length ? f.join(' · ') : '<span class="g">completo</span>';
+  }
+  function simplesHTML(d, areaLbl) {
+    const colabs = d.colaboradores || []; const grupos = d.porCliente || []; const posts = d.posts || [];
+    const med = (xs) => { const v = xs.filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const perf = med(grupos.map((g) => g.performance)); const aprov = med(grupos.map((g) => g.aprovacao.nota)); const qual = med(grupos.map((g) => g.qualidade));
+    const nota = ateAgora(perf, aprov, qual);
+    const pub = posts.filter((x) => x.publicado).length; const comDes = posts.filter((x) => x.performance && x.performance.nota != null).length;
+    const aprovRes = grupos.filter((g) => g.aprovacao.nota != null).length; const aud = grupos.reduce((s, g) => s + g.auditados, 0), amo = grupos.reduce((s, g) => s + g.amostra.length, 0);
+    const box = (n, titulo, sub) => `<div class="hs-termo-p"><span class="hs-termo-pn ${cls(n)}">${n == null ? '—' : Math.round(n)}</span><span class="hs-termo-pl">${titulo}</span><span class="iqc-kpi-s">${sub}</span></div>`;
+    return `<div class="hs-termo iqc-termo">
+        <div class="hs-termo-media"><span class="hs-big ${cls(nota)}">${nota == null ? '—' : Math.round(nota)}</span><span class="hs-termo-l">nota de ${esc(areaLbl)} até agora · ${mesLbl(d.mes)}<br><span>com o que já foi medido · a nota oficial do mês sai quando as três partes estiverem completas</span></span></div>
+        <div class="hs-termo-pilares iqc-kpis">
+          ${box(perf, 'desempenho dos posts', `${comDes} de ${pub} publicados já medidos (7 dias após o post) · engajamento e compartilhamento vs. meta do cliente · peso 40`)}
+          ${box(aprov, 'aprovação dos clientes', aprovRes ? `${aprovRes} de ${grupos.length} clientes com resposta no WhatsApp · peso 40` : `nenhum cliente respondeu o calendário deste mês no WhatsApp ainda · peso 40`)}
+          ${box(qual, 'qualidade das artes', `${aud} de ${amo} artes avaliadas pelo sistema (toda manhã) · peso 20`)}
+        </div>
+      </div>`;
+  }
+  function simplesTabelasHTML(d) {
+    const colabs = d.colaboradores || []; const grupos = d.porCliente || [];
+    const av = (c) => (c.foto ? `<img class="avatar avatar-xs" src="${esc(c.foto)}" alt="">` : `<span class="avatar avatar-xs">${esc(c.initials || '')}</span>`);
+    const lc = (c) => { const gs = grupos.filter((g) => g.responsavel.id === c.id); const pub = gs.reduce((s, g) => s + g.posts, 0); const n = ateAgora(c.performance, c.aprovacao, c.qualidade); return `<tr class="pl-pessoa" data-iqc-colab="${esc(c.id)}"><td class="hs-td-cli">${av(c)}<span>${esc(c.nome)}</span></td><td class="hs-td">${c.clientesTotal}</td><td class="hs-td">${pub}</td>${celN(c.performance, 'aguardando')}${celN(c.aprovacao, 'aguardando')}${celN(c.qualidade, 'aguardando')}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td></tr>`; };
+    const lg = (g) => { const n = ateAgora(g.performance, g.aprovacao.nota, g.qualidade); return `<tr class="hs-tr" data-iqc-cliente="${esc(g.clienteId)}" data-iqc-secao="posts"><td class="hs-td-cli"><span>${esc(g.cliente)}</span></td><td class="hs-td-txt">${esc(g.responsavel.nome.split(' ')[0])}</td><td class="hs-td">${g.posts}</td>${celN(g.performance)}${celN(g.aprovacao.nota)}${celN(g.qualidade)}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td><td class="hs-td-txt na">${situacao(g)}</td></tr>`; };
+    const ord = grupos.slice().sort((a, b) => (ateAgora(a.performance, a.aprovacao.nota, a.qualidade) ?? 999) - (ateAgora(b.performance, b.aprovacao.nota, b.qualidade) ?? 999));
+    return `<p class="eyebrow">Por colaborador <span class="hs-hist-info">nota de 0 a 100 · verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70 · clique pra ver só os clientes da pessoa</span></p>
+      ${colabs.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Clientes</th><th class="r">Posts no mês</th><th class="r">Desempenho dos posts</th><th class="r">Aprovação dos clientes</th><th class="r">Qualidade das artes</th><th class="r">Nota até agora</th></tr></thead><tbody>${colabs.map(lc).join('')}</tbody></table></div>` : '<div class="fn-empty">Nenhum post desta área no mês.</div>'}
+      <p class="eyebrow">Por cliente <span class="hs-hist-info">do pior pro melhor · a última coluna diz o que ainda falta medir · clique pra ver os posts</span></p>
+      ${ord.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Responsável</th><th class="r">Posts</th><th class="r">Desempenho</th><th class="r">Aprovação</th><th class="r">Artes</th><th class="r">Nota até agora</th><th>O que falta</th></tr></thead><tbody>${ord.filter((g) => !st.colab || g.responsavel.id === st.colab).map(lg).join('')}</tbody></table></div>` : ''}
+      <div class="hs-regras"><div><b>Desempenho dos posts</b> engajamento (curtidas + comentários ÷ alcance) e compartilhamentos ÷ alcance de cada post, medidos 7 dias depois, comparados com a meta do cliente. Peso 40.</div><div><b>Aprovação dos clientes</b> o sistema lê o grupo do WhatsApp e vê se o cliente aprovou o calendário sem pedir ajuste. Peso 40.</div><div><b>Qualidade das artes</b> o sistema avalia uma amostra de artes de cada cliente: clareza, criatividade, identidade da marca, interesse e acabamento. Peso 20.</div></div>`;
   }
 
   function secaoHTML(d) {
