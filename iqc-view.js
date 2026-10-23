@@ -48,7 +48,9 @@
     rootEl = el;
     if (st.loading && !st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQC…</div>'; return; }
     if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">IQC indisponível: ${esc(st.erro)}</div>`; return; }
-    const d = st.data; if (!d) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
+    const d0 = st.data; if (!d0) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
+    // corte por área (sub-aba do Resultado: Social Media / RP Manager / Audiovisual) — André, 23/10/26
+    const d = st.area ? { ...d0, colaboradores: (d0.colaboradores || []).filter((c) => c.area === st.area), posts: (d0.posts || []).filter((p) => p.area === st.area), porCliente: (d0.porCliente || []).filter((g) => g.area === st.area) } : d0;
     const colabs = d.colaboradores || [];
     const validos = colabs.filter((c) => c.iqc != null);
     const media = validos.length ? validos.reduce((s, c) => s + c.iqc, 0) / validos.length : null;
@@ -75,7 +77,6 @@
         ${[['placar', 'Placar'], ['posts', 'Posts'], ['aprovacao', 'Aprovações'], ['auditoria', 'Auditoria criativa'], ['metas', 'Metas'], ['historico', 'Histórico'], ['regras', 'Regras']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqc-secao="${k}">${l}</button>`).join('')}
         ${st.colab ? `<button class="hs-chip pl-limpar" data-iqc-colab="">× ${esc((colabs.find((c) => c.id === st.colab) || {}).nome || 'colaborador')}</button>` : ''}
         ${st.cliente ? `<button class="hs-chip pl-limpar" data-iqc-cliente="">× ${esc((posts.find((x) => x.clienteId === st.cliente) || {}).cliente || 'cliente')}</button>` : ''}
-        <span class="iqc-gestor">${st.token ? '<button class="hs-chip" data-iqc-sair>modo gestor ativo · sair</button>' : '<button class="hs-chip" data-iqc-entrar>entrar como gestor</button>'}</span>
       </div>
       <div id="iqcSecao">${secaoHTML(d)}</div>`;
     bind(el, d);
@@ -237,6 +238,6 @@
   }
 
   window.IQC = {
-    async render(el) { rootEl = el; if (!st.data) { renderInto(el); await load(null); } renderInto(el); },
+    async render(el, ctx) { rootEl = el; st.area = (ctx && ctx.area) || null; if (!st.data) { renderInto(el); await load(null); } renderInto(el); },
   };
 })();

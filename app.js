@@ -955,7 +955,9 @@
   }
 
   // sub-abas do Resultado: o pilar (régua por cliente/colaborador) ou o IQC (índice de qualidade do conteúdo, iqc-view.js)
-  const subResultadoHTML = () => { const sub = ['iqc', 'iqw'].includes(state.resultadoSub) ? state.resultadoSub : 'pilar'; return `<div class="pl-filtros pl-sub"><span class="balcao-l">resultado</span><div class="chips"><button class="hs-chip pl-chip${sub === 'pilar' ? ' is-on' : ''}" data-rsub="pilar">pilar</button><button class="hs-chip pl-chip${sub === 'iqc' ? ' is-on' : ''}" data-rsub="iqc">IQC · conteúdo<i>social · AV · RP</i></button><button class="hs-chip pl-chip${sub === 'iqw' ? ' is-on' : ''}" data-rsub="iqw">IQW · web<i>web designer</i></button></div></div>`; };
+  // sub-abas do Resultado por área (André, 23/10/26): Tráfego Pago = pilar · Social/RP/AV = IQC filtrado · Webdesigner = IQW
+  const SUBS_RESULTADO = [['pilar', 'Tráfego Pago'], ['social', 'Social Media'], ['rp', 'RP Manager'], ['audiovisual', 'Audiovisual'], ['iqw', 'Webdesigner']];
+  const subResultadoHTML = () => { const sub = SUBS_RESULTADO.some(([k]) => k === state.resultadoSub) ? state.resultadoSub : 'pilar'; return `<div class="pl-filtros pl-sub"><span class="balcao-l">resultado</span><div class="chips">${SUBS_RESULTADO.map(([k, l]) => `<button class="hs-chip pl-chip${sub === k ? ' is-on' : ''}" data-rsub="${k}">${l}</button>`).join('')}</div></div>`; };
   const bindSubResultado = (el) => el.querySelectorAll('[data-rsub]').forEach((n) => n.addEventListener('click', () => { state.resultadoSub = n.dataset.rsub; render(); }));
 
   function renderPilar(el, k) {
@@ -1288,11 +1290,11 @@
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
     pilarEl.hidden = !PILARES.includes(state.view);
     // IQC mora dentro de Resultado (André, 23/10/26): sub-aba "pilar" | "IQC · conteúdo"; a seção do IQC só aparece nesse corte
-    const iqcEl = $('#viewIQC'); const iqcOn = state.view === 'trafego' && state.resultadoSub === 'iqc';
+    const iqcEl = $('#viewIQC'); const iqcOn = state.view === 'trafego' && ['social', 'rp', 'audiovisual'].includes(state.resultadoSub);
     const iqwEl = $('#viewIQW'); const iqwOn = state.view === 'trafego' && state.resultadoSub === 'iqw'; // IQW (web designer) — só conhecimento, fora do Ranking
     iqcEl.hidden = !iqcOn; iqwEl.hidden = !iqwOn;
     if (PILARES.includes(state.view)) {
-      if (iqcOn || iqwOn) { pilarEl.innerHTML = subResultadoHTML(); bindSubResultado(pilarEl); if (iqcOn && window.IQC) window.IQC.render(iqcEl); if (iqwOn && window.IQW) window.IQW.render(iqwEl); }
+      if (iqcOn || iqwOn) { pilarEl.innerHTML = subResultadoHTML(); bindSubResultado(pilarEl); if (iqcOn && window.IQC) window.IQC.render(iqcEl, { area: state.resultadoSub }); if (iqwOn && window.IQW) window.IQW.render(iqwEl); }
       else renderPilar(pilarEl, state.view);
     }
     document.querySelectorAll('.tab').forEach((t) => {
