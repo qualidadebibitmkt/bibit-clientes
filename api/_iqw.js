@@ -27,7 +27,11 @@ function mesDoProjeto(p) { const ms = num(p.conclusao) || (p.avaliacao && num(p.
 function avaliar(p) {
   const av = p.avaliacao || null;
   const r = av && av.notas ? E.avaliarProjeto(av.notas) : null;
-  return { ...p, mes: mesDoProjeto(p), resultado: r ? { nota: r.nota, notaExata: r.notaExata, criterios: r.criterios, incompleto: r.incompleto, faltando: r.faltando, semAvaliacao: r.semAvaliacao, pesoEfetivo: r.pesoEfetivo, classificacao: E.classificar(r.nota) } : null };
+  // prévia: média só dos critérios já completos (ex.: falta Retrabalho, que vem do WhatsApp) — não entra no Health Score
+  const completos = r ? Object.values(r.criterios).filter((c) => c.aplicavel && c.nota != null) : [];
+  const previa = r && r.nota == null && completos.length ? Math.round(completos.reduce((a, c) => a + c.nota, 0) / completos.length) : null;
+  const pendentes = r ? Object.entries(r.criterios).filter(([, c]) => c.incompleto).map(([, c]) => c.rotulo) : [];
+  return { ...p, mes: mesDoProjeto(p), resultado: r ? { previa, pendentes, nota: r.nota, notaExata: r.notaExata, criterios: r.criterios, incompleto: r.incompleto, faltando: r.faltando, semAvaliacao: r.semAvaliacao, pesoEfetivo: r.pesoEfetivo, classificacao: E.classificar(r.nota) } : null };
 }
 
 // consolidação de um mês: projetos avaliados (nota válida) cujo mês de referência é o pedido

@@ -205,6 +205,39 @@ async function tecnicaLote(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ restantes: fila.length - lote.length, feitos: out });
 }
+// ---- avaliação visual/experiência pela tarefa agendada (prints do Lighthouse) ----
+// GET ?acao=fila-visual&limite= → projetos com print e sem notas de Experiência/Visual dadas pelo sistema
+const CRIT_VISUAIS = ['experiencia', 'visual'];
+async function filaVisual(req, res) {
+  const todos = await D.lerTodos();
+  const sem = (p) => { const n = p.avaliacao && p.avaliacao.notas; return !n || CRIT_VISUAIS.some((c) => !n[c] || E.CRITERIOS.find((x) => x.k === c).sub.some((s) => n[c][s.k] == null)); };
+  const fila = todos.filter((p) => p.tecnicaAuto && p.tecnicaAuto.screenshots && (p.tecnicaAuto.screenshots.mobile || p.tecnicaAuto.screenshots.desktop) && sem(p));
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ total: fila.length, criterios: E.CRITERIOS.filter((c) => CRIT_VISUAIS.includes(c.k)).map((c) => ({ k: c.k, rotulo: c.rotulo, objetivo: c.objetivo, sub: c.sub })), escala: E.ESCALA_LBL,
+    fila: fila.slice(0, Math.min(Number(req.query.limite) || 8, 20)).map((p) => ({ id: p.id, cliente: p.cliente, tipo: E.TIPOS[p.tipo] || p.tipo, url: p.url, prints: Object.entries(p.tecnicaAuto.screenshots).filter(([, v]) => v).map(([k]) => k) })) });
+}
+// GET ?acao=visual-gravar&projetoId=&experiencia.clareza=80&...&visual.publico=60&j_experiencia.clareza=...  (10 notas, justificativas por subcritério)
+async function visualGravar(req, res, agora) {
+  const q = req.query; const p = await D.ler(String(q.projetoId || ''));
+  if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  const av = p.avaliacao || { notas: {}, justificativas: {}, naJustificativas: {}, evidencias: {}, ocorrencias: [], por: 'sistema', em: agora, versao: E.VERSAO_REGRAS };
+  const erros = [];
+  for (const ck of CRIT_VISUAIS) {
+    const c = E.CRITERIOS.find((x) => x.k === ck);
+    av.notas[ck] = { ...(av.notas[ck] || {}) }; av.justificativas[ck] = { ...(av.justificativas[ck] || {}) }; av.evidencias[ck] = { ...(av.evidencias[ck] || {}) };
+    for (const s2 of c.sub) {
+      const v = num(q[ck + '.' + s2.k]); if (v == null || !E.ESCALA.includes(v)) { erros.push(ck + '.' + s2.k); continue; }
+      av.notas[ck][s2.k] = v; av.justificativas[ck][s2.k] = String(q['j_' + ck + '.' + s2.k] || '').slice(0, 400) || 'avaliado pelo sistema a partir dos prints';
+      av.evidencias[ck][s2.k] = `prints celular/computador do Lighthouse (${new Date(p.tecnicaAuto ? p.tecnicaAuto.em : agora).toLocaleDateString('pt-BR')}) · ${p.url}`;
+    }
+  }
+  if (erros.length) { res.status(400).json({ error: 'notas faltando ou fora da escala (100/80/60/40/0)', faltando: erros }); return; }
+  av.parcial = true; av.em = agora; p.avaliacao = av;
+  p.historico = [...(p.historico || []), { em: agora, por: 'sistema (avaliação visual)', o: 'experiência e visual avaliados pelos prints' }].slice(-60);
+  await D.gravar(p);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ ok: true, projetoId: p.id, resultado: D.avaliar(p).resultado });
+}
 async function filaTecnica(req, res, agora) {
   const todos = await D.lerTodos();
   const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
@@ -256,6 +289,8 @@ module.exports = async (req, res) => {
     if (acao === 'print') return await printPagina(req, res);
     if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
     if (acao === 'tecnica-lote') return await tecnicaLote(req, res, agora);
+    if (acao === 'fila-visual') return await filaVisual(req, res);
+    if (acao === 'visual-gravar') return await visualGravar(req, res, agora);
     if (req.method !== 'POST') { res.status(405).json({ error: 'POST' }); return; }
     if (acao === 'projeto') return await salvarProjeto(req, res, agora);
     if (acao === 'avaliar') return await avaliarProjeto(req, res, agora);
