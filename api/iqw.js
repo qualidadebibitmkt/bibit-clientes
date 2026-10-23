@@ -153,7 +153,7 @@ async function tecnicaAuto(req, res, agora) {
   if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
   if (!p.url) { res.status(422).json({ error: 'projeto sem URL final' }); return; }
   let mobile, desktop = null, links;
-  try { mobile = await psi(p.url, 'mobile'); } catch (e) { res.status(502).json({ error: 'Lighthouse falhou: ' + String(e.message || e) }); return; }
+  try { mobile = await psi(p.url, 'mobile'); } catch (e) { p.tecnicaErro = { em: agora, msg: String(e.message || e).slice(0, 200) }; await D.gravar(p); res.status(502).json({ error: 'Lighthouse falhou: ' + String(e.message || e) }); return; }
   try { desktop = await psi(p.url, 'desktop'); } catch { /* print desktop é opcional */ }
   links = await linksQuebrados(p.url);
   const notas = {
@@ -195,7 +195,7 @@ async function printPagina(req, res) {
 // GET ?acao=tecnica-lote&limite=3 → roda a técnica automática em paralelo nos próximos da fila
 async function tecnicaLote(req, res, agora) {
   const todos = await D.lerTodos();
-  const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
+  const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000) && !(p.tecnicaErro && agora - p.tecnicaErro.em < 20 * 3600000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
   const lote = fila.slice(0, Math.min(Number(req.query.limite) || 3, 5));
   const out = await Promise.all(lote.map(async (p) => {
     let st = 200, body = null; const fake = { setHeader() {}, status(x) { st = x; return this; }, json(o) { body = o; return this; } };
