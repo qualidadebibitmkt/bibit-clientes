@@ -51,8 +51,8 @@
 
   function paint() {
     if (!rootEl) return; const el = rootEl;
-    if (st.loading && !st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQW…</div>'; return; }
     if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">IQW indisponível: ${esc(st.erro)}</div>`; return; }
+    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQW… (leva uns 20–30 s na primeira abertura)</div>'; return; }
     const d = st.data; if (!d) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
     const a = d.atual || {};
     el.innerHTML = `

@@ -46,8 +46,8 @@
 
   function renderInto(el) {
     rootEl = el;
-    if (st.loading && !st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQC…</div>'; return; }
     if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">IQC indisponível: ${esc(st.erro)}</div>`; return; }
+    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQC… (leva uns 20–30 s na primeira abertura)</div>'; return; }
     const d0 = st.data; if (!d0) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
     // corte por área (sub-aba do Resultado: Social Media / RP Manager / Audiovisual) — André, 23/10/26
     const d = st.area ? { ...d0, colaboradores: (d0.colaboradores || []).filter((c) => c.area === st.area), posts: (d0.posts || []).filter((p) => p.area === st.area), porCliente: (d0.porCliente || []).filter((g) => g.area === st.area) } : d0;
