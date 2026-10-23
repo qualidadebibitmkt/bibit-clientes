@@ -122,6 +122,7 @@ async function consolidarMes(mes) {
   const fotos = await lerFotos(dias);
   const acc = new Map();
   for (const f of fotos) for (const p of f.pessoas) {
+    if (fora(p.nome)) continue; // fotos antigas podem trazer quem saiu do ranking depois
     if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, scores: [], pos: [], pil: Object.fromEntries(PILARES.map((k) => [k, []])), clientes: [], abaixo: [], dias: 0, melhor: null, pior: null, ultimo: null });
     const a = acc.get(p.id); a.dias++; a.ultimo = p;
     if (p.score != null && !(p.cobertura < MIN_PILARES)) { a.scores.push(p.score); if (p.posicao) { a.pos.push(p.posicao); a.melhor = a.melhor == null ? p.posicao : Math.min(a.melhor, p.posicao); a.pior = a.pior == null ? p.posicao : Math.max(a.pior, p.posicao); } }
