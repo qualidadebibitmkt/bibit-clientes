@@ -25,7 +25,7 @@
     st.loading = false; paint();
   }
   async function acao(nome, body) {
-    if (!st.token) { const t = prompt('Token de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
+        if (!st.token) { const t = prompt('Token de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
     st.busy = true; paint();
     try {
       const r = await fetch(`/api/iqw?acao=${nome}&t=${encodeURIComponent(st.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -70,7 +70,7 @@
       </div>
       <div class="chips iqc-secoes">
         ${[['mes', 'Mês'], ['projetos', 'Projetos'], ['historico', 'Histórico'], ['regras', 'Matriz e regras']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqw-secao="${k}">${l}</button>`).join('')}
-        <span class="iqc-gestor">${st.token ? '<button class="hs-chip" data-iqw-sair>modo gestor ativo · sair</button>' : '<button class="hs-chip" data-iqw-entrar>entrar como gestor</button>'}</span>
+
       </div>
       <div>${st.secao === 'mes' ? mesHTML(d) : st.secao === 'projetos' ? projetosHTML(d) : st.secao === 'historico' ? historicoHTML(d) : regrasHTML(d)}</div>`;
     bind(el, d);
@@ -89,8 +89,8 @@
     const R = d.regras;
     const sel = st.projeto ? d.projetos.find((p) => p.id === st.projeto) : null;
     const lista = `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Tipo</th><th>Web Designer</th><th>Início</th><th>Conclusão</th><th>Mês</th><th>Status</th><th class="r">Esforço (h)</th><th class="r">IQW</th></tr></thead><tbody>${d.projetos.length ? d.projetos.map((p) => `<tr class="hs-tr${sel && sel.id === p.id ? ' rk-tr is-open' : ''}" data-iqw-proj="${esc(p.id)}"><td class="hs-td-cli"><span>${esc(p.cliente)}</span></td><td class="hs-td-txt">${esc(R.tipos[p.tipo] || p.tipo)}</td><td class="hs-td-txt">${esc(p.responsavel && p.responsavel.nome || '—')}</td><td class="hs-td-txt">${dt(p.inicio)}</td><td class="hs-td-txt">${dt(p.conclusao)}</td><td class="hs-td-txt">${p.mes ? mesLbl(p.mes) : '—'}</td><td class="hs-td-txt">${esc(ST_LBL[p.status] || p.status)}</td><td class="hs-td na">${p.esforcoHoras ?? '—'}</td><td class="hs-td hs-td-score ${cls(p.resultado && p.resultado.nota)}">${p.resultado && p.resultado.nota != null ? n2(p.resultado.nota) : p.resultado && p.resultado.incompleto ? '<span class="na" title="avaliação parcial">parcial</span>' : '<span class="na">—</span>'}</td></tr>`).join('') : '<tr><td colspan="9" class="fn-empty">Nenhum projeto cadastrado.</td></tr>'}</tbody></table></div>`;
-    const novo = st.token ? `<details class="iqc-box iqw-novo" ${st.editando === 'novo' ? 'open' : ''}><summary><b>Cadastrar projeto</b></summary>${formProjetoHTML(d, null)}</details>` : '<div class="fn-empty">Entre como gestor pra cadastrar e avaliar projetos.</div>';
-    return `<p class="eyebrow">Projetos <span class="hs-hist-info">LP, site institucional, e-commerce e manutenções — clique pra abrir a avaliação</span></p>${lista}${sel ? detalheHTML(d, sel) : ''}${novo}`;
+    const novo = `<details class="iqc-box iqw-novo" ${st.editando === 'novo' ? 'open' : ''}><summary><b>Cadastrar projeto à mão</b> <small class="na">(os cards LP / Website / E-Commerce da lista Web Designer entram sozinhos)</small></summary>${formProjetoHTML(d, null)}</details>`;
+    return `<p class="eyebrow">Projetos <span class="hs-hist-info">importados da lista Web Designer do ClickUp${d.importacao && d.importacao.cards ? ` (${d.importacao.cards} cards lidos)` : ''} — clique pra abrir a avaliação</span></p>${d.semUrl ? `<div class="iqc-alerta">${d.semUrl} projeto${d.semUrl === 1 ? '' : 's'} sem "URL final" no card do ClickUp — sem a URL não dá pra avaliar a página automaticamente.</div>` : ''}${lista}${sel ? detalheHTML(d, sel) : ''}${novo}`;
   }
 
   function formProjetoHTML(d, p) {

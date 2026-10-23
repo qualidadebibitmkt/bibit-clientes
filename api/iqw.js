@@ -30,7 +30,51 @@ async function lerPainel(req) {
   return captured;
 }
 
+// ---- importação automática dos projetos da lista Web Designer do ClickUp (André, 23/10/26) ----
+// Card de entrega = nome começando com LP / Website / Site Institucional / E-Commerce (os de Copy, Onboarding e "Enviar para
+// aprovação" ficam de fora). Cada card vira um projeto "cu:<taskId>"; dados do card (status, conclusão, URL final) são
+// reescritos a cada leitura; a avaliação e o esforço ficam guardados no painel.
+const WD_LIST = '901713153156';
+const CF_URL_FINAL = '19205a35-34c4-4eb7-9dd4-ab60ac547034';
+const CF_CLIENTE = 'b8d37b88-3192-4ec7-be2e-5efac5401179';
+const RX_ENTREGA = /^(LP|Website|Site Institucional(?:\s*\+\s*E-?Commerce)?|E-?Commerce)\s*[-–—]\s*(.+)$/i;
+const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\|.*$/, '').trim();
+function tipoDe(prefixo) { const p = prefixo.toLowerCase(); if (p.startsWith('lp')) return 'lp'; if (p.includes('e-commerce') || p.includes('ecommerce')) return 'ecommerce'; return 'site'; }
+async function importarClickUp(clientes, agora) {
+  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN; if (!token) return { novos: 0, atualizados: 0 };
+  const tasks = [];
+  for (let page = 0; page < 10; page++) {
+    const r = await fetch(`https://api.clickup.com/api/v2/list/${WD_LIST}/task?include_closed=true&subtasks=false&page=${page}`, { headers: { Authorization: token } });
+    if (!r.ok) break; const j = await r.json(); tasks.push(...(j.tasks || [])); if (!j.tasks || j.tasks.length < 100 || j.last_page) break;
+  }
+  const existentes = new Map((await D.lerTodos()).map((p) => [p.id, p]));
+  let novos = 0, atualizados = 0;
+  for (const t of tasks) {
+    const m = RX_ENTREGA.exec(String(t.name || '').trim()); if (!m) continue;
+    const cf = (id) => (t.custom_fields || []).find((f) => f.id === id);
+    const cli = cf(CF_CLIENTE); const opt = cli && cli.type_config && Array.isArray(cli.type_config.options) && cli.value != null ? cli.type_config.options[cli.value] || cli.type_config.options.find((o) => o.orderindex === cli.value) : null;
+    const nomeCli = m[2].split(' - ')[0].replace(/\|.*$/, '').trim();
+    const achado = clientes.find((c) => (opt && c.id === opt.id)) || clientes.find((c) => norm(c.nome) === norm(nomeCli)) || clientes.find((c) => norm(c.nome).includes(norm(nomeCli)) || norm(nomeCli).includes(norm(c.nome)));
+    const id = 'cu:' + t.id;
+    const fechado = /conclu|aprovad|closed|done/i.test(String(t.status && t.status.status || '')) || (t.status && t.status.type === 'closed');
+    const conclusao = Number(t.date_done) || Number(t.date_closed) || (fechado ? Number(t.due_date) || Number(t.date_updated) || null : null);
+    const urlFinal = (cf(CF_URL_FINAL) || {}).value || null;
+    const base = existentes.get(id);
+    const p = { ...(base || { id, criadoEm: agora, historico: [{ em: agora, por: 'importação ClickUp', o: 'projeto importado da lista Web Designer' }] }),
+      taskId: t.id, taskUrl: t.url, clienteId: achado ? achado.id : (base && base.clienteId) || null, cliente: achado ? achado.nome : nomeCli, tipo: base && base.tipo && !base.tipoAuto ? base.tipo : tipoDe(m[1]), tipoAuto: !(base && base.tipo && !base.tipoAuto),
+      responsavel: t.assignees && t.assignees[0] ? { id: String(t.assignees[0].username || t.assignees[0].id), nome: t.assignees[0].username } : (base && base.responsavel) || null,
+      inicio: Number(t.date_created) || (base && base.inicio) || null, conclusao, status: base && base.avaliacao && base.status === 'avaliado' ? 'avaliado' : /aprova/i.test(String(t.status && t.status.status || '')) ? 'em_avaliacao' : fechado ? 'concluido' : 'em_andamento',
+      url: urlFinal || (base && base.url) || null, escopo: (base && base.escopo) || null, esforcoHoras: base ? base.esforcoHoras : null, origem: 'clickup', atualizadoEm: agora };
+    const mudou = !base || base.url !== p.url || base.conclusao !== p.conclusao || base.status !== p.status || base.cliente !== p.cliente;
+    if (mudou) { await D.gravar(p); if (base) atualizados++; else novos++; }
+  }
+  return { novos, atualizados, cards: tasks.length };
+}
+
 async function painel(req, res, agora) {
+  let clientesPainel = []; let painelOk = null;
+  try { painelOk = await lerPainel(req); clientesPainel = (painelOk.clients || []).map((c) => ({ id: c.id, nome: c.name, status: c.status })); } catch { /* segue */ }
+  let importacao = null; try { importacao = await importarClickUp(clientesPainel, agora); } catch (e) { importacao = { erro: String(e.message || e) }; }
   const projetos = (await D.lerTodos()).map(D.avaliar).sort((a, b) => (num(b.conclusao) || num(b.inicio) || 0) - (num(a.conclusao) || num(a.inicio) || 0));
   const mesAtual = hojeBRT(agora).slice(0, 7);
   const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : mesAtual;
@@ -41,16 +85,13 @@ async function painel(req, res, agora) {
   const anterior = idx > 0 ? historico[idx - 1] : null;
   const comparacao = anterior && anterior.nota != null && atual.nota != null ? { mesAnterior: anterior.mes, notaAnterior: anterior.nota, delta: Math.round((atual.nota - anterior.nota) * 100) / 100, porCriterio: Object.fromEntries(E.CRITERIOS.map((c) => [c.k, atual.porCriterio[c.k] && anterior.porCriterio[c.k] && atual.porCriterio[c.k].nota != null && anterior.porCriterio[c.k].nota != null ? Math.round((atual.porCriterio[c.k].nota - anterior.porCriterio[c.k].nota) * 100) / 100 : null])) } : null;
   // clientes e web designers do painel (pra cadastrar projeto)
-  let clientes = [], responsaveis = [];
-  try {
-    const pn = await lerPainel(req);
-    clientes = (pn.clients || []).map((c) => ({ id: c.id, nome: c.name, status: c.status })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-    const seen = new Map();
-    for (const c of pn.clients || []) for (const p of ((c.team || {}).webdesign || [])) seen.set(String(p.id || p.name), { id: String(p.id || p.name), nome: p.name });
-    responsaveis = [...seen.values()];
-  } catch { /* sem painel, segue só com os projetos */ }
+  const clientes = clientesPainel.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const seen = new Map();
+  for (const c of (painelOk && painelOk.clients) || []) for (const p of ((c.team || {}).webdesign || [])) seen.set(String(p.id || p.name), { id: String(p.id || p.name), nome: p.name });
+  const responsaveis = [...seen.values()];
+  const semUrl = projetos.filter((p) => !p.url).length;
   res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({ geradoEm: agora, mes, mesAtual, meses, atual, anterior: anterior ? { mes: anterior.mes, nota: anterior.nota, n: anterior.n } : null, comparacao, historico: historico.map((h) => ({ mes: h.mes, nota: h.nota, n: h.n, ponderada: h.ponderada, porCriterio: h.porCriterio, melhor: h.melhor, pior: h.pior })), projetos, clientes, responsaveis, regras: { versao: E.VERSAO_REGRAS, criterios: E.CRITERIOS, escala: E.ESCALA, escalaLbl: E.ESCALA_LBL, tipos: E.TIPOS, gravidades: E.GRAVIDADES, origens: E.ORIGENS, naoAtribuiveis: E.ORIGENS_NAO_ATRIBUIVEIS, texto: [
+  res.status(200).json({ geradoEm: agora, mes, mesAtual, meses, atual, importacao, semUrl, anterior: anterior ? { mes: anterior.mes, nota: anterior.nota, n: anterior.n } : null, comparacao, historico: historico.map((h) => ({ mes: h.mes, nota: h.nota, n: h.n, ponderada: h.ponderada, porCriterio: h.porCriterio, melhor: h.melhor, pior: h.pior })), projetos, clientes, responsaveis, regras: { versao: E.VERSAO_REGRAS, criterios: E.CRITERIOS, escala: E.ESCALA, escalaLbl: E.ESCALA_LBL, tipos: E.TIPOS, gravidades: E.GRAVIDADES, origens: E.ORIGENS, naoAtribuiveis: E.ORIGENS_NAO_ATRIBUIVEIS, texto: [
     'Quatro critérios de 25% (Técnica · Experiência e Conversão · Visual e Identidade · Retrabalho e Correções), cinco subcritérios de 20% em cada um. Escala por subcritério: 100 excelente · 80 muito bom · 60 adequado · 40 abaixo do esperado · 0 crítico, com justificativa.',
     'Nota do critério = média dos subcritérios aplicáveis; nota final = média dos critérios aplicáveis (o peso do "não aplicável" é redistribuído, nunca vira zero). Nenhum critério aplicável = sem avaliação no período.',
     'Mês = média das avaliações concluídas no mês, ponderada pelo esforço planejado (horas) quando todos os projetos têm esforço; senão média simples, identificada no painel. Cada projeto conta uma vez.',
