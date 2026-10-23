@@ -75,7 +75,8 @@ async function painel(req, res, agora) {
   let clientesPainel = []; let painelOk = null;
   try { painelOk = await lerPainel(req); clientesPainel = (painelOk.clients || []).map((c) => ({ id: c.id, nome: c.name, status: c.status })); } catch { /* segue */ }
   let importacao = null; try { importacao = await importarClickUp(clientesPainel, agora); } catch (e) { importacao = { erro: String(e.message || e) }; }
-  const projetos = (await D.lerTodos()).map(D.avaliar).sort((a, b) => (num(b.conclusao) || num(b.inicio) || 0) - (num(a.conclusao) || num(a.inicio) || 0));
+  const semPrint = (p) => (p.tecnicaAuto ? { ...p, tecnicaAuto: { ...p.tecnicaAuto, screenshots: { mobile: !!(p.tecnicaAuto.screenshots && p.tecnicaAuto.screenshots.mobile), desktop: !!(p.tecnicaAuto.screenshots && p.tecnicaAuto.screenshots.desktop) } } } : p);
+  const projetos = (await D.lerTodos()).map(semPrint).map(D.avaliar).sort((a, b) => (num(b.conclusao) || num(b.inicio) || 0) - (num(a.conclusao) || num(a.inicio) || 0));
   const mesAtual = hojeBRT(agora).slice(0, 7);
   const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : mesAtual;
   const meses = [...new Set([mesAtual, ...projetos.map((p) => p.mes).filter(Boolean)])].sort().reverse();

@@ -10,7 +10,7 @@
   const mesLbl = (m) => { if (!m) return ''; const [y, mm] = m.split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(mm) - 1] + '/' + y.slice(2); };
   const ST_LBL = { em_andamento: 'em andamento', concluido: 'concluído', em_avaliacao: 'em avaliação', avaliado: 'avaliado' };
 
-  const st = { mes: null, data: null, loading: false, erro: null, secao: 'mes', projeto: null, editando: null, token: true, busy: false, form: null };
+  const st = { mes: null, data: null, loading: false, erro: null, secao: 'paginas', projeto: null, editando: null, token: true, busy: false, form: null };
   let rootEl = null;
 
   async function load(mes) {
@@ -51,28 +51,53 @@
 
   function paint() {
     if (!rootEl) return; const el = rootEl;
-    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">IQW indisponível: ${esc(st.erro)}</div>`; return; }
-    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo o IQW… (leva uns 20–30 s na primeira abertura)</div>'; return; }
+    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">Resultado do Webdesigner indisponível: ${esc(st.erro)}</div>`; return; }
+    if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo as páginas… (leva uns 20–30 s na primeira abertura)</div>'; return; }
     const d = st.data; if (!d) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
     const a = d.atual || {};
+    const P = d.projetos || [];
+    const tec = P.filter((p) => p.tecnicaAuto && p.tecnicaAuto.mobile);
+    const notaTec = (p) => { const c = p.resultado && p.resultado.criterios && p.resultado.criterios.tecnica; return c && c.aplicavel && c.nota != null ? c.nota : null; };
+    const notaVis = (p) => { const r = p.resultado && p.resultado.criterios; if (!r) return null; const v = [r.experiencia, r.visual].filter((c) => c && c.aplicavel && c.nota != null); return v.length === 2 ? (v[0].nota + v[1].nota) / 2 : null; };
+    const mediaTec = tec.length ? tec.map(notaTec).filter((x) => x != null) : [];
+    const mTec = mediaTec.length ? mediaTec.reduce((a, b) => a + b, 0) / mediaTec.length : null;
+    const comVis = P.filter((p) => notaVis(p) != null).length;
     el.innerHTML = `
       <div class="iqc-head">
-        <div><p class="eyebrow">IQW · Índice de Qualidade Web <span class="hs-hist-info">Técnica 25 · Experiência e Conversão 25 · Visual e Identidade 25 · Retrabalho 25 — por projeto, consolidado por mês · conta no Health Score (frente web design), não entra no Ranking</span></p></div>
-        <div class="chips iqc-meses">${(d.meses || []).map((m) => `<button class="hs-chip${m === d.mes ? ' is-on' : ''}" data-iqw-mes="${m}">${mesLbl(m)}${m === d.mesAtual ? ' <i>em curso</i>' : ''}</button>`).join('')}${st.loading ? '<span class="iqc-loading">atualizando…</span>' : ''}</div>
+        <div><p class="eyebrow">Resultado do Webdesigner <span class="hs-hist-info">qualidade das landing pages, sites e e-commerces entregues — avaliada pelo sistema, sem depender do tráfego</span></p></div>
       </div>
       <div class="hs-termo iqc-termo">
-        <div class="hs-termo-media"><span class="hs-big ${cls(a.nota)}">${a.nota == null ? '—' : n2(a.nota)}</span><span class="hs-termo-l">IQW do mês · ${mesLbl(d.mes)}<br><span>${a.n ? `${a.n} projeto${a.n === 1 ? '' : 's'} avaliado${a.n === 1 ? '' : 's'} · ${esc(a.metodologia)}` : 'sem avaliação no período'}${a.semAvaliacao ? ` · ${a.semAvaliacao} do mês ainda sem avaliação` : ''}</span></span></div>
+        <div class="hs-termo-media"><span class="hs-big ${cls(mTec)}">${mTec == null ? '—' : Math.round(mTec)}</span><span class="hs-termo-l">nota técnica média<br><span>${tec.length} de ${P.length} páginas já testadas pelo Google (velocidade, funciona no celular, links)</span></span></div>
         <div class="hs-termo-pilares iqc-kpis">
-          ${d.regras.criterios.map((c) => { const v = a.porCriterio && a.porCriterio[c.k]; return `<div class="hs-termo-p"><span class="hs-termo-pn ${cls(v && v.nota)}">${v && v.nota != null ? n2(v.nota) : '—'}</span><span class="hs-termo-pl">${esc(c.rotulo.split(' ')[0] === 'Qualidade' ? c.rotulo.replace('Qualidade ', '') : c.rotulo)}</span><span class="iqc-kpi-s">peso ${c.peso}%${v && v.n ? ` · ${v.n} proj.` : ''}</span></div>`; }).join('')}
-          ${d.comparacao ? `<div class="hs-termo-p"><span class="hs-termo-pn ${d.comparacao.delta > 0 ? 'g' : d.comparacao.delta < 0 ? 'r' : 'na'}">${d.comparacao.delta > 0 ? '▲' : d.comparacao.delta < 0 ? '▼' : '='} ${n2(Math.abs(d.comparacao.delta))}</span><span class="hs-termo-pl">vs. ${mesLbl(d.comparacao.mesAnterior)}</span><span class="iqc-kpi-s">${n2(d.comparacao.notaAnterior)} → ${n2(a.nota)}</span></div>` : ''}
+          <div class="hs-termo-p"><span class="hs-termo-pn">${P.length}</span><span class="hs-termo-pl">páginas entregues</span><span class="iqc-kpi-s">da lista Web Designer</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn ${tec.length === P.filter((p) => p.url).length ? 'g' : 'y'}">${tec.length}</span><span class="hs-termo-pl">parte técnica</span><span class="iqc-kpi-s">teste do Google feito</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn ${comVis ? 'g' : 'na'}">${comVis}</span><span class="hs-termo-pl">parte visual</span><span class="iqc-kpi-s">${comVis ? 'avaliadas pelos prints' : 'começa amanhã às 6h37'}</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn na">0</span><span class="hs-termo-pl">retrabalho</span><span class="iqc-kpi-s">vem do WhatsApp — em construção</span></div>
         </div>
       </div>
       <div class="chips iqc-secoes">
-        ${[['mes', 'Mês'], ['projetos', 'Projetos'], ['historico', 'Histórico'], ['regras', 'Matriz e regras']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqw-secao="${k}">${l}</button>`).join('')}
-
+        ${[['paginas', 'Páginas'], ['mes', 'Nota do mês'], ['projetos', 'Avaliar à mão'], ['historico', 'Histórico'], ['regras', 'Como é calculado']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqw-secao="${k}">${l}</button>`).join('')}
       </div>
-      <div>${st.secao === 'mes' ? mesHTML(d) : st.secao === 'projetos' ? projetosHTML(d) : st.secao === 'historico' ? historicoHTML(d) : regrasHTML(d)}</div>`;
+      <div>${st.secao === 'paginas' ? paginasHTML(d) : st.secao === 'mes' ? mesHTML(d) : st.secao === 'projetos' ? projetosHTML(d) : st.secao === 'historico' ? historicoHTML(d) : regrasHTML(d)}</div>`;
     bind(el, d);
+  }
+
+  // visão simples: todas as páginas, o que já foi medido e o que falta (sem siglas)
+  function paginasHTML(d) {
+    const P = (d.projetos || []).slice();
+    const R = d.regras;
+    const nC = (p, k) => { const c = p.resultado && p.resultado.criterios && p.resultado.criterios[k]; return c && c.aplicavel && c.nota != null ? c.nota : null; };
+    const vel = (x) => (x == null ? '—' : `<span class="${cls(x)}">${x}</span>`);
+    const linha = (p) => {
+      const t = p.tecnicaAuto; const m = t && t.mobile; const dk = t && t.desktop; const L = t && t.links;
+      const tec = nC(p, 'tecnica'); const vis = nC(p, 'experiencia') != null && nC(p, 'visual') != null ? Math.round((nC(p, 'experiencia') + nC(p, 'visual')) / 2) : null;
+      const parcial = p.resultado && (p.resultado.nota != null ? p.resultado.nota : p.resultado.previa);
+      const situacao = !p.url ? '<span class="r">sem link no ClickUp</span>' : !t ? (p.tecnicaErro ? '<span class="y">o Google não conseguiu abrir — tenta de novo amanhã</span>' : '<span class="na">teste técnico na fila</span>') : vis == null ? '<span class="na">visual: amanhã 6h37</span>' : '<span class="na">falta só retrabalho (WhatsApp)</span>';
+      return `<tr class="hs-tr" data-iqw-proj="${esc(p.id)}"><td class="hs-td-cli"><span>${esc(p.cliente)}</span></td><td class="hs-td-txt">${esc(R.tipos[p.tipo] || p.tipo)}</td><td class="hs-td-txt">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : '—'}</td><td class="hs-td">${vel(m && m.performance)}</td><td class="hs-td">${vel(dk && dk.performance)}</td><td class="hs-td">${L ? (L.quebrados.length ? `<span class="r">${L.quebrados.length}</span>` : '<span class="g">0</span>') : '—'}</td><td class="hs-td hs-td-score ${cls(tec)}">${tec == null ? '—' : tec}</td><td class="hs-td hs-td-score ${cls(vis)}">${vis == null ? '—' : vis}</td><td class="hs-td hs-td-score ${cls(parcial)}">${parcial == null ? '—' : Math.round(parcial)}</td><td class="hs-td-txt">${situacao}</td></tr>`;
+    };
+    return `<p class="eyebrow">Todas as páginas entregues <span class="hs-hist-info">clique numa linha pra ver o detalhe · notas de 0 a 100 · verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70</span></p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Tipo</th><th>Página</th><th class="r" title="nota de velocidade do Google no celular">Velocidade celular</th><th class="r" title="nota de velocidade do Google no computador">Velocidade computador</th><th class="r" title="links internos que dão erro">Links quebrados</th><th class="r" title="velocidade, funciona no celular, estabilidade e links">Nota técnica</th><th class="r" title="clareza, botões, organização, identidade da marca e acabamento — pelos prints">Nota visual</th><th class="r" title="média do que já foi avaliado">Nota até agora</th><th>Situação</th></tr></thead><tbody>${P.map(linha).join('')}</tbody></table></div>
+      <div class="hs-regras"><div><b>Nota técnica</b> teste automático do Google: velocidade (celular e computador), se a página se adapta ao celular, se dá erro e se tem link quebrado.</div><div><b>Nota visual</b> o sistema olha os prints da página no celular e no computador e avalia clareza da oferta, botões, organização, identidade da marca e acabamento.</div><div><b>Retrabalho</b> quantas vezes o cliente pediu ajuste no grupo do WhatsApp até aprovar — em construção. Até lá a nota fica parcial e não entra no Health Score.</div></div>`;
   }
 
   function mesHTML(d) {
