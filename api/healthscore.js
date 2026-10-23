@@ -174,7 +174,8 @@ function compor(pilares) {
 
 // ---- Pilar RESULTADO = frente Tráfego + frentes de conteúdo por área ----
 // conteudo = { social: {nota, n}, audiovisual: {nota, n}, rp: {nota, n} } (api/_iqc.js conteudoPorCliente)
-const FRENTES_CONTEUDO = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager' };
+// webdesign (André, 23/10/26): IQW — qualidade das entregas de web (LP/site/e-commerce), média dos últimos 90 dias; só conhecimento, não entra no Ranking
+const FRENTES_CONTEUDO = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager', webdesign: 'Web Design' };
 function notaResultado(tr, conteudo) {
   const frentes = { trafego: { nota: tr.nota, n: null } };
   const detalhe = [...(tr.detalhe || [])];
@@ -182,7 +183,7 @@ function notaResultado(tr, conteudo) {
     const c = conteudo && conteudo[k];
     if (!c || c.nota == null) continue;
     frentes[k] = { nota: c.nota, n: c.n };
-    detalhe.push({ rotulo: lbl, valor: c.nota, nota: c.nota, unid: 'pts', frente: k, regua: `performance média de ${c.n} post${c.n === 1 ? '' : 's'} (janela de 7 dias, últimos 30 dias) — engajamento 60 · compartilhamento 40 vs. meta do cliente` });
+    detalhe.push({ rotulo: lbl, valor: c.nota, nota: c.nota, unid: 'pts', frente: k, regua: k === 'webdesign' ? `IQW médio de ${c.n} projeto${c.n === 1 ? '' : 's'} de web avaliado${c.n === 1 ? '' : 's'} nos últimos 90 dias (técnica · experiência · visual · retrabalho)` : `performance média de ${c.n} post${c.n === 1 ? '' : 's'} (janela de 7 dias, últimos 30 dias) — engajamento 60 · compartilhamento 40 vs. meta do cliente` });
   }
   const notas = Object.values(frentes).map((f) => f.nota).filter((n) => n != null);
   return { nota: notas.length ? round0(notas.reduce((a, b) => a + b, 0) / notas.length) : null, detalhe, frentes };

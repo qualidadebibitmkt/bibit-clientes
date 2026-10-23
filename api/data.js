@@ -483,6 +483,14 @@ module.exports = async (req, res) => {
         }
       }
     } catch (e) { conteudoPorCliente = {}; }
+    // IQW (André, 23/10/26): qualidade das entregas de web vira a frente "webdesign" do Resultado (só conhecimento; fora do Ranking)
+    try {
+      const IQW = require('./_iqw'); const wa1 = require('./_wa');
+      if (wa1.redisReady()) {
+        const wd = IQW.webdesignPorCliente((await IQW.lerTodos()).map(IQW.avaliar), now, 90);
+        for (const [cid, v] of Object.entries(wd)) { if (!conteudoPorCliente[cid]) conteudoPorCliente[cid] = {}; conteudoPorCliente[cid].webdesign = { nota: v.nota, n: v.n }; }
+      }
+    } catch (e) { /* IQW é opcional */ }
     for (const c of clients) c.conteudo = conteudoPorCliente[c.id] ? Object.fromEntries(Object.entries(conteudoPorCliente[c.id]).map(([k, v]) => [k, { nota: v.nota, n: v.n }])) : null;
     const hsResultados = calcularTodos(clients.map((c) => ({
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs, conteudo: c.conteudo,

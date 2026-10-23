@@ -1515,3 +1515,18 @@ body::before {
 /* v96: IQC dentro de Resultado (sub-aba) */
 .pl-sub { margin: 0 0 18px; }
 .pl-sub .balcao-l { color: var(--rolha); }
+
+/* v100: IQW (matriz do Web Designer) */
+.iqw-crit { margin-bottom: 12px; } .iqw-crit summary { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.iqw-crit summary > b { display: inline; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--creme); }
+.iqw-crit-n { margin-left: auto; font-family: var(--display); font-size: 22px; font-weight: 600; }
+.iqw-crit-n.g { color: var(--flag-green); } .iqw-crit-n.y { color: var(--flag-yellow); } .iqw-crit-n.r { color: var(--flag-red); } .iqw-crit-n.na { color: var(--creme-45); font-size: 13px; font-family: var(--ui); }
+.iqw-crit-o { font-size: 12px; margin: 6px 0 10px; }
+.iqw-sub { padding: 8px 0; border-top: 1px solid rgba(243,236,218,0.08); }
+.iqw-sub-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+.iqw-sub-h select { font-family: var(--ui); font-size: 12.5px; color: var(--creme); background: rgba(0,0,0,0.25); border: 1px solid rgba(243,236,218,0.18); border-radius: 8px; padding: 4px 8px; }
+.iqw-sub-d { font-size: 12px; margin: 3px 0 6px; }
+.iqw-sub input { display: block; width: 100%; margin-top: 4px; font-family: var(--ui); font-size: 12.5px; color: var(--creme); background: rgba(0,0,0,0.25); border: 1px solid rgba(243,236,218,0.18); border-radius: 8px; padding: 5px 8px; }
+.iqw-total { display: grid; gap: 4px; } .iqw-total .hs-big { font-size: 44px; text-align: left; }
+.iqw-novo summary { cursor: pointer; } .iqw-novo summary b { display: inline; }
+.iqw-form label { display: inline-flex; flex-direction: column; gap: 3px; }

@@ -949,13 +949,13 @@
   // pessoas do pilar num cliente (pra o corte por colaborador)
   function pessoasPilar(k, c) { return semExcluidos(pessoasPilar0(k, c)); }
   function pessoasPilar0(k, c) {
-    if (k === 'trafego') { const t = c.team || {}; const seen = new Map(); for (const kk of ['trafego', 'social', 'audiovisual', 'rp']) for (const p of t[kk] || []) seen.set(String(p.id || p.name), p); return seen.size ? [...seen.values()] : equipeDe(c); } // Resultado: gestor de tráfego + donos das áreas de conteúdo
+    if (k === 'trafego') { const t = c.team || {}; const seen = new Map(); for (const kk of ['trafego', 'social', 'audiovisual', 'rp', 'webdesign']) for (const p of t[kk] || []) seen.set(String(p.id || p.name), p); return seen.size ? [...seen.values()] : equipeDe(c); } // Resultado: gestor de tráfego + donos das áreas de conteúdo + web (IQW)
     if (k === 'produtividade') { const seen = new Map(); for (const t of tasksOf(c.id)) if (isOpen(t) || concluida(t)) for (const p of t.assignees || []) seen.set(String(p.id || p.name), p); for (const p of equipeDe(c)) if (!seen.has(String(p.id || p.name))) seen.set(String(p.id || p.name), { ...p, semTarefa: true }); return [...seen.values()]; }
     return equipeDe(c);
   }
 
   // sub-abas do Resultado: o pilar (régua por cliente/colaborador) ou o IQC (índice de qualidade do conteúdo, iqc-view.js)
-  const subResultadoHTML = () => { const sub = state.resultadoSub === 'iqc' ? 'iqc' : 'pilar'; return `<div class="pl-filtros pl-sub"><span class="balcao-l">resultado</span><div class="chips"><button class="hs-chip pl-chip${sub === 'pilar' ? ' is-on' : ''}" data-rsub="pilar">pilar</button><button class="hs-chip pl-chip${sub === 'iqc' ? ' is-on' : ''}" data-rsub="iqc">IQC · conteúdo<i>social · AV · RP</i></button></div></div>`; };
+  const subResultadoHTML = () => { const sub = ['iqc', 'iqw'].includes(state.resultadoSub) ? state.resultadoSub : 'pilar'; return `<div class="pl-filtros pl-sub"><span class="balcao-l">resultado</span><div class="chips"><button class="hs-chip pl-chip${sub === 'pilar' ? ' is-on' : ''}" data-rsub="pilar">pilar</button><button class="hs-chip pl-chip${sub === 'iqc' ? ' is-on' : ''}" data-rsub="iqc">IQC · conteúdo<i>social · AV · RP</i></button><button class="hs-chip pl-chip${sub === 'iqw' ? ' is-on' : ''}" data-rsub="iqw">IQW · web<i>web designer</i></button></div></div>`; };
   const bindSubResultado = (el) => el.querySelectorAll('[data-rsub]').forEach((n) => n.addEventListener('click', () => { state.resultadoSub = n.dataset.rsub; render(); }));
 
   function renderPilar(el, k) {
@@ -1144,10 +1144,10 @@
     if (k === 'trafego') {
       const t = c.team || {}; const em = (l) => (l || []).some((p) => pid(p) === a.id);
       const fr = (c.healthScore && c.healthScore.pilares && c.healthScore.pilares.trafego.frentes) || {};
-      const frente = em(t.trafego) ? 'trafego' : em(t.social) ? 'social' : em(t.audiovisual) ? 'audiovisual' : em(t.rp) ? 'rp' : null;
+      const frente = em(t.trafego) ? 'trafego' : em(t.social) ? 'social' : em(t.audiovisual) ? 'audiovisual' : em(t.rp) ? 'rp' : em(t.webdesign) ? 'webdesign' : null; // webdesign = IQW (23/10/26)
       if (!frente || !fr[frente] || fr[frente].nota == null) return null;
-      const n = fr[frente]; const LBLF = { trafego: 'tráfego', social: 'posts de social', audiovisual: 'reels/vídeos', rp: 'posts de RP' };
-      return { valor: n.nota, txt: `${n.nota} pts · frente ${LBLF[frente]}${n.n ? ` (${n.n} post${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n.nota), nota: n.nota, cls: hsCls(n.nota), frente };
+      const n = fr[frente]; const LBLF = { trafego: 'tráfego', social: 'posts de social', audiovisual: 'reels/vídeos', rp: 'posts de RP', webdesign: 'projetos de web (IQW)' };
+      return { valor: n.nota, txt: `${n.nota} pts · frente ${LBLF[frente]}${n.n ? ` (${n.n} ${frente === 'webdesign' ? 'projeto' : 'post'}${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n.nota), nota: n.nota, cls: hsCls(n.nota), frente };
     }
     return medidaPilar(k, c, a.id);
   }
@@ -1289,9 +1289,10 @@
     pilarEl.hidden = !PILARES.includes(state.view);
     // IQC mora dentro de Resultado (André, 23/10/26): sub-aba "pilar" | "IQC · conteúdo"; a seção do IQC só aparece nesse corte
     const iqcEl = $('#viewIQC'); const iqcOn = state.view === 'trafego' && state.resultadoSub === 'iqc';
-    iqcEl.hidden = !iqcOn;
+    const iqwEl = $('#viewIQW'); const iqwOn = state.view === 'trafego' && state.resultadoSub === 'iqw'; // IQW (web designer) — só conhecimento, fora do Ranking
+    iqcEl.hidden = !iqcOn; iqwEl.hidden = !iqwOn;
     if (PILARES.includes(state.view)) {
-      if (iqcOn) { pilarEl.innerHTML = subResultadoHTML(); bindSubResultado(pilarEl); if (window.IQC) window.IQC.render(iqcEl); }
+      if (iqcOn || iqwOn) { pilarEl.innerHTML = subResultadoHTML(); bindSubResultado(pilarEl); if (iqcOn && window.IQC) window.IQC.render(iqcEl); if (iqwOn && window.IQW) window.IQW.render(iqwEl); }
       else renderPilar(pilarEl, state.view);
     }
     document.querySelectorAll('.tab').forEach((t) => {
