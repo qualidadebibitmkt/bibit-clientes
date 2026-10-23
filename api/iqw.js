@@ -159,7 +159,7 @@ module.exports = async (req, res) => {
   if (!wa.redisReady()) { res.status(503).json({ error: 'Redis não configurado' }); return; }
   try {
     if (!acao) return await painel(req, res, agora);
-    if (!wa.tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
+
     if (req.method !== 'POST') { res.status(405).json({ error: 'POST' }); return; }
     if (acao === 'projeto') return await salvarProjeto(req, res, agora);
     if (acao === 'avaliar') return await avaliarProjeto(req, res, agora);
