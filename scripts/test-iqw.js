@@ -52,7 +52,7 @@ const r12 = E.avaliarProjeto(n12b);
 t('12 exemplo 85', r12.criterios.tecnica.nota === 90 && r12.criterios.retrabalho.nota === 70 && r12.nota === 85, { t: r12.criterios.tecnica.nota, r: r12.criterios.retrabalho.nota, nota: r12.nota });
 t('12b nota fora da escala é inválida (incompleto)', E.avaliarProjeto(n12).incompleto === true);
 // 13–14. matrizes dos demais cargos e produtividade: o IQW não toca em _iqc-engine nem healthscore.notaProdutividade
-const IQC = require('../api/_iqc-engine'); const HS = require('../api/healthscore');
+const IQC = require('../api/_iqc-engine'); const HS = require('../api/_healthscore');
 t('13 IQC preservado', IQC.PESOS.performance === 0.4 && IQC.PESOS.aprovacao === 0.4 && IQC.PESOS.qualidade === 0.2);
 t('14 produtividade independente', HS.FAIXAS.produtividade.faixas[0][0] === 100 && !Object.keys(E).some((k) => /produt|prazo/i.test(k)));
 // extras: incompleto (nota faltando), arredondamento a 2 casas

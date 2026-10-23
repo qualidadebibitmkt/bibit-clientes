@@ -18,7 +18,7 @@
 
 const data = require('./data');
 const colab = require('./colab');
-const hs = require('./healthscore');
+const hs = require('./_healthscore');
 const wa = require('./_wa');
 
 const { PILARES, LBL, META, PAPEL_LBL, norm, stKey, flagDe } = colab;

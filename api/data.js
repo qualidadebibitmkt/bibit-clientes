@@ -69,7 +69,7 @@ const CF_HS_ROAS = 'f5a25347-e2d8-443f-9017-7bdc62af5814';
 const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
 const CF_HS_LEAD = '0cc186ba-9053-4266-9a2b-9c304c8e6e5d';
 const CF_HS_ATUALIZADO = '02aa0b63-6f5d-423d-b299-1cb0e181513d';
-const { calcularTodos } = require('./healthscore');
+const { calcularTodos } = require('./_healthscore');
 const HS_VALIDADE_DIAS = 10; // métrica de tráfego mais velha que isso = campanha parada (coleta é semanal, segunda 9h30)
 const CF_DATA_SAIDA = 'b969da4a-8bae-4f4c-9f8b-2919620a98e0';
 const CF_TEAM = {
