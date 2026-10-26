@@ -141,7 +141,7 @@ async function capturar(url, { executablePath } = {}) {
   const out = { telas: {}, idade: {}, log, alturas: {} };
   // um navegador novo por tela: o Chromium de servidor roda em processo único e não aceita contextos paralelos
   for (const tela of ['mobile', 'desktop']) {
-    const browser = await pp.launch({ args: [...(executablePath ? ['--no-sandbox', '--disable-dev-shm-usage'] : ch.args), '--lang=pt-BR'], executablePath: executablePath || await ch.executablePath(), headless: 'shell', defaultViewport: null });
+    const browser = await pp.launch({ args: [...(executablePath ? ['--no-sandbox', '--disable-dev-shm-usage'] : ch.args), '--lang=pt-BR'], executablePath: executablePath || await ch.executablePath(), headless: 'shell', defaultViewport: null, protocolTimeout: 45000 });
     try {
       const cfg = TELAS[tela]; const page = (await browser.pages())[0] || await browser.newPage();
       try {

@@ -212,7 +212,8 @@ const CAPTURA_VERSAO = 3;      // 3 = termina animações de entrada e navegador
 const TTL_SHOT = 60 * 86400;
 async function capturarUm(p, agora) {
   let r;
-  try { r = await PR.capturar(p.url); } catch (e) { r = { telas: {}, idade: {}, log: [String(e.message || e).slice(0, 200)] }; }
+  // trava de tempo: página que não termina de carregar não pode prender a fila (a função morreria aos 300 s sem gravar nada)
+  try { r = await Promise.race([PR.capturar(p.url), new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado (120 s) abrindo a página')), 120000))]); } catch (e) { r = { telas: {}, idade: {}, log: [String(e.message || e).slice(0, 200)] }; }
   const ks = Object.keys(r.telas);
   if (!ks.length) { p.printsErro = { em: agora, msg: (r.log || []).join(' · ').slice(0, 300) || 'sem print' }; await D.gravar(p); return { ok: false, erro: p.printsErro.msg }; }
   await wa.redisPipeline(ks.flatMap((k) => [['SET', `iqw:shot:${p.id}:${k}`, r.telas[k].b64], ['EXPIRE', `iqw:shot:${p.id}:${k}`, String(TTL_SHOT)]]));
