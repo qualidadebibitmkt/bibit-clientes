@@ -172,7 +172,7 @@ const REGRAS = {
     ['Vendas', 'Cross Sell + Up Sell RECEBIDO no mês pela pessoa (Closer; sem Closer, o Responsável; dividido quando há mais de um): R$ 100–1 mil = 20 · 1–3 mil = 40 · 3–5 mil = 60 · 5–10 mil = 80 · 10–20 mil = 100 · acima de 20 mil = 200.'],
     ['NRR', 'NRR individual do mês (receita da carteira no mês ÷ receita no início do mês, com cross sell, upsell, downsell e churn): abaixo de 100% = 0 · 100–104,99% = 40 · 105–109,99% = 60 · 110–119,99% = 80 · 120–129,99% = 100 · 130–149,99% = 150 · 150% ou mais = 200.'],
     ['Posição', 'Maior total de pontos; empate decide pela maior Satisfação, depois pelo maior Health Score.'],
-    ['Mês', 'O placar é registrado 1 vez por dia. No mês, o Health Score é a média desses registros e "Posição no mês" mostra a melhor e a pior colocação que a pessoa teve nesses dias; Renovação, Vendas e NRR são os números do mês. O mês corrente é parcial até o último dia.'],
+    ['Mês', 'No mês, o Health Score é a média do placar de cada dia; Renovação, Vendas e NRR são os números do mês. O mês corrente é parcial até o último dia.'],
   ],
 };
 

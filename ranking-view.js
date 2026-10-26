@@ -59,8 +59,6 @@
     const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
     return `<td class="hs-td ${c}" title="${esc(rkTxt(k, x, mes))}"><b class="rk-nota">${x.pts == null ? '—' : x.pts}</b>${sub && sub !== '—' ? `<small class="na rk-bruto">${sub}</small>` : ''}</td>`;
   };
-  // posição ao longo do mês, em português claro: "sempre em 1º" ou "entre 1º e 3º"
-  const faixaPos = (p) => (!p.melhorPosicao ? 'sem posição no mês' : p.melhorPosicao === p.piorPosicao ? `sempre em ${p.melhorPosicao}º` : `entre ${p.melhorPosicao}º e ${p.piorPosicao}º`);
   const medalha = (pos) => (pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '');
 
   function celPilar(k, p, hoje) {
@@ -111,7 +109,7 @@
     const mes = (p.vendas && p.vendas.mes) || (hoje ? mesAtual() : d.mes);
     const total = p.score == null ? 0 : p.score;
     const barra = `<div class="rk-barra" title="total ${total} de 600">${RK.map((k) => { const v = (p.rk && p.rk[k] && p.rk[k].pts) || 0; return v ? `<span class="rk-seg" style="width:${(v / 600) * 100}%;background:${SEG_COR[k]}" title="${RK_LBL[k]}: ${v}"></span>` : ''; }).join('')}</div><div class="rk-legenda">${RK.map((k) => `<span><i style="background:${SEG_COR[k]}"></i>${RK_LBL[k]} ${(p.rk && p.rk[k] && p.rk[k].pts) || 0}</span>`).join('')}</div>`;
-    const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}${!hoje && p.dias ? ` · no mês ficou ${faixaPos(p)} (${p.dias} dia${p.dias === 1 ? '' : 's'} de placar)` : ''}</div>${barra}</div>`;
+    const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}</div>${barra}</div>`;
     const cards = `<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div>`;
     let hsCli = '';
     if (hoje) {
@@ -122,9 +120,9 @@
           <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
       }).join('') + '</div>';
     } else {
-      hsCli = `<p class="rk-nota-mes na">No mês, o Health Score é a média do placar registrado em cada dia (${p.dias || 0} dia${p.dias === 1 ? '' : 's'} até agora). O detalhe cliente a cliente fica na visão "hoje".</p>`;
+      hsCli = `<p class="rk-nota-mes na">No mês, o Health Score é a média do placar de cada dia. O detalhe cliente a cliente fica na visão "hoje".</p>`;
     }
-    return `<tr class="rk-det"><td colspan="13">${cab}${cards}${hsCli}<div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
+    return `<tr class="rk-det"><td colspan="${hoje ? 13 : 12}">${cab}${cards}${hsCli}<div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
   }
 
   function paint() {
@@ -155,23 +153,23 @@
     const R = d.regras || {};
     const sub = hoje
       ? `ranking de hoje · ${dBR(d.dia)}${d.anteriorDia ? ` · variação vs. ${dBR(d.anteriorDia)}` : ' · sem placar anterior pra comparar'}`
-      : `${mesLongo(d.mes)} · ${d.dias} dia${d.dias === 1 ? '' : 's'} de placar${d.primeiroDia ? ` (${dBR(d.primeiroDia)} → ${dBR(d.ultimoDia)})` : ''}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
+      : `${mesLongo(d.mes)}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
 
     const podio = rank.slice(0, 3);
     // pódio de verdade (André, 26/10/26): 2º · 1º · 3º lado a lado, degraus de alturas diferentes, ouro/prata/bronze
     const MED = { 1: { cls: 'ouro', ico: '🥇' }, 2: { cls: 'prata', ico: '🥈' }, 3: { cls: 'bronze', ico: '🥉' } };
-    const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `no mês ficou ${faixaPos(p)} · ${p.dias} dia${p.dias === 1 ? '' : 's'} de placar`);
+    const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `Health Score ${p.base == null ? '—' : p.base}`);
     const ordemPodio = [podio[1], podio[0], podio[2]].filter(Boolean);
     const podioHTML = podio.length ? `<div class="rk-podio">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
 
     const hsCols = (tit) => PILARES.map((k) => `<th class="r rk-th-hs" title="${LBL[k]} — pilar do Health Score${tit}">${CURTO[k]}</th>`).join('');
-    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : '<th class="r" title="melhor e pior colocação que a pessoa teve nos dias do mês (o placar é registrado 1 vez por dia)">Posição no mês</th>'}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média do placar de cada dia do mês')}</tr>`;
+    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : ''}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média do placar de cada dia do mês')}</tr>`;
     const linha = (p) => {
       const aberto = st.aberto === p.id;
       const mes = (p.vendas && p.vendas.mes) || (hoje ? ma : st.periodo);
       const tds = hoje
         ? `<td class="hs-td rk-td-delta" title="variação do Health Score">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
-        : `<td class="hs-td na" title="${esc(`${p.dias} dia${p.dias === 1 ? '' : 's'} de placar registrado no mês`)}">${esc(faixaPos(p))}</td>`;
+        : '';
       return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
     };
 
