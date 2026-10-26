@@ -13,8 +13,8 @@ async function libs() {
 const UA_MOBILE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
 const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const TELAS = {
-  mobile: { viewport: { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, ua: UA_MOBILE, fatia: 1500, fatias: 3 },
-  desktop: { viewport: { width: 1366, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false }, ua: UA_DESKTOP, fatia: 1400, fatias: 3 },
+  mobile: { viewport: { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, ua: UA_MOBILE, fatia: 1500, fatias: 5 },
+  desktop: { viewport: { width: 1366, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false }, ua: UA_DESKTOP, fatia: 1400, fatias: 4 },
 };
 const RX_IDADE = /verifica[çc][aã]o de idade|maior de (18|idade)|mais de 18|18 anos|\b18\+|\+18|idade m[ií]nima|data de nascimento|ano de nascimento|nasceu|age verification|verify (your )?age|how old|year were you born|date of birth|legal drinking|of legal age|21\+|are you (over|of)/i;
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));

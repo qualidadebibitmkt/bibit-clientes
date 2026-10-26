@@ -243,7 +243,7 @@ async function capturarLote(req, res, agora) {
   const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
   const limite = Math.min(Number(req.query.limite) || 2, 4); const feitos = [];
   for (const p of fila.slice(0, limite)) {
-    if (feitos.length && Date.now() - t0 > 170000) break; // não estoura os 300 s da função
+    if (feitos.length && Date.now() - t0 > 160000) break; // não estoura os 300 s da função
     const r = await capturarUm(p, agora);
     feitos.push({ id: p.id, cliente: p.cliente, tipo: p.tipo, ok: r.ok, telas: r.telas, idade: r.idade, refazer: r.refazer, erro: r.erro });
   }
