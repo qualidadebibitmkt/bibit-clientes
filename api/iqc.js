@@ -160,6 +160,7 @@ Regras:
 - "Tive algumas considerações", "vou mandar os ajustes" sem dizer quais = "aprovado_com_ajustes" com os posts em "revisar" até os ajustes aparecerem na conversa.
 - Resposta do cliente com áudio ou documento sem texto: não dá pra saber o conteúdo — marque "revisar" e diga isso no motivo.
 - Pedido de adiamento ("vamos aguardar pra semana que vem") não é aprovação nem reprovação: "sem_resposta".
+- Ajuste GERAL, que vale para todos os posts ("as legendas estão muito grandes", "use mais fotos reais em tudo"): "apos_ajustes" em TODOS os posts atingidos — não use "revisar" só porque o ajuste não cita um post específico. Se o ajuste geral for só para os próximos meses ("para os próximos meses, gostaria…"), não conta para este calendário.
 - Use SOMENTE o que está na transcrição. Não invente decisões. Se um post já consta como decidido no "estado atual" e não há mensagem nova sobre ele, repita o estado atual.
 - Identifique o post pelo número ("post 3"), pela data ("o do dia 12"), pelo tema/legenda ou pela ordem citada. Em dúvida, "revisar".
 - "evidencia" = trecho literal (até 160 caracteres) da mensagem do cliente, com data/hora como aparece na transcrição.
@@ -178,7 +179,9 @@ async function aprovInsumo(req, res, agora) {
   // janela de aprovação do calendário do mês M: do dia 15 de M-1 (envio é dia 20) até o dia 10 de M. Fora disso não se
   // analisa — evita aplicar a resposta do calendário de novembro aos posts de outubro (e as mensagens do buffer só
   // cobrem 7 dias, então um calendário antigo não tem mais evidência no grupo).
-  const emJanela = (mes) => { const [y, m] = mes.split('-').map(Number); const ini = Date.UTC(y, m - 2, 15) + BRT_OFF; const fim = Date.UTC(y, m - 1, 11) + BRT_OFF; return agora >= ini && agora < fim; };
+  // janela decidida pelo André (26/10/26): do dia 20 (envio) até o fim do dia 28 do mês anterior ao calendário, lida todo
+  // dia; depois disso, quem não respondeu entra na aprovação tácita (api/_iqc.js)
+  const emJanela = (mes) => { const [y, m] = mes.split('-').map(Number); const ini = Date.UTC(y, m - 2, 20) + BRT_OFF; const fim = Date.UTC(y, m - 2, 29) + BRT_OFF; return agora >= ini && agora < fim; };
   const alvo = new Set([mesAtual, mesSeguinte(mesAtual)].filter(emJanela));
   // calendários em aprovação: (cliente, mês) com posts pendentes/revisar, dentro da janela
   const grupos = new Map();
@@ -237,7 +240,7 @@ function parseJsonIA(b) {
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
 // versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
-const VERSAO_APROV = '2026-10-26.2';
+const VERSAO_APROV = '2026-10-26.3';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');

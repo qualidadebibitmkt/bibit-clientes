@@ -104,6 +104,15 @@ function metaVigente(metas, clienteId, formato, quandoMs) {
   return null;
 }
 
+// prazo de aprovação do calendário do mês M: fim do dia 28 do mês anterior (00:00 do dia 29, horário de Brasília)
+const TACITA_DESDE = '2026-11';
+function prazoCalendario(mes) {
+  if (!/^\d{4}-\d{2}$/.test(String(mes || ''))) return null;
+  const [y, m] = mes.split('-').map(Number);
+  return Date.UTC(y, m - 2, 29) + 3 * 3600 * 1000;
+}
+const fmtPrazo = (ms) => { const d = new Date(ms - 3 * 3600 * 1000 - 1); return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+
 // ---------- avaliação de um post ----------
 function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
   const r = reg || {};
@@ -117,6 +126,14 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
   const perf = metricas ? E.performancePost(metricas, meta ? { engajamento: meta.engajamento, compartilhamento: meta.compartilhamento } : {}) : null;
   const janelaFechou = post.publicado && agora >= post.publicadoEm + jan;
   let aprov = r.aprovacao || { status: 'pendente', fonte: null };
+  // aprovação tácita do CALENDÁRIO (André, 26/10/26): a mensagem do dia 20 avisa que, sem retorno até o dia 28 (o link do
+  // Canva tranca), o calendário está aprovado. Passado o dia 28 do mês anterior, post sem decisão vira "sem ajustes"
+  // (tácita). Post marcado "revisar" (cliente falou algo ambíguo) não entra — fica pro gestor. Vale a partir de nov/26
+  // (out/26 já foi decidido sem aprovação medível).
+  const prazo = prazoCalendario(post.mes);
+  if (aprov.status === 'pendente' && !aprov.revisar && aprov.fonte !== 'gestor' && prazo && post.mes >= TACITA_DESDE && agora >= prazo) {
+    aprov = { status: 'sem_ajustes', revisar: false, fonte: 'tacita', motivo: `sem retorno do cliente até ${fmtPrazo(prazo)} (link do calendário trancado) — aprovação tácita`, evidencia: null };
+  }
   if (post.publicado && aprov.status === 'pendente' && !aprov.revisar && cfg.aprovacaoTacitaDias && agora >= post.publicadoEm + cfg.aprovacaoTacitaDias * 86400000) {
     aprov = { status: 'sem_ajustes', revisar: false, fonte: 'tacita', motivo: `sem pedido de ajuste até ${cfg.aprovacaoTacitaDias} dias após a publicação (aprovação tácita)`, evidencia: null };
   }
