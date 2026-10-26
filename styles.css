@@ -1634,3 +1634,45 @@ body::before {
 .rk-podio .rk-pod:hover { filter: brightness(1.08); background: linear-gradient(180deg, color-mix(in srgb, var(--med) 20%, var(--garrafa-3)), var(--garrafa-3) 60%); }
 @media (max-width: 700px) { .rk-podio { grid-template-columns: 1fr; } .rk-pod-degrau { height: 40px !important; font-size: 22px !important; } }
 @media (max-width: 700px) { .rk-podio .rk-pod-ouro { order: -1; } }
+
+/* Ranking — pódio metálico (26/10/26): ouro, prata e bronze com reflexo, brilho passando e texto metálico */
+.rk-podio .rk-pod-ouro {
+  --metal: linear-gradient(135deg, #7a5410 0%, #c99a2e 14%, #f6dc7d 28%, #fff6d0 36%, #e4b947 48%, #8f6514 60%, #d9ad3c 74%, #fbe7a0 86%, #a77a1d 100%);
+  --metal-v: linear-gradient(180deg, #fff3c4 0%, #f2cf62 18%, #d4a333 45%, #9c7019 72%, #c99a2e 88%, #f0cd6a 100%);
+  --brilho: rgba(255, 236, 160, 0.55);
+}
+.rk-podio .rk-pod-prata {
+  --metal: linear-gradient(135deg, #5f6670 0%, #a4adb8 14%, #e8edf2 28%, #ffffff 36%, #c3cbd4 48%, #6d757f 60%, #b9c1ca 74%, #f4f7fa 86%, #858e99 100%);
+  --metal-v: linear-gradient(180deg, #ffffff 0%, #e3e8ee 18%, #b8c0ca 45%, #7d8691 72%, #a9b2bc 88%, #e6ebf0 100%);
+  --brilho: rgba(235, 242, 250, 0.45);
+}
+.rk-podio .rk-pod-bronze {
+  --metal: linear-gradient(135deg, #5a2e10 0%, #9c5a2b 14%, #e3a06b 28%, #ffd4b0 36%, #c47a43 48%, #6e3a17 60%, #b86d38 74%, #f0b585 86%, #7d4520 100%);
+  --metal-v: linear-gradient(180deg, #ffd9b8 0%, #e6a26c 18%, #b8703c 45%, #7a421c 72%, #a6612f 88%, #e3a06b 100%);
+  --brilho: rgba(255, 196, 150, 0.4);
+}
+/* borda metálica (truque padding-box/border-box) */
+.rk-podio .rk-pod { border: 1.5px solid transparent; background: linear-gradient(180deg, color-mix(in srgb, var(--med) 16%, var(--garrafa-2)), var(--garrafa-2) 62%) padding-box, var(--metal) border-box; }
+.rk-podio .rk-pod:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--med) 22%, var(--garrafa-3)), var(--garrafa-3) 62%) padding-box, var(--metal) border-box; }
+.rk-podio .rk-pod-ouro { box-shadow: 0 0 0 1px rgba(255, 220, 120, 0.25), 0 18px 50px -14px rgba(233, 185, 73, 0.65), 0 0 80px -30px rgba(255, 215, 100, 0.6); }
+.rk-podio .rk-pod-prata { box-shadow: 0 14px 40px -16px rgba(201, 209, 219, 0.45); }
+.rk-podio .rk-pod-bronze { box-shadow: 0 14px 40px -16px rgba(205, 138, 79, 0.45); }
+/* anel metálico na foto */
+.rk-podio .rk-pod-avatar { box-shadow: none; padding: 3px; background: var(--metal) !important; }
+.rk-podio .rk-pod-avatar img { border-radius: 50%; }
+.rk-podio .rk-pod-ouro .rk-pod-avatar { padding: 4px; box-shadow: 0 0 22px rgba(255, 214, 102, 0.45); }
+/* pontos em metal (texto com gradiente) */
+.rk-podio .rk-pod-score { background: var(--metal-v); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35)); }
+/* degrau: chapa de metal escovado com reflexo e número gravado */
+.rk-pod-degrau { position: relative; overflow: hidden; background: var(--metal); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 6px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.rk-pod-degrau::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 3px); mix-blend-mode: overlay; }
+.rk-pod-degrau span { position: relative; color: rgba(40, 24, 4, 0.82); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 -1px 0 rgba(0, 0, 0, 0.25); }
+.rk-pod-prata .rk-pod-degrau span { color: rgba(30, 36, 44, 0.8); }
+.rk-pod-bronze .rk-pod-degrau span { color: rgba(48, 20, 4, 0.82); }
+/* brilho que passa (desligado pra quem pede menos movimento) */
+.rk-podio .rk-pod::after { content: ""; position: absolute; top: -20%; bottom: -20%; left: -60%; width: 40%; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, var(--brilho), transparent); pointer-events: none; animation: rk-brilho 5.5s ease-in-out infinite; }
+.rk-podio .rk-pod-prata::after { animation-delay: 1.2s; }
+.rk-podio .rk-pod-bronze::after { animation-delay: 2.4s; }
+@keyframes rk-brilho { 0%, 62% { left: -60%; } 100% { left: 140%; } }
+.rk-pod-medalha { position: relative; z-index: 1; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 14px var(--brilho)); }
+@media (prefers-reduced-motion: reduce) { .rk-podio .rk-pod::after { animation: none; display: none; } }
