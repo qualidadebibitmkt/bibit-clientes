@@ -103,7 +103,7 @@ function calcular(captured, mes, cards) {
 
 // foto compacta pro Redis (sem o cliente a cliente)
 // b = Health Score compilado; score = total de pontos do Ranking (fotos antes de 26/10/26 à tarde não têm b: score = Health Score)
-const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.papeis, score: p.score, b: p.base, flag: p.flag, posicao: p.posicao, clientes: p.clientes, abaixo: p.abaixo, cobertura: p.cobertura, p: Object.fromEntries(PILARES.map((k) => [k, p.pilares[k].nota])) }));
+const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.papeis, pessoa: p.pessoa || null, score: p.score, b: p.base, flag: p.flag, posicao: p.posicao, clientes: p.clientes, abaixo: p.abaixo, cobertura: p.cobertura, p: Object.fromEntries(PILARES.map((k) => [k, p.pilares[k].nota])) }));
 
 async function garantirFoto(dia, lista) {
   if (!wa.redisReady()) return false;
@@ -141,7 +141,7 @@ async function consolidarMes(mes, mapaVendas, cards) {
   for (const f of fotos) for (const p of f.pessoas) {
     if (fora(p.nome)) continue; // fotos antigas podem trazer quem saiu do ranking depois
     if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, scores: [], pos: [], pil: Object.fromEntries(PILARES.map((k) => [k, []])), clientes: [], abaixo: [], dias: 0, melhor: null, pior: null, ultimo: null });
-    const a = acc.get(p.id); a.dias++; a.ultimo = p;
+    const a = acc.get(p.id); a.dias++; a.ultimo = p; if (p.pessoa) a.pessoa = p.pessoa;
     const base = p.b !== undefined ? p.b : p.score;
     if (base != null && !(p.cobertura < MIN_PILARES)) { a.scores.push(base); if (p.posicao) { a.pos.push(p.posicao); a.melhor = a.melhor == null ? p.posicao : Math.min(a.melhor, p.posicao); a.pior = a.pior == null ? p.posicao : Math.max(a.pior, p.posicao); } }
     for (const k of PILARES) if (p.p && p.p[k] != null) a.pil[k].push(p.p[k]);
@@ -154,7 +154,7 @@ async function consolidarMes(mes, mapaVendas, cards) {
     const vendas = { ...V.pilar(mapaVendas, a.nome, mes), mes, disponivel: !!mapaVendas };
     const cobertura = PILARES.filter((k) => notas[k] != null).length;
     const insuf = base == null || cobertura < MIN_PILARES;
-    return somar({ id: a.id, nome: a.nome, papeis: a.papeis, base, flag: insuf ? null : hs.flagDoScore(base), cobertura, insuficiente: insuf, cardsDisponivel: !!cards, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: a.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(a.clientes) || 0), abaixo: round0(media(a.abaixo) || 0), dias: a.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimo ? a.ultimo.posicao : null }, vendas, cardDe(cards, mes, a.nome));
+    return somar({ id: a.id, nome: a.nome, papeis: a.papeis, pessoa: a.pessoa || null, base, flag: insuf ? null : hs.flagDoScore(base), cobertura, insuficiente: insuf, cardsDisponivel: !!cards, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: a.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(a.clientes) || 0), abaixo: round0(media(a.abaixo) || 0), dias: a.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimo ? a.ultimo.posicao : null }, vendas, cardDe(cards, mes, a.nome));
   });
   return { mes, dias: fotos.length, primeiroDia: fotos[0] ? fotos[0].dia : null, ultimoDia: fotos.length ? fotos[fotos.length - 1].dia : null, pessoas: ordenar(pessoas) };
 }

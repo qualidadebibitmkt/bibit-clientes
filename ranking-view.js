@@ -141,6 +141,9 @@
     }
 
     const pessoas = d.pessoas || [];
+    // fotos: o mês vem das fotos diárias, que até 26/10/26 não guardavam a foto da pessoa — completa com a do "hoje"
+    const fotoHoje = new Map(((st.data.hoje && st.data.hoje.pessoas) || []).map((x) => [x.id, x.pessoa]));
+    for (const p of pessoas) if (!p.pessoa || !p.pessoa.foto) p.pessoa = fotoHoje.get(p.id) || p.pessoa || { name: p.nome, initials: String(p.nome || '').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase() };
     const rank = pessoas.filter((p) => p.posicao);
     const semPos = pessoas.filter((p) => !p.posicao);
     const scores = rank.map((p) => p.score);
