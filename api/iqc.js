@@ -70,7 +70,7 @@ async function painelMes(req, res, agora) {
   // fechamentos existentes
   const fechRaw = meses.length ? await wa.redisPipeline(meses.map((m) => ['GET', 'iqc:fech:' + m])) : [];
   const fechamentos = {};
-  fechRaw.forEach((r, i) => { if (r && r.result) { try { const f = JSON.parse(r.result); fechamentos[meses[i]] = { em: f.em, colaboradores: (f.colaboradores || []).map((c) => ({ id: c.id, nome: c.nome, funcao: c.funcao, iqc: c.iqc, classificacao: c.classificacao, status: c.status, performance: c.performance, aprovacao: c.aprovacao, qualidade: c.qualidade, clientesTotal: c.clientesTotal, posts: c.posts })) }; } catch {} } });
+  fechRaw.forEach((r, i) => { if (r && r.result) { try { const f = JSON.parse(r.result); fechamentos[meses[i]] = { em: f.em, colaboradores: (f.colaboradores || []).map((c) => ({ id: c.id, nome: c.nome, funcao: c.funcao, area: c.area || null, iqc: c.iqc, classificacao: c.classificacao, status: c.status, performance: c.performance, aprovacao: c.aprovacao, qualidade: c.qualidade, clientesTotal: c.clientesTotal, posts: c.posts })) }; } catch {} } });
   // estado da aprovação dos calendários do mês (resumo)
   const clientesMes = [...new Set(doMes.map((p) => p.clienteId))];
   const aprovRaw = clientesMes.length ? await wa.redisPipeline(clientesMes.map((c) => ['GET', `iqc:aprov:${c}:${mes}`])) : [];

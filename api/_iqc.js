@@ -187,11 +187,14 @@ function consolidarMes(posts, { amostraN = 3 } = {}) {
     });
   }
   // colaborador = média simples dos clientes elegíveis (com IQC); prévia com os parciais
+  // uma linha por pessoa E por área (26/10/26): quem cobre duas áreas (ex.: Gabriela com RP e Audiovisual) não mistura
+  // os clientes de uma área na nota da outra
   const porColab = new Map();
   for (const pc of porCliente) {
     const id = pc.responsavel.id;
-    if (!porColab.has(id)) porColab.set(id, { id, nome: pc.responsavel.nome, foto: pc.responsavel.foto, initials: pc.responsavel.initials, funcao: pc.funcao, area: pc.area, clientes: [] });
-    porColab.get(id).clientes.push(pc);
+    const chave = id + '|' + pc.area;
+    if (!porColab.has(chave)) porColab.set(chave, { id, nome: pc.responsavel.nome, foto: pc.responsavel.foto, initials: pc.responsavel.initials, funcao: pc.funcao, area: pc.area, clientes: [] });
+    porColab.get(chave).clientes.push(pc);
   }
   const colaboradores = [...porColab.values()].map((c) => {
     const validos = c.clientes.filter((x) => x.iqc != null);
