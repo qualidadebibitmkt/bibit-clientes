@@ -1575,3 +1575,10 @@ body::before {
 /* v114: mini-card com rótulo por extenso curto */
 .hs-pils { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .hs-pils .hs-pil { font-size: 10.5px; letter-spacing: 0; }
+
+/* ===== v118: filtro selecionado bem visível (André, 26/10/26: "deixar mais claro que o filtro tá selecionado") ===== */
+.hs-chip.is-on, .pl-chip.is-on { background: var(--creme); color: var(--garrafa-0); border-color: var(--creme); font-weight: 700; box-shadow: 0 0 0 2px color-mix(in srgb, var(--creme) 25%, transparent); }
+.hs-chip.is-on::before, .pl-chip.is-on::before { content: "✓"; font-weight: 800; margin-right: -2px; }
+.hs-chip.is-on i, .pl-chip.is-on i { color: color-mix(in srgb, var(--garrafa-0) 70%, transparent); }
+.hs-chip.is-on:hover, .pl-chip.is-on:hover { background: var(--creme); color: var(--garrafa-0); }
+.chips-rot { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--creme-45); align-self: center; margin-right: 2px; }

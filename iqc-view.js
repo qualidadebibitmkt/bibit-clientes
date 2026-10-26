@@ -70,11 +70,11 @@
     el.innerHTML = `
       <div class="iqc-head">
         <div><p class="eyebrow">Resultado de ${esc(areaLbl)} <span class="hs-hist-info">desempenho dos posts, aprovação dos clientes e qualidade das artes — por colaborador e por cliente</span></p></div>
-        <div class="chips iqc-meses">${(d.meses || []).map((m) => `<button class="hs-chip${m === d.mes ? ' is-on' : ''}" data-iqc-mes="${m}">${mesLbl(m)}${d.fechamentos && d.fechamentos[m] ? ' <i>fechado</i>' : m === d.mesAtual ? ' <i>em andamento</i>' : ''}</button>`).join('')}${st.loading ? '<span class="iqc-loading">atualizando…</span>' : ''}</div>
+        <div class="chips iqc-meses"><span class="chips-rot">Mês</span>${(d.meses || []).map((m) => `<button class="hs-chip${m === d.mes ? ' is-on' : ''}" data-iqc-mes="${m}">${mesLbl(m)}${d.fechamentos && d.fechamentos[m] ? ' <i>fechado</i>' : m === d.mesAtual ? ' <i>em andamento</i>' : m > d.mesAtual ? ' <i>calendário em aprovação</i>' : ''}</button>`).join('')}${st.loading ? '<span class="iqc-loading">atualizando…</span>' : ''}</div>
       </div>
       ${st.secao === 'simples' ? simplesHTML(d, areaLbl) : ''}
       <div class="chips iqc-secoes">
-        ${secoes.map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqc-secao="${k}">${l}</button>`).join('')}
+        <span class="chips-rot">Ver</span>${secoes.map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqc-secao="${k}">${l}</button>`).join('')}
         ${st.colab ? `<button class="hs-chip pl-limpar" data-iqc-colab="">× ${esc((colabs.find((c) => c.id === st.colab) || {}).nome || 'colaborador')}</button>` : ''}
         ${st.cliente ? `<button class="hs-chip pl-limpar" data-iqc-cliente="">× ${esc((posts.find((x) => x.clienteId === st.cliente) || {}).cliente || 'cliente')}</button>` : ''}
       </div>
