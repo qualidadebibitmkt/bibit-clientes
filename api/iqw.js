@@ -243,7 +243,7 @@ async function capturarPrints(req, res, agora) {
 const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || (p.prints.captura || 2) < CAPTURA_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < 20 * 3600000);
 async function capturarLote(req, res, agora) {
   const t0 = Date.now();
-  const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
+  const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (Number(!!a.prints) - Number(!!b.prints)) || (num(b.conclusao) || 0) - (num(a.conclusao) || 0)); // sem print nenhum primeiro
   const limite = Math.min(Number(req.query.limite) || 2, 4); const feitos = [];
   for (const p of fila.slice(0, limite)) {
     if (feitos.length && Date.now() - t0 > 160000) break; // não estoura os 300 s da função
