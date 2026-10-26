@@ -39,10 +39,12 @@ module.exports = async (req, res) => {
   if (!grupo || texto == null) { res.status(200).json({ ok: true, ignored: 'sem texto' }); return; }
 
   const ts = Number(b.momment) || Date.now();
-  const fone = String(b.participantPhone || b.phone || '');
+  // remetente: só o senderName. O chatName é o nome do GRUPO e fazia contato do cliente sem nome salvo virar "Bibit"
+  // (auditoria 26/10/26) — só cai nele quando a mensagem é do próprio número (fromMe). Telefone: só o do participante.
+  const fone = String(b.participantPhone || '');
   const msg = {
     t: ts,
-    s: String(b.senderName || b.chatName || '').slice(0, 80),
+    s: String(b.senderName || (b.fromMe ? b.chatName : '') || '').slice(0, 80),
     p: fone ? '…' + fone.slice(-4) : '',
     me: !!b.fromMe,
     m: texto.slice(0, 2000),

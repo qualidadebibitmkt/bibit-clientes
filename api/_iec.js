@@ -57,8 +57,11 @@ const TIPOS = {
 const normA = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 function classificaAlerta(t) {
   if (!t) return null;
-  if (/24 ?h|24 horas|ultimo dia|ferias|descanso|licenca|indecifr/.test(t) && !/vencid/.test(t)) return null;
-  if (/cancel|nao renov|rescis|encerr(ar|amento)? (o |a |d[oa] )?(contrato|parceria|servico|trabalho|projeto)|ameaca/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ameaca };
+  // descarta só "ausência/silêncio nas últimas 24h" (spec: não penalizar 1 dia sem mensagem) e férias — antes qualquer
+  // texto com "24h" sumia, inclusive "cliente sem resposta há mais de 24h" (auditoria 26/10/26)
+  if (/(ausencia|silenci|sem mensage|nao escreveu|inativ|sem intera).{0,40}(24 ?h|24 horas|ultimo dia)|(24 ?h|24 horas|ultimo dia).{0,40}(ausencia|silenci|sem mensage|inativ|sem intera)|ferias|descanso|licenca|indecifr/.test(t) && !/vencid/.test(t)) return null;
+  // ameaça = cancelar/encerrar/não renovar o CONTRATO com a Bibit; "cancelar o post de sexta" não é (auditoria 26/10/26)
+  if (/ameaca|rescis|nao (vai |quer |pretende |deve |vamos )?renov|(cancel|encerr|interromp|suspend)\w*\W+(\w+\W+){0,3}(contrato|parceria|servico|servicos|trabalho com|plano|assinatura|bibit|agencia)/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ameaca };
   if (/ruptura|confianca/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.ruptura };
   if (/reclama.*grave|grave.*reclama|reclama.*nao resolvid/.test(t)) return { nivel: 'CRÍTICO', tipo: TIPOS.grave };
   if (/reuniao.*(emergenc|urgent)|(emergenc|urgent).*reuniao/.test(t)) return { nivel: 'ALTO', tipo: TIPOS.reuniaoEmergencial };
@@ -71,6 +74,8 @@ function classificaAlerta(t) {
   if (/solicita|pedido|pend|prazo|vencid|confirma|sem resposta|aguard|retorno/.test(t)) return { nivel: 'MODERADO', tipo: TIPOS.solicitacaoPendente };
   return undefined; // não reconheceu
 }
+// alertas que só existem se o CLIENTE escreveu algo
+const FALA_DO_CLIENTE = new Set([TIPOS.ameaca, TIPOS.ruptura, TIPOS.grave, TIPOS.reclamacoes, TIPOS.reuniaoEmergencial]);
 function canonAlerta(nivelIA, tipo, descricao) {
   const porTipo = classificaAlerta(normA(tipo));
   if (porTipo !== undefined) return porTipo;
@@ -113,13 +118,15 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   const sol = arr(ex.solicitacoes_bibit).filter((s) => s && (s.o_que || s.descricao));
   const vistas = new Set();
   const unicas = sol.filter((s) => { const k = limpa(s.o_que || s.descricao, 60).toLowerCase(); if (vistas.has(k)) return false; vistas.add(k); return true; });
-  const elegiveis = unicas.filter((s) => bool(s.respondida) || bool(s.prazo_vencido));
-  const respondidas = elegiveis.filter((s) => bool(s.respondida));
+  // cliente que não escreveu nada na janela não respondeu pedido nenhum — a IA às vezes conta resposta da própria Bibit
+  const resp = (s) => !semMsgCliente && bool(s.respondida);
+  const elegiveis = unicas.filter((s) => resp(s) || bool(s.prazo_vencido));
+  const respondidas = elegiveis.filter(resp);
   const r2 = ptsResponsividade(respondidas.length, elegiveis.length);
-  const c2 = { pts: r2.pts, max: 20, taxa: r2.taxa, respondidas: respondidas.length, elegiveis: elegiveis.length, pendentes: unicas.filter((s) => !bool(s.respondida)).length, aplicavel: r2.pts != null };
+  const c2 = { pts: r2.pts, max: 20, taxa: r2.taxa, respondidas: respondidas.length, elegiveis: elegiveis.length, pendentes: unicas.filter((s) => !resp(s) && bool(s.prazo_vencido)).length, aplicavel: r2.pts != null }; // pendentes: só pedido com prazo vencido cobra o cliente
 
   // C3 iniciativa — IA
-  const inic = arr(ex.iniciativas_cliente).filter((i) => i && (i.o_que || i.descricao || typeof i === 'string'));
+  const inic = semMsgCliente ? [] : arr(ex.iniciativas_cliente).filter((i) => i && (i.o_que || i.descricao || typeof i === 'string'));
   const c3 = { pts: ptsIniciativa(inic.length), max: 20, n: inic.length, aplicavel: true };
 
   // C4 tom — IA; N/A quando o cliente não escreveu nada na janela
@@ -134,8 +141,9 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
 
   // exceções (limite mais restritivo vence)
   const tetos = [];
-  const ameaca = bool(ex.ameaca_cancelamento);
-  const graveNaoResolvida = bool(ex.reclamacao_grave_nao_resolvida);
+  // ameaça e reclamação grave precisam de mensagem do cliente na janela — a IA já atribuiu ao cliente fala da Bibit
+  const ameaca = !semMsgCliente && bool(ex.ameaca_cancelamento);
+  const graveNaoResolvida = !semMsgCliente && bool(ex.reclamacao_grave_nao_resolvida);
   if (semMsgCliente) tetos.push({ teto: 40, motivo: 'cliente sem nenhuma mensagem nos últimos 7 dias' });
   if (graveNaoResolvida) tetos.push({ teto: 30, motivo: 'reclamação grave não resolvida' });
   if (ameaca) tetos.push({ teto: 20, motivo: 'ameaça explícita de cancelamento' });
@@ -159,6 +167,7 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
     if (!a) continue;
     const c = canonAlerta(a.nivel, a.tipo, a.descricao);
     if (c && c.tipo === TIPOS.perguntaSemResposta) continue; // vem só do código (abaixo)
+    if (c && semMsgCliente && FALA_DO_CLIENTE.has(c.tipo)) continue; // cliente não escreveu: não pode ter reclamado/ameaçado
     if (c) push(c.nivel, c.tipo, a.descricao || a.tipo);
   }
   if (ameaca) push('CRÍTICO', TIPOS.ameaca, c4.evidencia || 'cliente ameaçou cancelar');
@@ -181,7 +190,7 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   // últimas 24h (IA + código)
   const u = ex.ultimas_24h || {};
   const ultimas24h = {
-    clienteParticipou: cod.msgs24h > 0 || bool(u.cliente_participou),
+    clienteParticipou: cod.msgs24h > 0, // contado pelo código; a IA não decide presença
     msgsCliente: cod.msgs24h, msgsBibit: cod.msgsBibit24h,
     respondeuSolicitacoes: u.respondeu_solicitacoes == null ? null : bool(u.respondeu_solicitacoes),
     novasDemandas: arr(u.novas_demandas).map((x) => limpa(x.o_que || x, 120)).filter(Boolean),

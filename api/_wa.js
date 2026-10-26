@@ -54,15 +54,63 @@ function tokenOk(req) {
 }
 
 
-// ---------- métricas por pessoa da Bibit (item de verificação do pilar de contato) ----------
-// Quem é da Bibit: o nome de exibição no WhatsApp traz "| Bibit Mkt" / "WebDesigner", ou é um dos nomes da casa.
+// ---------- quem é da Bibit e quem é do cliente (fonte ÚNICA pra todo o painel) ----------
+// Desde 26/10/26 (auditoria do André): a identificação é pelo TELEFONE do cadastro do time (lista "Time - Operação",
+// campo WhatsApp) e pelo nome completo de quem está nesse cadastro. Antes era pelo primeiro nome ("gabriela", "will"…),
+// o que transformava contato do cliente com o mesmo nome em Bibit e deixava gente nova da Bibit (Rômulo) como cliente.
 const EQUIPE_RX = /bibit|webdesigner|gestor de tr[aá]fego|head marketing/i;
-const NOMES_CASA = ['bruno serra', 'andré guedes', 'andre guedes', 'gabriela', 'rafaela', 'michelle', 'daniel bomtempo', 'willian', 'will', 'joão ribas', 'joao ribas'];
-function ehBibit(msg) {
+const NOMES_CASA = ['bruno serra', 'andre guedes', 'gabriela coelho', 'rafaela', 'michelle', 'daniel bomtempo', 'willian pereira', 'will - ', 'joao ribas', 'romulo alcantra']; // reserva, só nome completo
+const normNome = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const ult4 = (x) => String(x || '').replace(/\D/g, '').slice(-4);
+const RH_LIST = '901713574991'; // Time - Operação
+const CF_RH_PESSOA = '202d0b1a-6350-4835-adaf-820bf094dd10';
+const CF_RH_WHATSAPP = '4e85aad8-c307-4016-8d52-dd4c13c44064';
+let EQUIPE = null; let EQUIPE_EM = 0;
+// carrega { fones: últimos 4 dígitos, nomes: nomes completos } do time — memória 10 min, Redis 6 h, senão ClickUp.
+// Sem cadastro disponível, a regra cai pro nome (como era antes), sem quebrar.
+async function carregarEquipe() {
+  if (EQUIPE && Date.now() - EQUIPE_EM < 10 * 60000) return EQUIPE;
+  try {
+    if (redisReady()) { const raw = await redis(['GET', 'wa:equipe']); if (raw) { const j = JSON.parse(raw); EQUIPE = { fones: new Set(j.fones), nomes: new Set(j.nomes) }; EQUIPE_EM = Date.now(); return EQUIPE; } }
+  } catch {}
+  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
+  if (!token) return EQUIPE;
+  try {
+    const r = await fetch(`https://api.clickup.com/api/v2/list/${RH_LIST}/task?include_closed=false&subtasks=false`, { headers: { Authorization: token } });
+    if (!r.ok) return EQUIPE;
+    const j = await r.json(); const fones = new Set(); const nomes = new Set();
+    for (const t of j.tasks || []) {
+      const cf = (id) => (t.custom_fields || []).find((f) => f.id === id);
+      const tel = cf(CF_RH_WHATSAPP); const dig = tel && tel.value ? String(tel.value).replace(/\D/g, '') : '';
+      if (dig.length >= 10) fones.add(dig.slice(-4));
+      if (t.name) nomes.add(normNome(t.name));
+      const pe = cf(CF_RH_PESSOA); const u = pe && Array.isArray(pe.value) ? pe.value[0] : null;
+      if (u && u.username) nomes.add(normNome(u.username));
+    }
+    if (fones.size || nomes.size) {
+      EQUIPE = { fones, nomes }; EQUIPE_EM = Date.now();
+      try { if (redisReady()) await redisPipeline([['SET', 'wa:equipe', JSON.stringify({ fones: [...fones], nomes: [...nomes] })], ['EXPIRE', 'wa:equipe', String(6 * 3600)]]); } catch {}
+    }
+  } catch {}
+  return EQUIPE;
+}
+// pra testes: injeta o cadastro sem rede
+function definirEquipe(e) { EQUIPE = e ? { fones: new Set(e.fones || []), nomes: new Set((e.nomes || []).map(normNome)) } : null; EQUIPE_EM = Date.now(); }
+
+// nomeCliente (opcional) reconhece mensagem que chegou com o NOME DO GRUPO como remetente
+function ehBibit(msg, nomeCliente) {
+  if (msg.me) return true;
   const s = String(msg.s || '');
-  if (EQUIPE_RX.test(s)) return true;
-  const n = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  return NOMES_CASA.some((x) => n === x.normalize('NFD').replace(/[̀-ͯ]/g, '') || n.startsWith(x.normalize('NFD').replace(/[̀-ͯ]/g, '') + ' '));
+  const fone = ult4(msg.p);
+  const nome = normNome(pessoaDe(s));
+  if (EQUIPE && fone && EQUIPE.fones.has(fone)) return true;
+  if (EQUIPE && nome && EQUIPE.nomes.has(nome)) return true;
+  const doGrupo = nomeCliente ? ehNomeDoGrupoFn(nomeCliente)(msg) : false;
+  // nome do grupo no lugar do remetente: com telefone de fora do time é um contato do cliente sem nome salvo
+  if (doGrupo) return !(EQUIPE && fone);
+  if (EQUIPE_RX.test(s)) return true; // a pessoa se identificou ("| Bibit Mkt", cargo)
+  const n = normNome(s);
+  return NOMES_CASA.some((x) => n === x.trim() || n.startsWith(x.endsWith(' ') ? x : x + ' '));
 }
 // nome curto da pessoa (sem o cargo): "Daniel Bomtempo - Gestor De Tráfego | Bibit Mkt" → "Daniel Bomtempo"
 const pessoaDe = (s) => String(s || '').split(/\s[|\-–]\s/)[0].trim().slice(0, 40) || 'alguém';
@@ -117,7 +165,7 @@ function metricasEquipe(msgs, agora = Date.now(), nomeCliente = '') {
   let turnoAberto = null; // { t } início do turno do cliente aguardando resposta
   for (const m of msgs) {
     if (ehAutomacao(m)) continue;
-    const bibit = ehBibit(m) || !!m.me;
+    const bibit = ehBibit(m, nomeCliente);
     if (bibit) {
       const p = (semPessoa(m) || ehNomeDoGrupo(m)) ? null : P(pessoaDe(m.s));
       if (p) { if (ehReacao(m)) p.reacoes++; else { p.msgs++; g.msgsBibit++; } p.dias.add(dayKey(m.t - 3 * 3600 * 1000)); p.ultima = m.t; if (!p.primeira) p.primeira = m.t; }
@@ -143,7 +191,9 @@ function metricasEquipe(msgs, agora = Date.now(), nomeCliente = '') {
 // Dia em Brasília (UTC-3, sem horário de verão) — a janela do IEC e o histórico diário usam esta data.
 const dayKeyBR = (ms) => new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 10);
 // mensagem humana do cliente: não é da Bibit, não é do número oficial, não é automação nem reação
-const ehCliente = (m) => !m.me && !ehBibit(m) && !ehAutomacao(m) && !ehReacao(m);
+const ehCliente = (m, nomeCliente) => !m.me && !ehBibit(m, nomeCliente) && !ehAutomacao(m) && !ehReacao(m);
+// rótulo de autoria que vai na transcrição pra IA — quem decide é o código, a IA não deduz pelo nome
+const rotuloAutor = (m, nomeCliente) => (ehAutomacao(m) ? '[AUTOMAÇÃO]' : ehBibit(m, nomeCliente) ? (m.me ? '[BIBIT · número oficial]' : '[BIBIT]') : '[CLIENTE]');
 // msgs ordenadas → presença do cliente, volume, últimas 24h e turnos do cliente sem resposta da Bibit
 function metricasCliente(msgs, agora = Date.now(), nomeCliente = '') {
   const ehNomeDoGrupo = ehNomeDoGrupoFn(nomeCliente);
@@ -154,7 +204,7 @@ function metricasCliente(msgs, agora = Date.now(), nomeCliente = '') {
   let turno = null;
   for (const m of msgs) {
     if (ehAutomacao(m)) continue;
-    const bibit = !!m.me || ehBibit(m) || ehNomeDoGrupo(m);
+    const bibit = ehBibit(m, nomeCliente);
     if (bibit) {
       if (ehReacao(m)) continue;
       msgsBibit7d++; if (m.t >= ini24) msgsBibit24h++; ultimaBibit = m.t;
@@ -191,4 +241,4 @@ function parsePareceres(txt) {
   return out;
 }
 
-module.exports = { redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };
+module.exports = { carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };

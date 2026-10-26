@@ -56,6 +56,7 @@ module.exports = async (req, res) => {
 
     const nomeCliente = String(req.query.cliente || '');
     const msgs = await wa.lerMsgs(grupo, 7, agora);
+    await wa.carregarEquipe();
     const codigo = wa.metricasCliente(msgs, agora, nomeCliente);
     const dia = wa.dayKeyBR(agora);
     const hist = await lerHistorico(grupo, agora, 14);

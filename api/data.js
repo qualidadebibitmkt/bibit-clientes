@@ -530,6 +530,7 @@ module.exports = async (req, res) => {
           for (let i = 0; i < IEC_DIAS; i++) { const r = r2[k++]; if (r && r.result) { try { hist.push(JSON.parse(r.result)); } catch {} } }
           hist.sort((a, b) => (a.dia < b.dia ? 1 : -1));
           msgs.sort((a, b) => a.t - b.t);
+          await wa.carregarEquipe(); // cache de 10 min em memória
           const met = wa.metricasEquipe(msgs, hoje, c.name);
           if (c.contato) {
             c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres;

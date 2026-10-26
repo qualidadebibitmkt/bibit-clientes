@@ -74,17 +74,18 @@ async function insumo(req, res) {
     const grupo = wa.normGrupo(c.waGrupo);
     let msgs = [];
     try { msgs = await wa.lerMsgs(grupo, 8); } catch (e) { out.push({ cliente: c.name, erro: String(e.message || e) }); continue; }
+    await wa.carregarEquipe();
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
     // "humano" = alguém da equipe escrevendo de fato: fora o relatório de segunda, alertas, CSAT (número oficial) e o PDF de clipping
-    const bibitHumano = uteis.filter((m) => wa.ehBibit(m) && !m.me && !/^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|clipping da semana|^\[documento\] Clipping/i.test(String(m.m || '')));
+    const bibitHumano = uteis.filter((m) => wa.ehBibit(m, c.name) && !m.me && !/^Olá, pessoal! Tudo bem\? Ótima semana|Alerta de automação|Saldo Meta —|clipping da semana|^\[documento\] Clipping/i.test(String(m.m || '')));
     const ultimaBibit = bibitHumano.length ? bibitHumano[bibitHumano.length - 1].t : null;
-    const ultimaCliente = uteis.filter((m) => !wa.ehBibit(m) && !m.me).slice(-1)[0];
+    const ultimaCliente = uteis.filter((m) => !wa.ehBibit(m, c.name) && !m.me).slice(-1)[0];
     const met = wa.metricasEquipe(msgs, agora, c.name);
     const recentes = msgs.filter((m) => m.t >= agora - DIAS_TRANSCRICAO * 86400000);
     const linhas = []; let marcou = false;
     for (const m of recentes) {
       if (!marcou && m.t >= ini) { linhas.push(`---- início da janela de hoje (${fmtHora(ini)}) ----`); marcou = true; }
-      linhas.push(`${fmtHora(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·número oficial]' : ''}: ${m.m}`);
+      linhas.push(`${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`);
     }
     if (!marcou) linhas.push(`---- início da janela de hoje (${fmtHora(ini)}) — nenhuma mensagem depois disso ----`);
     out.push({

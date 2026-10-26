@@ -46,18 +46,31 @@ t('responsividade N/A normaliza: (20+5+30)/80 = 68,75 → 69', () => {
 });
 t('solicitação com prazo não vencido e não respondida não é elegível; duplicada não conta', () => {
   const r = I.calcularIEC({ extracao: ex({ solicitacoes_bibit: [{ o_que: 'aprovar post', respondida: false, prazo_vencido: false }, { o_que: 'aprovar post', respondida: false, prazo_vencido: false }, { o_que: 'enviar fotos', respondida: true }] }), codigo: base, anterior: null, dia: DIA });
-  assert.strictEqual(r.criterios.responsividade.elegiveis, 1); assert.strictEqual(r.criterios.responsividade.pts, 20); assert.strictEqual(r.criterios.responsividade.pendentes, 1);
-  assert.ok(r.alertas.some((a) => a.nivel === 'MODERADO' && /solicitação da Bibit/.test(a.tipo)));
+  assert.strictEqual(r.criterios.responsividade.elegiveis, 1); assert.strictEqual(r.criterios.responsividade.pts, 20); assert.strictEqual(r.criterios.responsividade.pendentes, 0);
+  // pedido ainda dentro do prazo não cobra o cliente (auditoria 26/10/26)
+  assert.ok(!r.alertas.some((a) => /solicitação da Bibit/.test(a.tipo)));
+  const v = I.calcularIEC({ extracao: ex({ solicitacoes_bibit: [{ o_que: 'aprovar post', respondida: false, prazo_vencido: true }] }), codigo: base, anterior: null, dia: DIA });
+  assert.ok(v.alertas.some((a) => a.nivel === 'MODERADO' && /solicitação da Bibit/.test(a.tipo)));
 });
 t('cliente sem mensagem: tom e teto 40 (presença 0 + iniciativa 0, resp N/A → 0/40 = 0)', () => {
   const r = I.calcularIEC({ extracao: ex({ solicitacoes_bibit: [], iniciativas_cliente: [], tom: { nivel: 'cordial' } }), codigo: { ...base, nDiasAtivos: 0, msgs7d: 0, msgs24h: 0 }, anterior: null, dia: DIA });
   assert.strictEqual(r.criterios.tom.aplicavel, false); assert.strictEqual(r.iec, 0); assert.ok(r.tetos.some((x) => x.teto === 40));
   assert.ok(r.alertas.some((a) => /ausência prolongada/.test(a.tipo)));
 });
-t('teto 40 limita mesmo com IA dizendo iniciativas', () => {
-  // cliente sem msg humana mas IA "viu" 4 iniciativas (ex.: automação mal lida): 20/40 = 50 → teto 40
-  const r = I.calcularIEC({ extracao: ex({ solicitacoes_bibit: [], iniciativas_cliente: [{}, {}, {}, {}].map((_, i) => ({ o_que: 'x' + i })) }), codigo: { ...base, nDiasAtivos: 0, msgs7d: 0 }, anterior: null, dia: DIA });
-  assert.strictEqual(r.iec, 40); assert.strictEqual(r.tetoAplicado, 40);
+t('cliente sem mensagem: iniciativa, resposta, ameaça e reclamação vindas da IA são ignoradas (autoria)', () => {
+  // a IA "viu" iniciativas, resposta e ameaça num grupo em que o cliente não escreveu (era a Bibit falando)
+  const r = I.calcularIEC({ extracao: ex({ solicitacoes_bibit: [{ o_que: 'aprovar', respondida: true, prazo_vencido: true }], iniciativas_cliente: [{}, {}, {}, {}].map((_, i) => ({ o_que: 'x' + i })), ameaca_cancelamento: true, reclamacao_grave_nao_resolvida: true, alertas: [{ nivel: 'ALTO', tipo: 'reclamações recorrentes', descricao: 'x' }], ultimas_24h: { cliente_participou: true } }), codigo: { ...base, nDiasAtivos: 0, msgs7d: 0, msgs24h: 0 }, anterior: null, dia: DIA });
+  assert.strictEqual(r.criterios.iniciativa.n, 0); assert.strictEqual(r.criterios.responsividade.respondidas, 0);
+  assert.ok(!r.alertas.some((a) => a.nivel === 'CRÍTICO' || /reclama/.test(a.tipo)), JSON.stringify(r.alertas));
+  assert.strictEqual(r.ultimas24h.clienteParticipou, false); assert.strictEqual(r.iec, 0);
+});
+t('cancelar um post não é ameaça de cancelar contrato; "sem resposta há 24h" não some', () => {
+  assert.notStrictEqual((I.canonAlerta('ALTO', 'Pedido de cancelamento do post de sexta', '') || {}).tipo, I.TIPOS.ameaca);
+  assert.notStrictEqual((I.canonAlerta('ALTO', 'pediu para cancelar a gravação', '') || {}).tipo, I.TIPOS.ameaca);
+  assert.strictEqual(I.canonAlerta('ALTO', 'cliente quer cancelar o contrato', '').tipo, I.TIPOS.ameaca);
+  assert.strictEqual(I.canonAlerta('ALTO', 'não vai renovar com a Bibit', '').tipo, I.TIPOS.ameaca);
+  assert.ok(I.canonAlerta('MODERADO', 'Solicitação sem resposta há mais de 24h', ''));
+  assert.strictEqual(I.canonAlerta('MODERADO', 'ausência nas últimas 24h', ''), null);
 });
 t('ameaça de cancelamento: teto 20 + alerta CRÍTICO', () => {
   const r = I.calcularIEC({ extracao: ex({ ameaca_cancelamento: true, tom: { nivel: 'grave' } }), codigo: base, anterior: null, dia: DIA });

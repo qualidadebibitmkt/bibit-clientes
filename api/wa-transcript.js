@@ -1,7 +1,7 @@
 // BIBIT · GET /api/wa-transcript?grupo=<wa_grupo_id>&t=<token>[&days=7]
 // Devolve a transcrição pronta pra análise (Make → Claude). Só o Make chama isto.
 
-const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao } = require('./_wa');
+const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao, carregarEquipe, rotuloAutor } = require('./_wa');
 
 const fmt = (ms) => {
   const d = new Date(ms);
@@ -48,16 +48,17 @@ module.exports = async (req, res) => {
 
   try {
     const msgs = await lerMsgs(grupo, days, hoje);
+    await carregarEquipe(); // quem é Bibit sai do cadastro do time (telefone), não do nome
 
     // mark=1 (só o Make usa): registra quando a análise leu este grupo → "atualizado em" no painel
     if (req.query.mark) { try { await redisPipeline([['SET', 'wa:last:' + grupo, String(Date.now())], ['EXPIRE', 'wa:last:' + grupo, String(180 * 86400)]]); } catch {} }
-    const linhas = msgs.map((m) => `${fmt(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}${ehAutomacao(m) ? ' [automação]' : ''}: ${m.m}`);
+    const linhas = msgs.map((m) => `${fmt(m.t)} ${rotuloAutor(m, nomeCliente)} ${m.s || 'alguém'}: ${m.m}`);
     const remetentes = [...new Set(msgs.map((m) => m.s).filter(Boolean))];
     // métricas por pessoa da Bibit (pro prompt individual do Make e pro painel)
     const met = metricasEquipe(msgs, hoje, nomeCliente);
     // contexto pro prompt de EXTRAÇÃO do IEC (quem é quem, janela, corte das 24h) — contado por código
     const cli = metricasCliente(msgs, hoje, nomeCliente);
-    const bibitNomes = [...new Set(msgs.filter((m) => !ehAutomacao(m) && (m.me || ehBibit(m))).map((m) => (m.me ? 'número oficial [Bibit·instância]' : m.s)).filter(Boolean))];
+    const bibitNomes = [...new Set(msgs.filter((m) => !ehAutomacao(m) && ehBibit(m, nomeCliente)).map((m) => (m.me ? 'número oficial [Bibit·instância]' : m.s)).filter(Boolean))];
     const dow = new Date(hoje - 3 * 3600 * 1000).getUTCDay();
     const iecContexto = [
       `Agora: ${fmt(hoje)} (horário de Brasília). Janela avaliada: ${fmt(hoje - days * 86400000)} até agora (${days} dias corridos).`,
@@ -67,7 +68,7 @@ module.exports = async (req, res) => {
       `Participantes do CLIENTE (identificados pelo sistema): ${cli.remetentes.length ? cli.remetentes.join('; ') : 'nenhum escreveu na janela'}.`,
       `Contagem do sistema: cliente escreveu ${cli.msgs7d} mensagem(ns) em ${cli.nDiasAtivos} dia(s) distinto(s) (${cli.diasAtivos.join(', ') || '—'}); ${cli.msgs24h} nas últimas 24h. Bibit: ${cli.msgsBibit7d} mensagem(ns), ${cli.msgsBibit24h} nas últimas 24h.`,
       cli.semRespostaBibit.length ? `Turno do cliente SEM resposta da Bibit há mais de 24h úteis: ${cli.semRespostaBibit.map((x) => `${fmt(x.t)} ${x.s}: "${x.m}"`).join(' | ')}.` : 'Nenhum turno do cliente sem resposta da Bibit há mais de 24h úteis.',
-      'Linhas marcadas [automação] são robôs (relatório de segunda, alertas, clipping) e não contam como engajamento humano.',
+      'Cada linha já vem marcada pelo SISTEMA com quem escreveu: [BIBIT] = equipe da agência, [CLIENTE] = lado do cliente, [AUTOMAÇÃO] = robô (relatório, alertas, clipping; não conta como engajamento). Use SEMPRE essa marcação para saber quem perguntou, pediu ou respondeu — nunca deduza pelo nome ou pelo conteúdo. Pergunta de linha [BIBIT] é pedido da Bibit, nunca pergunta do cliente.',
     ].join('\n');
     const metricasTxt = met.pessoas.length
       ? met.pessoas.map((p) => `${p.nome}: ${p.msgs} mensagens em ${p.diasAtivos} dia(s), ${p.reacoes} reações, respondeu ${p.respostas} vez(es) ao cliente (${p.respostas2h} em até 2h úteis${p.tempoMedioH != null ? `, tempo médio ${p.tempoMedioH}h` : ''})`).join('\n') + `\nCliente: ${met.grupo.msgsCliente} mensagens de ${met.grupo.remetentesCliente} pessoa(s), ${met.grupo.turnosCliente} vez(es) puxou assunto, ${met.grupo.semResposta} ficou sem resposta da Bibit por mais de 24h úteis`

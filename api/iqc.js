@@ -153,7 +153,7 @@ Classifique cada post da lista:
 
 Regras:
 - Aprovação em bloco ("calendário aprovado", "pode seguir com tudo", "tá ótimo") vale "sem_ajustes" para todos os posts, exceto os que o cliente citou com ajuste.
-- Só pessoas do lado do CLIENTE decidem. Mensagens de quem tem "| Bibit Mkt", cargo da Bibit ou [Bibit·instância] no nome são da agência e NÃO são aprovação.
+- Só pessoas do lado do CLIENTE decidem. Cada linha já vem marcada pelo sistema: [CLIENTE] pode aprovar; [BIBIT] e [AUTOMAÇÃO] são da agência e NÃO são aprovação.
 - Silêncio não é aprovação. Elogio sem decisão ("ficou lindo") não é aprovação sozinho, salvo se acompanhado de ok/pode seguir.
 - Use SOMENTE o que está na transcrição. Não invente decisões. Se um post já consta como decidido no "estado atual" e não há mensagem nova sobre ele, repita o estado atual.
 - Identifique o post pelo número ("post 3"), pela data ("o do dia 12"), pelo tema/legenda ou pela ordem citada. Em dúvida, "revisar".
@@ -195,13 +195,14 @@ async function aprovInsumo(req, res, agora) {
     const grupo = wa.normGrupo(c.waGrupo);
     let msgs = [];
     try { msgs = await wa.lerMsgs(grupo, 7, agora); } catch { continue; }
+    await wa.carregarEquipe();
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
     if (!uteis.length) continue;
     // economia: se já houve análise e ninguém do lado do cliente escreveu desde então, não repete a chamada à IA
     let estado = null; try { const raw = await wa.redis(['GET', `iqc:aprov:${g.clienteId}:${g.mes}`]); estado = raw ? JSON.parse(raw) : null; } catch {}
-    if (estado && estado.em && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m)) && !req.query.forcar) continue;
+    if (estado && estado.em && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m, c.name)) && !req.query.forcar) continue;
     const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
-    const transcricao = uteis.map((m) => `${fmtHora(m.t)} — ${m.s || 'alguém'}${m.me ? ' [Bibit·instância]' : ''}: ${m.m}`).join('\n');
+    const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
     const mesNome = `${MESES[Number(g.mes.slice(5)) - 1].toUpperCase()}/${g.mes.slice(0, 4)}`;
     const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (últimos 7 dias, ${uteis.length} mensagens):\n${transcricao}`;
