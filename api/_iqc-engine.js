@@ -103,10 +103,18 @@ function qualidade(notas) {
 
 // ---- Consolidação (IQC) ----
 // Três critérios válidos → nota oficial. Faltando qualquer um → incompleto (sem zero, sem 100, sem redistribuir).
-function consolidar({ performance, aprovacao, qualidade: qual }) {
+function consolidar({ performance, aprovacao, qualidade: qual, semAprovacao = false }) {
   const p = num(performance), a = num(aprovacao), q = num(qual);
   const faltando = [];
   if (p == null) faltando.push('performance');
+  // mês sem aprovação medível (André, 26/10/26 — outubro/26 vale, mas as conversas de setembro não estão guardadas):
+  // aprovação fica de fora e os pesos de desempenho (40) e artes (20) são reescalados pra 100
+  if (semAprovacao) {
+    if (q == null) faltando.push('qualidade');
+    if (faltando.length) { const d = [p != null ? p * PESOS.performance : null, q != null ? q * PESOS.qualidade : null].filter((x) => x != null); return { iqc: null, incompleto: true, faltando, previa: d.length ? round1(d.reduce((s, x) => s + x, 0) / ((p != null ? PESOS.performance : 0) + (q != null ? PESOS.qualidade : 0))) : null, classificacao: null, semAprovacao: true }; }
+    const iqc = round1((p * PESOS.performance + q * PESOS.qualidade) / (PESOS.performance + PESOS.qualidade));
+    return { iqc, incompleto: false, faltando: [], previa: iqc, classificacao: classificar(iqc), semAprovacao: true };
+  }
   if (a == null) faltando.push('aprovacao');
   if (q == null) faltando.push('qualidade');
   const parcial = [p != null ? p * PESOS.performance : null, a != null ? a * PESOS.aprovacao : null, q != null ? q * PESOS.qualidade : null];

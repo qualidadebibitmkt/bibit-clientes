@@ -134,7 +134,10 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
 }
 
 // ---------- consolidação por cliente × colaborador e por colaborador ----------
+// meses em que a aprovação do calendário não tem como ser medida (conversas do WhatsApp já expiradas quando a análise começou)
+const MESES_SEM_APROVACAO = new Set(['2026-10']);
 function consolidarMes(posts, { amostraN = 3 } = {}) {
+  const semAprovacao = posts.length > 0 && MESES_SEM_APROVACAO.has(posts[0].mes);
   // posts já avaliados (avaliarPost) do mês
   const grupos = new Map(); // chave resp|cliente
   for (const p of posts) {
@@ -153,7 +156,7 @@ function consolidarMes(posts, { amostraN = 3 } = {}) {
     const idsAmostra = E.amostra(g.posts.map((p) => p.taskId), amostraN);
     const auditados = g.posts.filter((p) => p.auditoria && p.auditoria.nota != null);
     const qualNota = E.media(auditados.map((p) => p.auditoria.nota));
-    const cons = E.consolidar({ performance: perfNota, aprovacao: aprov.nota, qualidade: qualNota });
+    const cons = E.consolidar({ performance: perfNota, aprovacao: semAprovacao ? null : aprov.nota, qualidade: qualNota, semAprovacao });
     porCliente.push({
       responsavel: g.responsavel, funcao: g.funcao, area: g.area, clienteId: g.clienteId, cliente: g.cliente,
       posts: g.posts.length, postsComPerf: comPerf.length, postsPerfDefinitiva: perfDef.length, postsAguardando: g.posts.filter((p) => !p.janela.fechou).length,
@@ -205,4 +208,4 @@ function conteudoPorCliente(postsAvaliados, agora = Date.now(), dias = 30) {
 }
 
 async function gravarConfig(cfg) { await wa.redis(['SET', 'iqc:config', JSON.stringify(cfg)]); }
-module.exports = { AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerMetas, gravarMetas, lerConfig, gravarConfig, metaVigente, avaliarPost, consolidarMes, conteudoPorCliente };
+module.exports = { MESES_SEM_APROVACAO, AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerMetas, gravarMetas, lerConfig, gravarConfig, metaVigente, avaliarPost, consolidarMes, conteudoPorCliente };

@@ -24,9 +24,21 @@ async function excluir(id) { await wa.redisPipeline([['DEL', 'iqw:proj:' + id], 
 function mesDoProjeto(p) { const ms = num(p.conclusao) || (p.avaliacao && num(p.avaliacao.em)) || null; return ms ? mesDe(ms) : null; }
 
 // projeto + resultado calculado da avaliação (nunca grava nota: sempre recalcula pela regra vigente)
+// entregas concluídas antes de existir a leitura do WhatsApp: retrabalho "não aplicável" (André, 26/10/26 — têm que entrar no
+// Health Score; as conversas antigas não estão mais guardadas). O peso vai pros outros três critérios (regra do documento).
+const INICIO_MEDICAO_RETRABALHO = Date.parse('2026-10-27T00:00:00-03:00');
+function notasEfetivas(p) {
+  const av = p.avaliacao; if (!av || !av.notas) return null;
+  const n = { ...av.notas };
+  const ref = num(p.conclusao) || num(p.inicio) || 0;
+  const vazio = !n.retrabalho || Object.values(n.retrabalho).every((v) => v == null);
+  if (vazio && ref && ref < INICIO_MEDICAO_RETRABALHO) n.retrabalho = Object.fromEntries(E.CRITERIOS.find((c) => c.k === 'retrabalho').sub.map((s) => [s.k, 'na']));
+  return n;
+}
 function avaliar(p) {
   const av = p.avaliacao || null;
-  const r = av && av.notas ? E.avaliarProjeto(av.notas) : null;
+  const ne = notasEfetivas(p);
+  const r = ne ? E.avaliarProjeto(ne) : null;
   // prévia: média só dos critérios já completos (ex.: falta Retrabalho, que vem do WhatsApp) — não entra no Health Score
   const completos = r ? Object.values(r.criterios).filter((c) => c.aplicavel && c.nota != null) : [];
   const previa = r && r.nota == null && completos.length ? Math.round(completos.reduce((a, c) => a + c.nota, 0) / completos.length) : null;

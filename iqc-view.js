@@ -87,7 +87,7 @@
   function situacao(g) {
     const f = [];
     if (g.performance == null) f.push(g.postsAguardando ? `desempenho: ${g.postsAguardando} post${g.postsAguardando === 1 ? '' : 's'} esperando completar 7 dias` : 'desempenho: sem post publicado ainda');
-    if (g.aprovacao.nota == null) f.push(g.aprovacao.pendentes ? 'aprovação: sem resposta do cliente no WhatsApp' : 'aprovação: sem calendário');
+    if (g.aprovacao.nota == null && !g.semAprovacao) f.push(g.aprovacao.pendentes ? 'aprovação: sem resposta do cliente no WhatsApp' : 'aprovação: sem calendário');
     if (g.qualidade == null) f.push(g.amostra.length ? `artes: ${g.amostra.length - g.auditados} a avaliar (sistema, toda manhã)` : 'artes: sem post');
     return f.length ? f.join(' · ') : '<span class="g">completo</span>';
   }
@@ -98,12 +98,13 @@
     const nota = ateAgora(perf, aprov, qual);
     const pub = posts.filter((x) => x.publicado).length; const comDes = posts.filter((x) => x.performance && x.performance.nota != null).length;
     const aprovRes = grupos.filter((g) => g.aprovacao.nota != null).length; const aud = grupos.reduce((s, g) => s + g.auditados, 0), amo = grupos.reduce((s, g) => s + g.amostra.length, 0);
+    const semAprov = grupos.some((g) => g.semAprovacao);
     const box = (n, titulo, sub) => `<div class="hs-termo-p"><span class="hs-termo-pn ${cls(n)}">${n == null ? '—' : Math.round(n)}</span><span class="hs-termo-pl">${titulo}</span><span class="iqc-kpi-s">${sub}</span></div>`;
     return `<div class="hs-termo iqc-termo">
         <div class="hs-termo-media"><span class="hs-big ${cls(nota)}">${nota == null ? '—' : Math.round(nota)}</span><span class="hs-termo-l">nota de ${esc(areaLbl)} até agora · ${mesLbl(d.mes)}<br><span>com o que já foi medido · a nota oficial do mês sai quando as três partes estiverem completas</span></span></div>
         <div class="hs-termo-pilares iqc-kpis">
           ${box(perf, 'desempenho dos posts', `${comDes} de ${pub} publicados já medidos (7 dias após o post) · engajamento e compartilhamento vs. meta do cliente · peso 40`)}
-          ${box(aprov, 'aprovação dos clientes', aprovRes ? `${aprovRes} de ${grupos.length} clientes com resposta no WhatsApp · peso 40` : `nenhum cliente respondeu o calendário deste mês no WhatsApp ainda · peso 40`)}
+          ${semAprov ? `<div class="hs-termo-p"><span class="hs-termo-pn na">n/a</span><span class="hs-termo-pl">aprovação dos clientes</span><span class="iqc-kpi-s">não se aplica a ${mesLbl(d.mes)}: as conversas do calendário não estão mais guardadas · o peso vai pra desempenho (67%) e artes (33%)</span></div>` : box(aprov, 'aprovação dos clientes', aprovRes ? `${aprovRes} de ${grupos.length} clientes com resposta no WhatsApp · peso 40` : `nenhum cliente respondeu o calendário deste mês no WhatsApp ainda · peso 40`)}
           ${box(qual, 'qualidade das artes', `${aud} de ${amo} artes avaliadas pelo sistema (toda manhã) · peso 20`)}
         </div>
       </div>`;
@@ -111,8 +112,8 @@
   function simplesTabelasHTML(d) {
     const colabs = d.colaboradores || []; const grupos = d.porCliente || [];
     const av = (c) => (c.foto ? `<img class="avatar avatar-xs" src="${esc(c.foto)}" alt="">` : `<span class="avatar avatar-xs">${esc(c.initials || '')}</span>`);
-    const lc = (c) => { const gs = grupos.filter((g) => g.responsavel.id === c.id); const pub = gs.reduce((s, g) => s + g.posts, 0); const n = ateAgora(c.performance, c.aprovacao, c.qualidade); return `<tr class="pl-pessoa" data-iqc-colab="${esc(c.id)}"><td class="hs-td-cli">${av(c)}<span>${esc(c.nome)}</span></td><td class="hs-td">${c.clientesTotal}</td><td class="hs-td">${pub}</td>${celN(c.performance, 'aguardando')}${celN(c.aprovacao, 'aguardando')}${celN(c.qualidade, 'aguardando')}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td></tr>`; };
-    const lg = (g) => { const n = ateAgora(g.performance, g.aprovacao.nota, g.qualidade); return `<tr class="hs-tr" data-iqc-cliente="${esc(g.clienteId)}" data-iqc-secao="posts"><td class="hs-td-cli"><span>${esc(g.cliente)}</span></td><td class="hs-td-txt">${esc(g.responsavel.nome.split(' ')[0])}</td><td class="hs-td">${g.posts}</td>${celN(g.performance)}${celN(g.aprovacao.nota)}${celN(g.qualidade)}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td><td class="hs-td-txt na">${situacao(g)}</td></tr>`; };
+    const lc = (c) => { const gs = grupos.filter((g) => g.responsavel.id === c.id); const pub = gs.reduce((s, g) => s + g.posts, 0); const n = c.iqc != null ? c.iqc : ateAgora(c.performance, c.aprovacao, c.qualidade); return `<tr class="pl-pessoa" data-iqc-colab="${esc(c.id)}"><td class="hs-td-cli">${av(c)}<span>${esc(c.nome)}</span></td><td class="hs-td">${c.clientesTotal}</td><td class="hs-td">${pub}</td>${celN(c.performance, 'aguardando')}${grupos.some((g) => g.semAprovacao) ? '<td class="hs-td na">n/a</td>' : celN(c.aprovacao, 'aguardando')}${celN(c.qualidade, 'aguardando')}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td></tr>`; };
+    const lg = (g) => { const n = g.iqc != null ? g.iqc : ateAgora(g.performance, g.aprovacao.nota, g.qualidade); return `<tr class="hs-tr" data-iqc-cliente="${esc(g.clienteId)}" data-iqc-secao="posts"><td class="hs-td-cli"><span>${esc(g.cliente)}</span></td><td class="hs-td-txt">${esc(g.responsavel.nome.split(' ')[0])}</td><td class="hs-td">${g.posts}</td>${celN(g.performance)}${g.semAprovacao ? '<td class="hs-td na">n/a</td>' : celN(g.aprovacao.nota)}${celN(g.qualidade)}<td class="hs-td hs-td-score ${cls(n)}">${n == null ? '—' : Math.round(n)}</td><td class="hs-td-txt na">${situacao(g)}</td></tr>`; };
     const ord = grupos.slice().sort((a, b) => (ateAgora(a.performance, a.aprovacao.nota, a.qualidade) ?? 999) - (ateAgora(b.performance, b.aprovacao.nota, b.qualidade) ?? 999));
     return `<p class="eyebrow">Por colaborador <span class="hs-hist-info">nota de 0 a 100 · verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70 · clique pra ver só os clientes da pessoa</span></p>
       ${colabs.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Clientes</th><th class="r">Posts no mês</th><th class="r">Desempenho dos posts</th><th class="r">Aprovação dos clientes</th><th class="r">Qualidade das artes</th><th class="r">Nota até agora</th></tr></thead><tbody>${colabs.map(lc).join('')}</tbody></table></div>` : '<div class="fn-empty">Nenhum post desta área no mês.</div>'}
