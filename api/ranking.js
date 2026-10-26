@@ -1,24 +1,18 @@
-// BIBIT · GET /api/ranking — Ranking dos colaboradores da Operação (André, 22/10/26).
-// Mesmos 4 pilares e pesos do Health Score, só que medidos por PESSOA:
-//   • nota da pessoa num cliente, por pilar (a mesma medida da aba Colaborador / api/colab):
-//       Resultado      → a frente dela no cliente (tráfego do gestor, ou performance dos posts de social/AV/RP) — já é 0–100
-//       Satisfação     → nota que o cliente dá ao papel dela no CSAT → régua do HS (10→100 · 9→80 · 8→60 · 7→40 · <7→0)
-//       Produtividade  → % no prazo das tarefas DELA no cliente → régua do HS (100→100 · 95→80 · 90→60 · 85→40 · <85→0)
-//       Relacionamento → atuação dela no grupo do cliente — já é 0–100
-//   • nota da pessoa no pilar = média das notas nos clientes em que ela está (só clientes com dado)
-//   • score = média ponderada dos pilares com dado (Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25),
-//     pesos renormalizados; com menos de 2 pilares a pessoa fica "sem ranking" (igual ao MIN_PILARES do HS)
-//   • faixa: ≥ 90 verde · 70–89 amarelo · < 70 vermelho (FLAG_FAIXAS)
-//   • posição: score ↓ · empate → menos (cliente × pilar) abaixo da meta · mais clientes · nome
-//   • VENDAS (André, 26/10/26 — pilar da Matriz de Avaliação de Desempenho, como no ranking antigo): Cross Sell + Up Sell
-//     RECEBIDO no mês, por pessoa (Closer/Responsável), na régua da matriz (R$ 100–1 mil = 20 … acima de 20 mil = 200).
-//     Na matriz os pontos de vendas SOMAM na pontuação; aqui somam ao score na mesma proporção (pontos ÷ 4 — cada pilar
-//     vale em média 25 dos 100 do score): quem não vendeu soma 0 e não perde nada. Regras: api/_vendas.js
-//     score = base (4 pilares) + bônus de vendas; faixa (cor) e posição usam o score com o bônus
-// Histórico: 1 foto por dia no Redis (rk:snap:AAAA-MM-DD, 400 dias). O ranking do MÊS é a média das fotos do mês.
+// BIBIT · GET /api/ranking — Ranking dos colaboradores da Operação no Dashboard (André, 22/10/26; reestruturado em 26/10/26).
+// O Ranking SOMA pontos, como a Matriz de Avaliação de Desempenho (réguas em api/_ranking-regras.js):
+//   1. Health Score compilado (0–100) — os 4 pilares do Health Score medidos por pessoa (como já era):
+//        Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado;
+//        com menos de 2 pilares com dado a pessoa fica "sem posição"
+//   2. Renovação (0–100) — % de renovação contratual do mês, régua da matriz (90–100% = 100 · 80 · 60 · 40 · <60% = 0)
+//   3. Vendas (0–200) — Cross Sell + Up Sell RECEBIDO no mês, régua da matriz (api/_vendas.js)
+//   4. NRR (0–200) — NRR individual do mês: <100% = 0 · 100 = 40 · 105 = 60 · 110 = 80 · 120 = 100 · 130 = 150 · 150%+ = 200
+//   Total = soma (máx. 600). Posição: total ↓ · empate → maior Satisfação · maior Health Score · nome.
+//   Renovação e NRR são lidos dos cards "Ranking - MM/AA - NOME" (o Make calcula todo dia, como no ranking antigo).
+// Histórico: 1 foto por dia no Redis (rk:snap:AAAA-MM-DD, 400 dias). No mês: Health Score = média das fotos diárias;
+// Renovação, Vendas e NRR = os números do mês.
 //
-// GET /api/ranking                 → ranking de hoje (ao vivo) + variação vs. 7 dias + meses disponíveis
-// GET /api/ranking?mes=AAAA-MM     → ranking consolidado do mês (média das fotos diárias)
+// GET /api/ranking                 → ranking de hoje (ao vivo) + variação do Health Score vs. 7 dias + meses disponíveis
+// GET /api/ranking?mes=AAAA-MM     → ranking consolidado do mês
 // GET /api/ranking?snap=1          → só garante a foto do dia (pra tarefa agendada)
 
 const data = require('./data');
@@ -26,6 +20,7 @@ const colab = require('./colab');
 const hs = require('./_healthscore');
 const wa = require('./_wa');
 const V = require('./_vendas');
+const RR = require('./_ranking-regras');
 
 const { PILARES, LBL, META, PAPEL_LBL, norm, stKey, flagDe } = colab;
 const PESOS = hs.PESOS; // { trafego: 30, satisfacao: 25, produtividade: 20, contato: 25 }
@@ -51,18 +46,27 @@ function notaDe(k, m) {
   return round0(m.valor); // trafego (nota da frente) e contato já são 0–100
 }
 
-function compor(notas, vendas) {
+// Health Score compilado da pessoa (0–100) — base = média ponderada dos 4 pilares; flag = faixa do Health Score
+function compor(notas) {
   let soma = 0, peso = 0, n = 0;
   for (const k of PILARES) { const v = notas[k]; if (v == null) continue; soma += v * PESOS[k]; peso += PESOS[k]; n++; }
-  const bonus = vendas ? vendas.bonus || 0 : 0;
-  if (!peso) return { score: null, base: null, flag: null, cobertura: 0, insuficiente: true };
+  if (!peso) return { base: null, flag: null, cobertura: 0, insuficiente: true };
   const base = round0(soma / peso);
-  const score = base + bonus;
-  return { score, base, flag: n < MIN_PILARES ? null : hs.flagDoScore(score), cobertura: n, insuficiente: n < MIN_PILARES };
+  return { base, flag: n < MIN_PILARES ? null : hs.flagDoScore(base), cobertura: n, insuficiente: n < MIN_PILARES };
 }
 
+// soma dos 4 pilares do Ranking (Health Score + Renovação + Vendas + NRR) → score = total de pontos
+function somar(p, vendas, card) {
+  const { rk, total } = RR.pilaresRanking({ hsBase: p.base, hsInsuficiente: p.insuficiente, vendas, card });
+  p.rk = rk; p.score = p.insuficiente ? null : total; p.vendas = vendas;
+  return p;
+}
+const cardDe = (cards, mes, nome) => (cards && cards[mes] && cards[mes][RR.norm(nome)]) || null;
+
 function ordenar(lista) {
-  const rank = lista.filter((p) => !p.insuficiente && p.score != null).sort((a, b) => b.score - a.score || (a.abaixo - b.abaixo) || (b.clientes - a.clientes) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const sat = (p) => (p.pilares && p.pilares.satisfacao && p.pilares.satisfacao.nota != null ? p.pilares.satisfacao.nota : -1);
+  // desempate da matriz: maior Satisfação (CSAT); depois maior Health Score
+  const rank = lista.filter((p) => !p.insuficiente && p.score != null).sort((a, b) => b.score - a.score || (sat(b) - sat(a)) || ((b.base || 0) - (a.base || 0)) || a.nome.localeCompare(b.nome, 'pt-BR'));
   rank.forEach((p, i) => { p.posicao = i + 1; p.empate = i > 0 && rank[i - 1].score === p.score; });
   const resto = lista.filter((p) => p.insuficiente || p.score == null).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   resto.forEach((p) => { p.posicao = null; });
@@ -70,7 +74,7 @@ function ordenar(lista) {
 }
 
 // ranking ao vivo a partir do /api/data
-function calcular(captured, mes) {
+function calcular(captured, mes, cards) {
   const mesRef = mes || diaBR(captured.generatedAt || Date.now()).slice(0, 7);
   const clients = captured.clients.filter((c) => stKey(c) !== 'briefing');
   const tasksOf = (id) => captured.tasks.filter((t) => t.clienteId === id);
@@ -88,16 +92,17 @@ function calcular(captured, mes) {
       pil[k] = { nota: notas.length ? round0(media(notas)) : null, bruto: brutos.length ? round1(media(brutos)) : null, n: notas.length, abaixo: ab, meta: META[k], peso: PESOS[k], porCliente: porCliente.sort((x, y) => x.nota - y.nota) };
     }
     const vendas = { ...V.pilar(captured._vendas, a.p.name, mesRef), mes: mesRef, disponivel: !!captured._vendas };
-    const comp = compor({ trafego: pil.trafego.nota, satisfacao: pil.satisfacao.nota, produtividade: pil.produtividade.nota, contato: pil.contato.nota }, vendas);
+    const comp = compor({ trafego: pil.trafego.nota, satisfacao: pil.satisfacao.nota, produtividade: pil.produtividade.nota, contato: pil.contato.nota });
     const flags = { green: 0, yellow: 0, red: 0 }; for (const c of a.clientes) { const f = flagDe(c); if (flags[f] != null) flags[f]++; }
-    return { id: a.id, nome: a.p.name, pessoa: { name: a.p.name, initials: a.p.initials || null, color: a.p.color || null, foto: a.p.foto || null }, papeis: a.papeis.map((k) => PAPEL_LBL[k] || k), clientes: a.clientes.length, flags, pilares: pil, vendas, abaixo, ...comp };
+    const base = { id: a.id, nome: a.p.name, pessoa: { name: a.p.name, initials: a.p.initials || null, color: a.p.color || null, foto: a.p.foto || null }, papeis: a.papeis.map((k) => PAPEL_LBL[k] || k), clientes: a.clientes.length, flags, pilares: pil, abaixo, ...comp, cardsDisponivel: !!cards };
+    return somar(base, vendas, cardDe(cards, mesRef, a.p.name));
   });
   return ordenar(pessoas);
 }
 
 // foto compacta pro Redis (sem o cliente a cliente)
-// b = score base (só os 4 pilares); score = base + bônus de vendas (fotos antes de 26/10/26 não têm b: score = base)
-const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.papeis, score: p.score, b: p.base, v: p.vendas ? p.vendas.pts : 0, flag: p.flag, posicao: p.posicao, clientes: p.clientes, abaixo: p.abaixo, cobertura: p.cobertura, p: Object.fromEntries(PILARES.map((k) => [k, p.pilares[k].nota])) }));
+// b = Health Score compilado; score = total de pontos do Ranking (fotos antes de 26/10/26 à tarde não têm b: score = Health Score)
+const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.papeis, score: p.score, b: p.base, flag: p.flag, posicao: p.posicao, clientes: p.clientes, abaixo: p.abaixo, cobertura: p.cobertura, p: Object.fromEntries(PILARES.map((k) => [k, p.pilares[k].nota])) }));
 
 async function garantirFoto(dia, lista) {
   if (!wa.redisReady()) return false;
@@ -126,7 +131,7 @@ async function mesesDisponiveis() {
 }
 
 // ranking do mês = média das fotos diárias (score e pilares), posição pela média
-async function consolidarMes(mes, mapaVendas) {
+async function consolidarMes(mes, mapaVendas, cards) {
   const [y, m] = mes.split('-').map(Number);
   const nd = new Date(y, m, 0).getDate();
   const dias = []; for (let d = 1; d <= nd; d++) dias.push(`${mes}-${String(d).padStart(2, '0')}`);
@@ -144,28 +149,29 @@ async function consolidarMes(mes, mapaVendas) {
   const pessoas = [...acc.values()].map((a) => {
     const notas = Object.fromEntries(PILARES.map((k) => [k, a.pil[k].length ? round0(media(a.pil[k])) : null]));
     const base = a.scores.length ? round0(media(a.scores)) : null;
-    // vendas do mês: o valor RECEBIDO no mês inteiro (lido agora do ClickUp), não a média das fotos
+    // Vendas, Renovação e NRR do mês: os números do mês inteiro (lidos agora do ClickUp), não a média das fotos
     const vendas = { ...V.pilar(mapaVendas, a.nome, mes), mes, disponivel: !!mapaVendas };
-    const score = base == null ? null : base + vendas.bonus;
     const cobertura = PILARES.filter((k) => notas[k] != null).length;
-    return { id: a.id, nome: a.nome, papeis: a.papeis, score, base, vendas, flag: score == null || cobertura < MIN_PILARES ? null : hs.flagDoScore(score), cobertura, insuficiente: score == null || cobertura < MIN_PILARES, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: a.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(a.clientes) || 0), abaixo: round0(media(a.abaixo) || 0), dias: a.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimo ? a.ultimo.posicao : null };
+    const insuf = base == null || cobertura < MIN_PILARES;
+    return somar({ id: a.id, nome: a.nome, papeis: a.papeis, base, flag: insuf ? null : hs.flagDoScore(base), cobertura, insuficiente: insuf, cardsDisponivel: !!cards, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: a.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(a.clientes) || 0), abaixo: round0(media(a.abaixo) || 0), dias: a.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimo ? a.ultimo.posicao : null }, vendas, cardDe(cards, mes, a.nome));
   });
   return { mes, dias: fotos.length, primeiroDia: fotos[0] ? fotos[0].dia : null, ultimoDia: fotos.length ? fotos[fotos.length - 1].dia : null, pessoas: ordenar(pessoas) };
 }
 
 const REGRAS = {
-  pilares: PILARES.map((k) => ({ k, rotulo: LBL[k], peso: PESOS[k], meta: META[k] })),
+  pilaresRanking: RR.PILARES_RK.map((k) => ({ k, rotulo: RR.ROTULO[k], max: RR.MAXIMOS[k] })),
+  pilares: PILARES.map((k) => ({ k, rotulo: LBL[k], peso: PESOS[k], meta: META[k] })), // pilares do Health Score compilado
   faixas: hs.FLAG_FAIXAS,
   minPilares: MIN_PILARES,
-  regua: { satisfacao: hs.FAIXAS.csat.faixas, produtividade: hs.FAIXAS.produtividade.faixas },
-  vendas: { regua: V.REGUA.map((r) => ({ faixa: r.rot, pts: r.pts, bonus: V.bonus(r.pts) })), fator: V.FATOR_SCORE },
+  regua: { satisfacao: hs.FAIXAS.csat.faixas, produtividade: hs.FAIXAS.produtividade.faixas, renovacao: RR.REGUA_RENOVACAO, nrr: RR.REGUA_NRR, vendas: V.REGUA.map((r) => ({ faixa: r.rot, pts: r.pts })) },
   texto: [
-    'Nota da pessoa num cliente, por pilar: Resultado = frente dela (tráfego do gestor ou performance dos posts da área); Satisfação = nota do cliente ao papel dela no CSAT, na régua do Health Score (10→100 · 9→80 · 8→60 · 7→40 · <7→0); Produtividade = % no prazo das tarefas dela, na régua do Health Score (100→100 · 95→80 · 90→60 · 85→40 · <85→0); Relacionamento = atuação dela no grupo (0–100).',
-    'Nota no pilar = média dos clientes em que ela está (só clientes com dado). Score = média ponderada dos pilares com dado (Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25) + bônus de Vendas.',
-    'Vendas (pilar da Matriz de Desempenho): Cross Sell + Up Sell RECEBIDO no mês pela pessoa (Closer; sem Closer, o Responsável; dividido quando há mais de um). Régua da matriz: R$ 100–1 mil = 20 · 1–3 mil = 40 · 3–5 mil = 60 · 5–10 mil = 80 · 10–20 mil = 100 · acima de 20 mil = 200 pontos. Como na matriz, os pontos SOMAM ao score, na proporção do Ranking (pontos ÷ 4: +5, +10, +15, +20, +25, +50). Quem não vendeu soma 0 e não perde nada.',
-    'Faixas: ≥ 90 verde · 70–89 amarelo · < 70 vermelho. Com menos de 2 pilares a pessoa aparece sem posição.',
-    'Posição: maior score; empate decide por menos (cliente × pilar) abaixo da meta, depois mais clientes.',
-    'Ranking do mês = média das fotos diárias do mês (1 foto por dia). O mês corrente é parcial até o último dia.',
+    ['Total', 'O Ranking soma pontos, como a Matriz de Avaliação de Desempenho: Health Score (até 100) + Renovação (até 100) + Vendas (até 200) + NRR (até 200) = até 600 pontos. Pilar sem dado soma 0.'],
+    ['Health Score', 'O Health Score de cada pessoa, de 0 a 100: Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado (cada pilar é a média dos clientes em que ela está). Satisfação na régua 10→100 · 9→80 · 8→60 · 7→40 · <7→0; Produtividade 100%→100 · 95→80 · 90→60 · 85→40 · <85→0. Com menos de 2 pilares com dado a pessoa fica sem posição.'],
+    ['Renovação', '% de renovação contratual do mês (clientes que continuam ÷ carteira do mês, igual ao ranking antigo): 90–100% = 100 · 80–89% = 80 · 70–79% = 60 · 60–69% = 40 · abaixo de 60% = 0.'],
+    ['Vendas', 'Cross Sell + Up Sell RECEBIDO no mês pela pessoa (Closer; sem Closer, o Responsável; dividido quando há mais de um): R$ 100–1 mil = 20 · 1–3 mil = 40 · 3–5 mil = 60 · 5–10 mil = 80 · 10–20 mil = 100 · acima de 20 mil = 200.'],
+    ['NRR', 'NRR individual do mês (receita da carteira no mês ÷ receita no início do mês, com cross sell, upsell, downsell e churn): abaixo de 100% = 0 · 100–104,99% = 40 · 105–109,99% = 60 · 110–119,99% = 80 · 120–129,99% = 100 · 130–149,99% = 150 · 150% ou mais = 200.'],
+    ['Posição', 'Maior total de pontos; empate decide pela maior Satisfação, depois pelo maior Health Score.'],
+    ['Mês', 'Health Score do mês = média das fotos diárias (1 por dia); Renovação, Vendas e NRR = os números do mês. O mês corrente é parcial até o último dia.'],
   ],
 };
 
@@ -175,16 +181,17 @@ module.exports = async (req, res) => {
   const q = req.query || {};
   try {
     if (q.mes && /^\d{4}-\d{2}$/.test(q.mes)) {
-      let mapa = null; try { mapa = await data.vendasMapa(); } catch { /* sem vendas: ranking segue só com os pilares */ }
-      const r = await consolidarMes(q.mes, mapa);
+      const [mapa, cardsRaw] = await Promise.all([data.vendasMapa().catch(() => null), data.rankingCards().catch(() => null)]);
+      const r = await consolidarMes(q.mes, mapa, cardsRaw ? RR.cardsPorMes(cardsRaw) : null);
       res.status(200).json({ generatedAt: Date.now(), tipo: 'mes', ...r, meses: await mesesDisponiveis(), regras: REGRAS });
       return;
     }
     let captured = null, status = 200;
     const fake = { setHeader() {}, status(s) { status = s; return this; }, json(o) { captured = o; return this; } };
-    await data({ ...req, _internal: true, query: {} }, fake); // _internal: traz o mapa de vendas (só no servidor)
+    // _internal: traz o mapa de vendas (só no servidor); em paralelo, os cards do Ranking (Renovação e NRR)
+    const [, cardsRaw] = await Promise.all([data({ ...req, _internal: true, query: {} }, fake), data.rankingCards().catch(() => null)]);
     if (status !== 200 || !captured) { res.status(status || 500).json(captured || { error: 'Falha ao montar o ranking.' }); return; }
-    const lista = calcular(captured);
+    const lista = calcular(captured, null, cardsRaw ? RR.cardsPorMes(cardsRaw) : null);
     delete captured._vendas;
     const dia = diaBR(captured.generatedAt || Date.now());
     let fotoNova = false;

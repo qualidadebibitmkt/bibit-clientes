@@ -644,3 +644,12 @@ module.exports.vendasMapa = async function vendasMapa() {
   if (falhou) return null;
   return vendas.porPessoa(cross, upsell);
 };
+
+// Ranking do Dashboard (André, 26/10/26): lê os cards "Ranking - MM/AA - NOME" (lista Ranking - Operação) só pra pegar
+// o % de Renovação Contratual e o NRR Individual que o Make calcula — nada é gravado no ClickUp. null se não der pra ler.
+const RANKING_LIST = '901713545639';
+module.exports.rankingCards = async function rankingCards() {
+  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
+  if (!token) return null;
+  try { return await fetchAllTasks(token, RANKING_LIST, true); } catch { return null; }
+};

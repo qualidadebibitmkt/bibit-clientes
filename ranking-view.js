@@ -1,5 +1,5 @@
 // BIBIT · aba Ranking (colaboradores da Operação) — lê /api/ranking e renderiza (André, 22/10/26).
-// Mesmos 4 pilares e pesos do Health Score, medidos por pessoa. Regras e conta: api/ranking.js.
+// Ranking = soma de pontos (André, 26/10/26): Health Score (até 100) + Renovação (100) + Vendas (200) + NRR (200). Regras e conta: api/ranking.js e api/_ranking-regras.js.
 (function () {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
@@ -37,14 +37,27 @@
   }
 
   const delta = (d, unid = '') => (d == null ? '<span class="na">—</span>' : d === 0 ? '<span class="na">=</span>' : `<span class="${d > 0 ? 'g' : 'r'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}${unid}</span>`);
-  // pilar Vendas (André, 26/10/26): bônus que SOMA ao score, régua da Matriz de Desempenho — api/_vendas.js
-  const celVendas = (p) => {
-    const v = p.vendas;
-    if (!v || v.disponivel === false) return `<td class="hs-td na" title="vendas indisponíveis agora (ClickUp não respondeu)">—</td>`;
-    if (!v.pts) return `<td class="hs-td na" title="${esc(`Vendas · ${v.faixa} em ${mesLbl(v.mes)} — soma 0, não perde nada`)}">0</td>`;
-    return `<td class="hs-td g" title="${esc(`Vendas · ${v.faixa} recebidos em ${mesLbl(v.mes)} (${v.recebimentos} recebimento${v.recebimentos === 1 ? '' : 's'}) · ${v.pts} pontos na matriz → +${v.bonus} no score`)}"><b class="rk-nota">+${v.bonus}</b><small class="na rk-bruto">${v.pts} pts</small></td>`;
+  // Ranking soma pontos (André, 26/10/26): Health Score (até 100) + Renovação (100) + Vendas (200) + NRR (200) — api/_ranking-regras.js
+  const RK = ['hs', 'renovacao', 'vendas', 'nrr'];
+  const RK_LBL = { hs: 'Health Score', renovacao: 'Renovação', vendas: 'Vendas', nrr: 'NRR' };
+  const RK_MAX = { hs: 100, renovacao: 100, vendas: 200, nrr: 200 };
+  const pct1 = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
+  const clsPts = (pts, max) => (pts == null ? 'na' : pts >= max * 0.9 ? 'g' : pts >= max * 0.5 ? 'y' : pts > 0 ? 'r' : 'na');
+  const rkTxt = (k, x, mes) => {
+    if (!x) return 'sem dado';
+    if (k === 'hs') return x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2)' : `Health Score ${x.pts} de 100`;
+    if (k === 'renovacao') return x.pct == null ? `sem % de renovação no card de ${mesLbl(mes)}` : `renovação ${pct1(x.pct)} em ${mesLbl(mes)} → ${x.pts} pontos`;
+    if (k === 'nrr') return x.pct == null ? `sem NRR no card de ${mesLbl(mes)}` : `NRR ${pct1(x.pct)} em ${mesLbl(mes)} → ${x.pts} pontos`;
+    if (x.disponivel === false) return 'vendas indisponíveis agora (ClickUp não respondeu)';
+    return x.pts ? `${x.faixa} recebidos em ${mesLbl(mes)} (${x.recebimentos} recebimento${x.recebimentos === 1 ? '' : 's'}) → ${x.pts} pontos` : `nenhuma venda recebida em ${mesLbl(mes)} → 0`;
   };
-  const scoreTit = (p) => (p.base != null && p.vendas && p.vendas.bonus ? `pilares ${p.base} + vendas ${p.vendas.bonus}` : '');
+  const celRk = (k, p, mes) => {
+    const x = p.rk && p.rk[k];
+    if (!x || (k === 'vendas' && x.disponivel === false)) return `<td class="hs-td na" title="${esc(rkTxt(k, x, mes))}">—</td>`;
+    const sub = k === 'renovacao' || k === 'nrr' ? pct1(x.pct) : k === 'vendas' && x.pts ? esc(x.faixa) : '';
+    const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
+    return `<td class="hs-td ${c}" title="${esc(rkTxt(k, x, mes))}"><b class="rk-nota">${x.pts == null ? '—' : x.pts}</b>${sub && sub !== '—' ? `<small class="na rk-bruto">${sub}</small>` : ''}</td>`;
+  };
   const medalha = (pos) => (pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '');
 
   function celPilar(k, p, hoje) {
@@ -60,11 +73,10 @@
       if (!x || !x.porCliente || !x.porCliente.length) return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="na">sem dado</span></div><div class="fn-empty">${k === 'trafego' ? 'a pessoa não é gestor de tráfego nem responsável por social/AV/RP em nenhum cliente com dado' : 'nenhum cliente com dado neste pilar'}</div></div>`;
       return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="${cls(x.nota)}">nota ${x.nota}</span><small class="na">peso ${x.peso} · ${x.n} cliente${x.n === 1 ? '' : 's'}${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}</small></div>
         <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
-    }).join('') + (() => {
-      const v = p.vendas || {};
-      return `<div class="rk-det-p"><div class="rk-det-h"><b>Vendas</b>${v.pts ? `<span class="g">+${v.bonus} no score</span>` : '<span class="na">soma 0</span>'}<small class="na">bônus · régua da matriz de desempenho</small></div><div class="fn-empty">${v.disponivel === false ? 'não deu pra ler as vendas do ClickUp agora' : v.pts ? `${esc(v.faixa)} em Cross Sell + Up Sell recebidos em ${esc(mesLongo(v.mes))} (${v.recebimentos} recebimento${v.recebimentos === 1 ? '' : 's'}) = ${v.pts} pontos na matriz → +${v.bonus} no score` : `nenhuma venda (Cross Sell / Up Sell) recebida em ${esc(mesLongo(v.mes))} com essa pessoa como Closer ou Responsável — não perde nada`}</div></div>`;
-    })();
-    return `<tr class="rk-det"><td colspan="13"><div class="rk-det-grid">${blocos}</div><div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
+    }).join('');
+    const mes = (p.vendas && p.vendas.mes) || mesAtual();
+    const soma = RK.map((k) => { const x = p.rk && p.rk[k]; return `<div class="rk-det-p"><div class="rk-det-h"><b>${RK_LBL[k]}</b><span class="${k === 'hs' ? cls(x && x.pts) : clsPts(x && x.pts, RK_MAX[k])}">${x && x.pts != null ? x.pts : 0} de ${RK_MAX[k]}</span></div><div class="fn-empty">${esc(rkTxt(k, x, mes))}</div></div>`; }).join('');
+    return `<tr class="rk-det"><td colspan="13"><p class="eyebrow">Pontos do Ranking — total ${p.score == null ? '—' : p.score} de 600</p><div class="rk-det-grid">${soma}</div><p class="eyebrow">Como o Health Score de ${esc(primeiro(p.nome))} foi formado</p><div class="rk-det-grid">${blocos}</div><div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
   }
 
   function paint() {
@@ -95,28 +107,28 @@
       : `${mesLongo(d.mes)} · média de ${d.dias} foto${d.dias === 1 ? '' : 's'} diária${d.dias === 1 ? '' : 's'}${d.primeiroDia ? ` (${dBR(d.primeiroDia)} → ${dBR(d.ultimoDia)})` : ''}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
 
     const podio = rank.slice(0, 3);
-    const podioHTML = podio.length ? `<div class="rk-podio">${podio.map((p) => `<button class="rk-pod ${cls(p.score)}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver como a nota foi formada"><span class="rk-pod-pos">${medalha(p.posicao)} ${p.posicao}º</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score ${cls(p.score)}">${p.score}</span><span class="rk-pod-sub">${hoje ? delta(p.deltaScore, ' pts') + ' · ' + (p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`) : `${p.dias} dia${p.dias === 1 ? '' : 's'} · melhor ${p.melhorPosicao || '—'}º · pior ${p.piorPosicao || '—'}º`}</span></button>`).join('')}</div>` : '';
+    const podioHTML = podio.length ? `<div class="rk-podio">${podio.map((p) => `<button class="rk-pod ${cls(p.base)}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver como a nota foi formada"><span class="rk-pod-pos">${medalha(p.posicao)} ${p.posicao}º</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score ${cls(p.base)}">${p.score}<small class="na"> pts</small></span><span class="rk-pod-sub">${hoje ? 'Health Score ' + delta(p.deltaScore) + ' · ' + (p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`) : `${p.dias} dia${p.dias === 1 ? '' : 's'} · melhor ${p.melhorPosicao || '—'}º · pior ${p.piorPosicao || '—'}º`}</span></button>`).join('')}</div>` : '';
 
-    const th = hoje
-      ? `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r">Score</th><th class="r" title="variação do score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>${PILARES.map((k) => `<th class="r" title="${LBL[k]} · peso ${R.pilares ? R.pilares.find((x) => x.k === k).peso : ''}">${CURTO[k]}</th>`).join('')}<th class="r" title="bônus de Vendas: Cross Sell + Up Sell recebidos no mês, régua da matriz (pontos ÷ 4 somam ao score)">Vendas</th><th class="r">Clientes</th><th class="r" title="combinações cliente × pilar abaixo da meta">Abaixo</th><th class="r" title="pilares com dado (mínimo 2 pra ter posição)">Pilares</th></tr>`
-      : `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="média dos scores diários do mês">Score</th><th class="r" title="melhor e pior posição nas fotos do mês">Melhor · pior</th>${PILARES.map((k) => `<th class="r" title="${LBL[k]} · média das fotos do mês">${CURTO[k]}</th>`).join('')}<th class="r" title="bônus de Vendas: Cross Sell + Up Sell recebidos no mês inteiro (régua da matriz ÷ 4)">Vendas</th><th class="r" title="média de clientes no mês">Clientes</th><th class="r">Abaixo</th><th class="r" title="fotos diárias em que a pessoa aparece">Dias</th></tr>`;
+    const hsCols = (tit) => PILARES.map((k) => `<th class="r rk-th-hs" title="${LBL[k]} — pilar do Health Score${tit}">${CURTO[k]}</th>`).join('');
+    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : '<th class="r" title="melhor e pior posição nas fotos do mês">Melhor · pior</th>'}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média das fotos do mês')}</tr>`;
     const linha = (p) => {
       const aberto = st.aberto === p.id;
+      const mes = (p.vendas && p.vendas.mes) || (hoje ? ma : st.periodo);
       const tds = hoje
-        ? `<td class="hs-td rk-td-delta">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
+        ? `<td class="hs-td rk-td-delta" title="variação do Health Score">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
         : `<td class="hs-td na">${p.melhorPosicao || '—'}º · ${p.piorPosicao || '—'}º</td>`;
-      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="${hoje ? 'ver como a nota foi formada' : 'média das fotos do mês'}"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score ${cls(p.flag ? p.score : null)}"${scoreTit(p) ? ` title="${esc(scoreTit(p))}"` : ''}>${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}${celVendas(p)}<td class="hs-td">${p.clientes}</td><td class="hs-td ${p.abaixo ? 'r' : 'g'}">${p.abaixo}</td><td class="hs-td na">${hoje ? `${p.cobertura}/4` : p.dias}</td></tr>${aberto && hoje ? detalheHTML(p) : ''}`;
+      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="${hoje ? 'ver como os pontos foram formados' : 'Health Score: média das fotos do mês'}"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}</tr>${aberto && hoje ? detalheHTML(p) : ''}`;
     };
 
     el.innerHTML = `
       <div class="pl-head">
         <div class="hs-termo pl-termo rk-termo">
-          <div class="hs-termo-media"><span class="hs-big ${cls(mediaTime)}">${mediaTime == null ? '—' : mediaTime}</span><span class="hs-termo-l">média do time<br><span>${esc(sub)}</span></span></div>
-          <div class="pl-meta-box"><span class="pl-meta-n">${rank.length}</span><span class="hs-termo-l">no ranking<br><span>Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25 — a régua do Health Score, medida por pessoa — + bônus de Vendas (matriz de desempenho)</span></span></div>
+          <div class="hs-termo-media"><span class="hs-big">${mediaTime == null ? '—' : mediaTime}</span><span class="hs-termo-l">pontos · média do time<br><span>${esc(sub)}</span></span></div>
+          <div class="pl-meta-box"><span class="pl-meta-n">${rank.length}</span><span class="hs-termo-l">no ranking<br><span>Health Score (até 100) + Renovação (100) + Vendas (200) + NRR (200) — os pontos somam, como na matriz de desempenho</span></span></div>
           <div class="hs-termo-pilares pl-kpis rk-kpis">
-            <div class="hs-termo-p"><span class="hs-termo-pn g">${nF('green')}</span><span class="hs-termo-pl">verde ≥ 90</span></div>
-            <div class="hs-termo-p"><span class="hs-termo-pn y">${nF('yellow')}</span><span class="hs-termo-pl">amarelo 70–89</span></div>
-            <div class="hs-termo-p"><span class="hs-termo-pn ${nF('red') ? 'r' : 'g'}">${nF('red')}</span><span class="hs-termo-pl">vermelho &lt; 70</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn g">${nF('green')}</span><span class="hs-termo-pl">Health Score ≥ 90</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn y">${nF('yellow')}</span><span class="hs-termo-pl">Health Score 70–89</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn ${nF('red') ? 'r' : 'g'}">${nF('red')}</span><span class="hs-termo-pl">Health Score &lt; 70</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn na">${semPos.length}</span><span class="hs-termo-pl">sem posição</span></div>
           </div>
         </div>
@@ -125,10 +137,10 @@
 
       ${podioHTML}
 
-      <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'score ao vivo · clique na linha pra ver como a nota de cada pilar foi formada, cliente a cliente' : 'média das fotos diárias do mês · a posição é pela média'}</span></p>
+      <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'ao vivo · clique na linha pra ver os pontos de cada pilar e como o Health Score foi formado, cliente a cliente' : 'Health Score = média das fotos diárias do mês; Renovação, Vendas e NRR = números do mês'}</span></p>
       ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem foto diária neste mês ainda — a primeira foto é tirada na primeira abertura do painel de cada dia.'}</div>`}
 
-      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t, i) => `<div><b>${['Nota por pilar', 'Score', 'Vendas', 'Faixas', 'Posição', 'Mês'][i] || 'Regra'}</b> ${esc(t)}</div>`).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit e a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
+      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t) => (Array.isArray(t) ? `<div><b>${esc(t[0])}</b> ${esc(t[1])}</div>` : `<div>${esc(t)}</div>`)).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit e a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
     bind(el);
   }
 

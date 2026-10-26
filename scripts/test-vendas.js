@@ -17,9 +17,8 @@ const task = ({ id, parent = null, status = 'encerrado/recebido', valor, pag, cl
   ],
 });
 
-t('régua da matriz: faixas e bônus no score (÷ 4)', () => {
+t('régua da matriz: faixas de pontos', () => {
   assert.deepStrictEqual([99, 100, 1000, 1001, 3000, 5000, 5001, 10000, 20000, 20001].map((v) => V.pontos(v).pts), [0, 20, 20, 40, 40, 60, 80, 80, 100, 200]);
-  assert.deepStrictEqual([0, 20, 100, 200].map(V.bonus), [0, 5, 25, 50]);
 });
 t('venda parcelada conta as parcelas, cada uma no mês em que foi paga — o card-pai não conta de novo', () => {
   const m = V.porPessoa([
@@ -59,12 +58,29 @@ t('upsell recebido entra pela Diferença', () => {
   const m = V.porPessoa([], [task({ id: 'u', dif: 1200, pag: '2026-10-05', closer: ['João Ribas'] })]);
   assert.strictEqual(m['joao ribas'].meses['2026-10'].valor, 1200);
 });
-t('pilar da pessoa no mês: pontos, faixa e bônus, sem expor R$; quem não vendeu soma 0', () => {
+t('pilar da pessoa no mês: pontos e faixa, sem expor R$; quem não vendeu soma 0', () => {
   const m = V.porPessoa([task({ id: 'a', valor: 12400, pag: '2026-09-10', closer: ['Willian Pereira'] })]);
   const p = V.pilar(m, 'Willian Pereira', '2026-09');
-  assert.deepStrictEqual(p, { pts: 100, bonus: 25, faixa: 'R$ 10 mil a 20 mil', recebimentos: 1 });
-  assert.strictEqual(V.pilar(m, 'Gabriela Domingos Coelho', '2026-09').bonus, 0);
+  assert.deepStrictEqual(p, { pts: 100, faixa: 'R$ 10 mil a 20 mil', recebimentos: 1 });
+  assert.strictEqual(V.pilar(m, 'Gabriela Domingos Coelho', '2026-09').pts, 0);
   assert.ok(!JSON.stringify(p).includes('12400'));
+});
+
+const RR = require('../api/_ranking-regras');
+t('Renovação na régua da matriz', () => {
+  assert.deepStrictEqual([100, 90, 89.9, 81.25, 70, 60, 59.9, null].map(RR.pontosRenovacao), [100, 100, 80, 80, 60, 40, 0, null]);
+});
+t('NRR na régua do André (26/10/26)', () => {
+  assert.deepStrictEqual([96.64, 100, 101.11, 104.99, 105, 109.99, 110, 119.99, 120, 129.99, 130, 149.99, 150, 152.04, null].map(RR.pontosNrr), [0, 40, 40, 40, 60, 60, 80, 80, 100, 100, 150, 150, 200, 200, null]);
+});
+t('total do Ranking = Health Score + Renovação + Vendas + NRR; pilar sem dado soma 0', () => {
+  const r = RR.pilaresRanking({ hsBase: 72, hsInsuficiente: false, vendas: { pts: 60, faixa: 'x', recebimentos: 1 }, card: { renovacao: 90.9, nrr: 101.11 } });
+  assert.strictEqual(r.total, 72 + 100 + 60 + 40);
+  assert.strictEqual(RR.pilaresRanking({ hsBase: 72, hsInsuficiente: false, vendas: null, card: null }).total, 72);
+});
+t('cards do ClickUp: mês pelo título, pessoa pelo campo Pessoa; NRR 0 = sem carteira', () => {
+  const c = RR.cardsPorMes([{ name: 'Ranking - 10/26 - ROMULO ALCANTRA', custom_fields: [{ id: '202d0b1a-6350-4835-adaf-820bf094dd10', value: [{ username: 'Romulo Alcantra' }] }, { id: 'dbeb96f2-e705-44c9-ba2c-c0f2ab8851e7', value: '0' }, { id: '98af79e4-c1dd-49e7-badd-ae76546833fa', value: '91.66' }] }]);
+  assert.deepStrictEqual(c['2026-10']['romulo alcantra'], { renovacao: 91.66, nrr: null });
 });
 
 console.log(`\n${ok} ok${falhas ? `, ${falhas} falha(s)` : ''}`);

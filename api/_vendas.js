@@ -10,9 +10,7 @@
 //   • Mês = "Data do pagamento" (horário de Brasília); sem ela, a data em que o card foi encerrado.
 //   • De quem é a venda: campo Closer; sem Closer, o Responsável; parcela sem nenhum dos dois herda do card-pai.
 //     Com mais de uma pessoa, o valor é dividido igualmente (mesma conta do NRR Individual do Make).
-// No Ranking (0–100), os pontos da matriz entram na mesma proporção: na matriz cada pilar vale até 100 e as vendas somam
-// na mesma moeda; no Ranking os 4 pilares viram UMA nota de 0 a 100 (cada pilar vale, em média, 25) — então o bônus de
-// vendas no score = pontos da matriz ÷ 4 (20 → +5 · 100 → +25 · 200 → +50). Constante única: FATOR_SCORE.
+// No Ranking do Dashboard os pontos entram como estão (0 a 200), somados aos outros pilares — api/_ranking-regras.js
 
 const CF = {
   valorVenda: '01454349-1cb6-4e8a-a665-7d7e74420d64',
@@ -23,7 +21,6 @@ const CF = {
   planoAntigo: 'ac36c53a-d748-4e3c-bfa6-a21cda34b8d1',
 };
 const RECEBIDO = /encerrado\s*\/\s*recebido/i;
-const FATOR_SCORE = 0.25;
 const REGUA = [
   { ate: 1000, pts: 20, rot: 'R$ 100 a 1 mil' },
   { ate: 3000, pts: 40, rot: 'R$ 1 mil a 3 mil' },
@@ -48,7 +45,6 @@ function pontos(valor) {
   const r = REGUA.find((x) => v <= x.ate);
   return { pts: r.pts, faixa: r.rot };
 }
-const bonus = (pts) => Math.round((Number(pts) || 0) * FATOR_SCORE);
 
 function donos(t, pai) {
   let d = users(cf(t, CF.closer));
@@ -103,7 +99,7 @@ function pilar(mapa, nomePessoa, mes) {
   const p = mapa && mapa[norm(nomePessoa)];
   const m = p && p.meses[mes];
   const { pts, faixa } = pontos(m ? m.valor : 0);
-  return { pts, bonus: bonus(pts), faixa, recebimentos: m ? m.vendas : 0 };
+  return { pts, faixa, recebimentos: m ? m.vendas : 0 };
 }
 
-module.exports = { pontos, bonus, porPessoa, pilar, REGUA, MINIMO, FATOR_SCORE, norm, mesBR };
+module.exports = { pontos, porPessoa, pilar, REGUA, MINIMO, norm, mesBR };
