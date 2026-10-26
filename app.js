@@ -103,7 +103,7 @@
     }
     if (!viu) return null; // cliente sem nenhuma foto ainda (novo no score)
     if (!desde) return { flag, dias: 0, desde: null, piso: false }; // última foto tinha outra flag → mudou hoje
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10); // dia de Brasília
     const dias = Math.round((Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1, +hoje.slice(8, 10)) - Date.UTC(+desde.slice(0, 4), +desde.slice(5, 7) - 1, +desde.slice(8, 10))) / 864e5) + 1;
     return { flag, dias, desde, piso };
   }
@@ -526,7 +526,9 @@
         det = cs == null && np == null ? '<span class="hs-regua">o cliente ainda não respondeu a pesquisa de satisfação (CSAT/NPS) — não pesa</span>' : `Pesquisa de satisfação: CSAT ${fmtNota(cs)} · NPS ${fmtNota(np)} <span class="hs-regua">(notas de 0 a 10)</span>`;
       }
       if (k === 'produtividade') det = p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas entregues no prazo nos últimos 30 dias` : '<span class="hs-regua">sem tarefas nos últimos 30 dias</span>';
-      if (k === 'contato') {
+      if (k === 'contato' && c.contato?.vencido) {
+        det = `<span class="hs-regua">a análise do grupo de WhatsApp está parada desde ${fmtCurto(c.contato.vencido.ultimaAnalise)} — a nota antiga (${c.contato.nota}) não conta no score até voltar a rodar</span>`;
+      } else if (k === 'contato') {
         const iec = c.contato?.iec;
         // o ClickUp guarda no mínimo 1 (0 = campo vazio): mostra a nota real da análise quando a diferença é só isso
         if (iec && iec.iec != null && nota != null && Math.abs(nota - iec.iec) <= 1) nota = iec.iec;
@@ -883,7 +885,7 @@
       <div class="hs-pilares-grid">${sangra}</div>
 
       <p class="eyebrow">Alertas do WhatsApp ${alertas.length ? `<span class="csat-alert">${alertas.length}</span>` : ''}</p>
-      ${alertas.length ? `<div class="hs-alertas">${alertas.map((c) => `<button class="hs-alerta" data-id="${c.id}"><b>${esc(c.name)}</b><span>${esc(c.contato.resumo)}</span></button>`).join('')}</div>` : '<div class="fn-empty">Nenhum resumo com sinal de risco esta semana.</div>'}
+      ${alertas.length ? `<div class="hs-alertas">${alertas.map((c) => { const al = (c.contato.iec && c.contato.iec.alertas || []).filter((a) => a.nivel === 'CRÍTICO' || a.nivel === 'ALTO'); const txt = al.length ? al.map((a) => `${NIVEL_LBL[a.nivel] || a.nivel}: ${a.tipo}${a.descricao ? ` — ${a.descricao}` : ''}`).join(' · ') : narrativaDoResumo(c.contato.resumo); return `<button class="hs-alerta" data-id="${c.id}"><b>${esc(c.name)}</b><span>${esc(txt)}</span></button>`; }).join('')}</div>` : '<div class="fn-empty">Nenhum cliente com ponto de atenção alto ou crítico no WhatsApp.</div>'}
 
       <p class="eyebrow">Sem score ainda · ${sem.length}</p>
       ${sem.length ? `<div class="hs-pilar-list">${semDado}</div>` : '<div class="fn-empty">Todos os clientes têm score.</div>'}
@@ -965,7 +967,7 @@
       if (!partes.length) return null;
       const v = partes.reduce((a, b) => a + b, 0) / partes.length;
       const cls = v >= 9 ? 'g' : v >= 8 ? 'y' : 'r';
-      return { valor: v, txt: `CSAT ${fmtNota(m.csat)} · NPS ${fmtNota(m.nps)}`, lacuna: Math.max(0, 9 - Math.min(...partes)), nota: hs ? hs.pilares.satisfacao.nota : null, cls };
+      return { valor: v, txt: `CSAT ${fmtNota(m.csat)} · NPS ${fmtNota(m.nps)}`, lacuna: Math.max(0, 9 - v), nota: hs ? hs.pilares.satisfacao.nota : null, cls }; // mesma base do valor e da cor (antes: valor 9 verde e "falta 1")
     }
     if (k === 'produtividade') {
       // com colaborador selecionado, a produtividade do cliente é só das tarefas DELE (não do cliente inteiro)

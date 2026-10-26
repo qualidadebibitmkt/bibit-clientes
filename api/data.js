@@ -376,6 +376,8 @@ module.exports = async (req, res) => {
       c.metrics = a ? {
         csat: a.n ? round1(a.soma / a.n) : null,
         nps: a.npsN ? round1(a.npsSoma / a.npsN) : null,
+        // médias exatas pro score: a faixa vale sobre o número real (8,96 não vira 9,0 → 80 pts); arredonda só na tela
+        csatExato: a.n ? a.soma / a.n : null, npsExato: a.npsN ? a.npsSoma / a.npsN : null,
         respostas: a.respostas,
         ultimaResposta: a.ultima || null,
         detalhe: a.det.sort((x, y) => (y.q || 0) - (x.q || 0)).slice(0, 12),
@@ -495,10 +497,20 @@ module.exports = async (req, res) => {
       }
     } catch (e) { /* IQW é opcional */ }
     for (const c of clients) c.conteudo = conteudoPorCliente[c.id] ? Object.fromEntries(Object.entries(conteudoPorCliente[c.id]).map(([k, v]) => [k, { nota: v.nota, n: v.n }])) : null;
+    // validade da nota de Relacionamento (auditoria 26/10/26): a análise é diária; se o grupo não é analisado há mais de
+    // 3 dias (automação parada), a nota velha sai do score em vez de pesar 25% calada — igual ao tráfego sem coleta
+    try {
+      const waV = require('./_wa');
+      const comG = clients.filter((c) => c._waGrupo && c.contato && c.contato.nota != null);
+      if (waV.redisReady() && comG.length) {
+        const out = await waV.redisPipeline(comG.map((c) => ['GET', 'wa:last:' + waV.normGrupo(c._waGrupo)]));
+        comG.forEach((c, i) => { const v = Number(out[i] && out[i].result) || null; if (v && now - v > 3 * 864e5) { c.contato.vencido = { ultimaAnalise: v }; } });
+      }
+    } catch (e) { /* sem Redis: segue com a nota do ClickUp */ }
     const hsResultados = calcularTodos(clients.map((c) => ({
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs, conteudo: c.conteudo,
-      csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
-      contato: c.contato?.nota ?? null,
+      csat: c.metrics?.csatExato ?? c.metrics?.csat ?? null, nps: c.metrics?.npsExato ?? c.metrics?.nps ?? null, prodPct: prodDe(c.id),
+      contato: c.contato?.vencido ? null : (c.contato?.nota ?? null),
       campanhaParada: !!(c.campanha && c.campanha.rodando === false) && !SEM_CARGA_TRAFEGO.has(stKey(c)),
       diasExec: c.dataEntradaExec ? (Date.now() - c.dataEntradaExec) / 864e5 : null,
     })));
@@ -555,7 +567,7 @@ module.exports = async (req, res) => {
     try {
       const wa = require('./_wa');
       if (wa.redisReady()) {
-        const dia = new Date(now).toISOString().slice(0, 10);
+        const dia = wa.dayKeyBR(now); // dia de Brasília (antes UTC: depois das 21h a foto caía no dia seguinte)
         const key = 'hs:snap:' + dia;
         const foto = {};
         for (const c of clients) if (c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente) foto[c.id] = { s: c.healthScore.score, f: c.healthScore.flag, p: Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, v]) => [k, v.nota])) };

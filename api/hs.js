@@ -38,6 +38,7 @@ module.exports = async (req, res) => {
       score: c.healthScore?.score ?? null,
       flagSugerida: c.healthScore?.flag ?? null,
       cobertura: c.healthScore?.cobertura ?? null,
+      insuficiente: !!c.healthScore?.insuficiente, // menos de 2 pilares: o score não emite flag (o Make não deve gravar)
       pilares: c.healthScore
         ? Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, p]) => [k, p.nota]))
         : null,

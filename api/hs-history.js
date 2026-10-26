@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
   const days = Math.min(120, Math.max(1, Number(req.query.days) || 56));
   const hoje = Date.now();
   const keys = [];
-  for (let i = days - 1; i >= 0; i--) keys.push(new Date(hoje - i * 86400000).toISOString().slice(0, 10));
+  for (let i = days - 1; i >= 0; i--) keys.push(wa.dayKeyBR(hoje - i * 86400000)); // dia de Brasília, igual à gravação
   try {
     const out = await wa.redisPipeline(keys.map((d) => ['GET', 'hs:snap:' + d]));
     const dias = [];
