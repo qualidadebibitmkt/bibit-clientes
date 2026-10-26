@@ -64,7 +64,7 @@
     const comVis = P.filter((p) => notaVis(p) != null).length;
     el.innerHTML = `
       <div class="iqc-head">
-        <div><p class="eyebrow">Resultado do Webdesigner <span class="hs-hist-info">qualidade das landing pages, sites e e-commerces entregues — avaliada pelo sistema, sem depender do tráfego</span></p></div>
+        <div><p class="eyebrow pl-sec">Detalhamento do Web Design · avaliação dos projetos <span class="hs-hist-info">qualidade das landing pages, sites e e-commerces entregues — avaliada pelo sistema, sem depender do tráfego</span></p></div>
       </div>
       <div class="hs-termo iqc-termo">
         <div class="hs-termo-media"><span class="hs-big ${cls(mTec)}">${mTec == null ? '—' : Math.round(mTec)}</span><span class="hs-termo-l">nota técnica média<br><span>${tec.length} de ${P.length} páginas já testadas pelo Google (velocidade, funciona no celular, links)</span></span></div>
