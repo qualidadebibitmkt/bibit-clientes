@@ -1571,3 +1571,7 @@ body::before {
 .rel-alertas li.n-a { border-color: color-mix(in srgb, var(--flag-red) 60%, var(--flag-yellow)); } .rel-alertas li.n-a .rel-niv { color: color-mix(in srgb, var(--flag-red) 60%, var(--flag-yellow)); }
 .rel-alertas li.n-m { border-color: var(--flag-yellow); } .rel-alertas li.n-m .rel-niv { color: var(--flag-yellow); }
 @media (max-width: 640px) { .hs-big { position: static; } .rel-quando { margin-left: 0; } .rel-alertas li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* v114: mini-card com rótulo por extenso curto */
+.hs-pils { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hs-pils .hs-pil { font-size: 10.5px; letter-spacing: 0; }

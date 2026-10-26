@@ -427,7 +427,8 @@
   const hsCls = (n) => (n == null ? 'na' : n >= FLAG_FAIXAS.green ? 'g' : n >= FLAG_FAIXAS.yellow ? 'y' : 'r');
   const flagCls = (f) => (f === 'green' ? 'g' : f === 'yellow' ? 'y' : f === 'red' ? 'r' : 'na');
   const PILAR_LBL = { trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento' };
-  const PILAR_SIGLA = { trafego: 'T', satisfacao: 'S', produtividade: 'P', contato: 'C' };
+  // rótulo curto do mini-card (antes T/S/P/C, e T era Resultado e C Relacionamento — auditoria 26/10/26)
+  const PILAR_SIGLA = { trafego: 'Result.', satisfacao: 'Satisf.', produtividade: 'Prazo', contato: 'Relac.' };
 
   function hsMiniHTML(hs) {
     const tag = `<span class="hs-tag">Health<br>Score</span>`;
