@@ -59,12 +59,14 @@
     const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
     return `<td class="hs-td ${c}" title="${esc(rkTxt(k, x, mes))}"><b class="rk-nota">${x.pts == null ? '—' : x.pts}</b>${sub && sub !== '—' ? `<small class="na rk-bruto">${sub}</small>` : ''}</td>`;
   };
+  // posição ao longo do mês, em português claro: "sempre em 1º" ou "entre 1º e 3º"
+  const faixaPos = (p) => (!p.melhorPosicao ? 'sem posição no mês' : p.melhorPosicao === p.piorPosicao ? `sempre em ${p.melhorPosicao}º` : `entre ${p.melhorPosicao}º e ${p.piorPosicao}º`);
   const medalha = (pos) => (pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '');
 
   function celPilar(k, p, hoje) {
     const x = p.pilares[k]; if (!x || x.nota == null) return `<td class="hs-td na" title="sem dado${k === 'trafego' ? ' — sem frente de resultado nos clientes da pessoa' : ''}">—</td>`;
     const b = hoje ? bruto(k, x.bruto) : '';
-    const tit = hoje ? `${LBL[k]} · nota ${x.nota} · ${x.n} cliente${x.n === 1 ? '' : 's'} com dado${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}${b ? ` · média ${b}` : ''}` : `${LBL[k]} · média de ${x.n} foto${x.n === 1 ? '' : 's'} no mês`;
+    const tit = hoje ? `${LBL[k]} · nota ${x.nota} · ${x.n} cliente${x.n === 1 ? '' : 's'} com dado${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}${b ? ` · média ${b}` : ''}` : `${LBL[k]} · média de ${x.n} dia${x.n === 1 ? '' : 's'} de placar no mês`;
     return `<td class="hs-td ${cls(x.nota)}" title="${esc(tit)}"><b class="rk-nota">${x.nota}</b>${b ? `<small class="na rk-bruto">${esc(b)}</small>` : ''}${hoje && x.abaixo ? `<small class="na rk-ab">${x.abaixo}↓</small>` : ''}</td>`;
   }
 
@@ -109,7 +111,7 @@
     const mes = (p.vendas && p.vendas.mes) || (hoje ? mesAtual() : d.mes);
     const total = p.score == null ? 0 : p.score;
     const barra = `<div class="rk-barra" title="total ${total} de 600">${RK.map((k) => { const v = (p.rk && p.rk[k] && p.rk[k].pts) || 0; return v ? `<span class="rk-seg" style="width:${(v / 600) * 100}%;background:${SEG_COR[k]}" title="${RK_LBL[k]}: ${v}"></span>` : ''; }).join('')}</div><div class="rk-legenda">${RK.map((k) => `<span><i style="background:${SEG_COR[k]}"></i>${RK_LBL[k]} ${(p.rk && p.rk[k] && p.rk[k].pts) || 0}</span>`).join('')}</div>`;
-    const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}${!hoje && p.dias ? ` · ${p.dias} foto${p.dias === 1 ? '' : 's'} no mês · melhor ${p.melhorPosicao || '—'}º, pior ${p.piorPosicao || '—'}º` : ''}</div>${barra}</div>`;
+    const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}${!hoje && p.dias ? ` · no mês ficou ${faixaPos(p)} (${p.dias} dia${p.dias === 1 ? '' : 's'} de placar)` : ''}</div>${barra}</div>`;
     const cards = `<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div>`;
     let hsCli = '';
     if (hoje) {
@@ -120,7 +122,7 @@
           <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
       }).join('') + '</div>';
     } else {
-      hsCli = `<p class="rk-nota-mes na">No mês, o Health Score é a média das fotos diárias (${p.dias || 0}). O detalhe cliente a cliente fica na visão "hoje".</p>`;
+      hsCli = `<p class="rk-nota-mes na">No mês, o Health Score é a média do placar registrado em cada dia (${p.dias || 0} dia${p.dias === 1 ? '' : 's'} até agora). O detalhe cliente a cliente fica na visão "hoje".</p>`;
     }
     return `<tr class="rk-det"><td colspan="13">${cab}${cards}${hsCli}<div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
   }
@@ -152,24 +154,24 @@
     const nF = (f) => rank.filter((p) => p.flag === f).length;
     const R = d.regras || {};
     const sub = hoje
-      ? `ranking de hoje · ${dBR(d.dia)}${d.anteriorDia ? ` · variação vs. ${dBR(d.anteriorDia)}` : ' · sem foto anterior pra comparar'}`
-      : `${mesLongo(d.mes)} · média de ${d.dias} foto${d.dias === 1 ? '' : 's'} diária${d.dias === 1 ? '' : 's'}${d.primeiroDia ? ` (${dBR(d.primeiroDia)} → ${dBR(d.ultimoDia)})` : ''}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
+      ? `ranking de hoje · ${dBR(d.dia)}${d.anteriorDia ? ` · variação vs. ${dBR(d.anteriorDia)}` : ' · sem placar anterior pra comparar'}`
+      : `${mesLongo(d.mes)} · ${d.dias} dia${d.dias === 1 ? '' : 's'} de placar${d.primeiroDia ? ` (${dBR(d.primeiroDia)} → ${dBR(d.ultimoDia)})` : ''}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
 
     const podio = rank.slice(0, 3);
     // pódio de verdade (André, 26/10/26): 2º · 1º · 3º lado a lado, degraus de alturas diferentes, ouro/prata/bronze
     const MED = { 1: { cls: 'ouro', ico: '🥇' }, 2: { cls: 'prata', ico: '🥈' }, 3: { cls: 'bronze', ico: '🥉' } };
-    const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `${p.dias} dia${p.dias === 1 ? '' : 's'} · melhor ${p.melhorPosicao || '—'}º · pior ${p.piorPosicao || '—'}º`);
+    const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `no mês ficou ${faixaPos(p)} · ${p.dias} dia${p.dias === 1 ? '' : 's'} de placar`);
     const ordemPodio = [podio[1], podio[0], podio[2]].filter(Boolean);
     const podioHTML = podio.length ? `<div class="rk-podio">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
 
     const hsCols = (tit) => PILARES.map((k) => `<th class="r rk-th-hs" title="${LBL[k]} — pilar do Health Score${tit}">${CURTO[k]}</th>`).join('');
-    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : '<th class="r" title="melhor e pior posição nas fotos do mês">Melhor · pior</th>'}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média das fotos do mês')}</tr>`;
+    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : '<th class="r" title="melhor e pior colocação que a pessoa teve nos dias do mês (o placar é registrado 1 vez por dia)">Posição no mês</th>'}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média do placar de cada dia do mês')}</tr>`;
     const linha = (p) => {
       const aberto = st.aberto === p.id;
       const mes = (p.vendas && p.vendas.mes) || (hoje ? ma : st.periodo);
       const tds = hoje
         ? `<td class="hs-td rk-td-delta" title="variação do Health Score">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
-        : `<td class="hs-td na">${p.melhorPosicao || '—'}º · ${p.piorPosicao || '—'}º</td>`;
+        : `<td class="hs-td na" title="${esc(`${p.dias} dia${p.dias === 1 ? '' : 's'} de placar registrado no mês`)}">${esc(faixaPos(p))}</td>`;
       return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
     };
 
@@ -190,8 +192,8 @@
 
       ${podioHTML}
 
-      <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'ao vivo · clique na linha pra ver os pontos de cada pilar e como o Health Score foi formado, cliente a cliente' : 'Health Score = média das fotos diárias do mês; Renovação, Vendas e NRR = números do mês'}</span></p>
-      ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem foto diária neste mês ainda — a primeira foto é tirada na primeira abertura do painel de cada dia.'}</div>`}
+      <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'ao vivo · clique na linha pra ver os pontos de cada pilar e como o Health Score foi formado, cliente a cliente' : 'Health Score = média do placar de cada dia do mês; Renovação, Vendas e NRR = números do mês'}</span></p>
+      ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem placar registrado neste mês ainda — o placar do dia é registrado na primeira abertura do painel.'}</div>`}
 
       <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t) => (Array.isArray(t) ? `<div><b>${esc(t[0])}</b> ${esc(t[1])}</div>` : `<div>${esc(t)}</div>`)).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit e a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
     bind(el);
