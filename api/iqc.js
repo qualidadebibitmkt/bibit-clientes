@@ -197,6 +197,13 @@ async function aprovInsumo(req, res, agora) {
   }
   const clientes = new Map((painel.clients || []).map((c) => [c.id, c]));
   const out = [];
+  // quem faz cada área na operação (todos os cards de clientes ativos; Beltrão saiu) — base do "quem envia"
+  const papelGlobal = {};
+  for (const cc of clientes.values()) {
+    if (!ATIVOS.includes(stKey(cc))) continue;
+    for (const k of ['social', 'rp', 'audiovisual']) for (const x of ((cc.team && cc.team[k]) || [])) if (x && x.name && !/beltr[aã]o/i.test(x.name)) (papelGlobal[k] = papelGlobal[k] || new Set()).add(x.name);
+  }
+  for (const k of Object.keys(papelGlobal)) papelGlobal[k] = [...papelGlobal[k]];
   for (const g of grupos.values()) {
     if (!g.pendentes) continue;
     const c = clientes.get(g.clienteId);
@@ -222,9 +229,12 @@ async function aprovInsumo(req, res, agora) {
     if (estado && estado.em && estado.versao === VERSAO_APROV && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m, c.name)) && !req.query.forcar) continue;
     const AREA_NOME = { social: 'Social Media', rp: 'RP Manager', audiovisual: 'Audiovisual' };
     const saiu = (x) => /beltr[aã]o/i.test(String(x && x.name || ''));
-    const nomesArea = (k) => ((c.team && c.team[k]) || []).filter((x) => !saiu(x)).map((x) => x.name);
-    // Audiovisual sem videomaker no card (o Beltrão saiu): quem cobre é a Gabriela (RP) — André, 26/10/26
-    const quemEnvia = ['social', 'rp', 'audiovisual'].filter((k) => g.posts.some((p) => p.area === k)).map((k) => { let n = nomesArea(k); if (k === 'audiovisual' && !n.length) n = nomesArea('rp').map((x) => `${x} (cobrindo o Audiovisual)`); return `- ${AREA_NOME[k]}: ${n.length ? n.join(', ') : 'responsável não cadastrado no card'}`; }).join('\n');
+    // a área do calendário é a de QUEM ENVIOU (André, 26/10/26: João → Social, Gabriela → RP e, cobrindo, Audiovisual,
+    // Rômulo → Audiovisual). O card do cliente pode estar desatualizado (ex.: Social ainda com o Will, que virou Head, e o
+    // João é quem manda) — por isso a lista junta quem está no card com quem faz essa área na operação (cards de todos os
+    // clientes ativos). Antes era só o card, e o calendário de Social do João na Bananinha foi ignorado (26/10/26).
+    const nomesArea = (k) => [...new Set([...((c.team && c.team[k]) || []).filter((x) => !saiu(x)).map((x) => x.name), ...(papelGlobal[k] || [])])];
+    const quemEnvia = ['social', 'rp', 'audiovisual'].filter((k) => g.posts.some((p) => p.area === k)).map((k) => { let n = nomesArea(k); if (k === 'audiovisual') n = [...n, ...nomesArea('rp').filter((x) => !n.includes(x)).map((x) => `${x} (cobrindo o Audiovisual)`)]; return `- ${AREA_NOME[k]}: ${n.length ? n.join(', ') : 'responsável não cadastrado'}`; }).join('\n');
     const lista = g.posts.sort((a, b) => (a.area === b.area ? a.publicadoEm - b.publicadoEm : a.area < b.area ? -1 : 1)).map((p) => `- [${AREA_NOME[p.area] || p.area}] taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -246,7 +256,7 @@ function parseJsonIA(b) {
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
 // versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
-const VERSAO_APROV = '2026-10-26.4';
+const VERSAO_APROV = '2026-10-26.5';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');
