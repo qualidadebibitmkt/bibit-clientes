@@ -159,6 +159,7 @@ Classifique cada post da lista:
 
 Regras:
 - CADA ÁREA MANDA O SEU CALENDÁRIO (André, 26/10/26): Social Media, RP Manager e Audiovisual enviam calendários separados, cada um pela pessoa da área (lista "QUEM ENVIA" abaixo). A área de um calendário é a de QUEM o enviou. A resposta do cliente a um calendário vale SÓ para os posts daquela área — aprovar o calendário de Social nunca aprova post de RP ou de Audiovisual. Se a mesma pessoa cobre duas áreas, decida pelo conteúdo do envio (vídeo/reel/gravação/roteiro = Audiovisual; UGC/influenciador/imprensa/assessoria = RP Manager; artes estáticas/carrossel/legendas = Social Media). Área que não enviou calendário: seus posts ficam "pendente".
+- ROTEIRO É CALENDÁRIO NO AUDIOVISUAL (André, 26/10/26): no Audiovisual o calendário costuma ir como ROTEIROS (PDF, documento ou texto com os roteiros dos vídeos do mês). O envio dos roteiros = envio do calendário de Audiovisual, e a resposta do cliente aos roteiros vale para os posts de Audiovisual (aprovação em bloco, ajustes por vídeo etc., com as mesmas regras). Roteiro em PDF sem resposta do cliente continua "sem_resposta".
 - Aprovação em bloco ("calendário aprovado", "pode seguir com tudo", "tá ótimo") vale "sem_ajustes" para todos os posts DAQUELA ÁREA, exceto os que o cliente citou com ajuste.
 - Só pessoas do lado do CLIENTE decidem. Cada linha já vem marcada pelo sistema: [CLIENTE] pode aprovar; [BIBIT] e [AUTOMAÇÃO] são da agência e NÃO são aprovação.
 - Silêncio não é aprovação.
@@ -264,7 +265,7 @@ const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteraca
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
 // a IA às vezes devolve o nome da área ("RP Manager", "Social Media", "Videomaker") em vez da chave
 function areaCanon(a) { const n = String(a || '').toLowerCase(); return /rp|imprensa|ugc/.test(n) ? 'rp' : /audio|video|v[ií]deo/.test(n) ? 'audiovisual' : /social/.test(n) ? 'social' : n; }
-const VERSAO_APROV = '2026-10-26.5';
+const VERSAO_APROV = '2026-10-26.6';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');
