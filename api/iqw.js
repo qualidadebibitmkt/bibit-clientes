@@ -194,7 +194,8 @@ async function printPagina(req, res) {
     const info = p.prints && (p.prints.telas || []).find((x) => x.k === tela);
     const b64 = info ? await wa.redis(['GET', `iqw:shot:${p.id}:${tela}`]) : null;
     if (!b64) { res.status(404).json({ error: 'sem print ' + tela + ' — rode acao=capturar antes' }); return; }
-    res.status(200).json({ projetoId: p.id, tela, mime: 'image/jpeg', b64, url: p.url, trecho: `${info.de}–${info.ate}px de ${p.prints.alturas && p.prints.alturas[tela.split('-')[0]]}px`, idade: p.prints.idade && p.prints.idade[tela.split('-')[0]] });
+    const pad = req.query.grande ? { _preenchimento: ' '.repeat(Math.max(0, 60000 - b64.length)) } : {}; // força o salvamento em arquivo pelo leitor
+    res.status(200).json({ ...pad, projetoId: p.id, tela, mime: 'image/jpeg', b64, url: p.url, trecho: `${info.de}–${info.ate}px de ${p.prints.alturas && p.prints.alturas[tela.split('-')[0]]}px`, idade: p.prints.idade && p.prints.idade[tela.split('-')[0]] });
     return;
   }
   if (!p.tecnicaAuto || !p.tecnicaAuto.screenshots) { res.status(404).json({ error: 'sem print — rode acao=tecnica antes' }); return; }
@@ -206,7 +207,8 @@ async function printPagina(req, res) {
 // ---- prints de verdade (navegador no servidor, passa a verificação de idade e fotografa a página inteira) — André, 26/10/26 ----
 // GET ?acao=capturar&projetoId=     → captura um projeto
 // GET ?acao=capturar-lote&limite=2  → captura os próximos da fila (um de cada vez; cada um leva ~30–60 s)
-const PRINTS_VERSAO = 2;
+const PRINTS_VERSAO = 2;       // prints da página inteira (abaixo disso, a nota visual foi dada em cima do bloqueio de idade)
+const CAPTURA_VERSAO = 3;      // 3 = termina animações de entrada e navegador em pt-BR (26/10/26) — recaptura sem apagar notas
 const TTL_SHOT = 60 * 86400;
 async function capturarUm(p, agora) {
   let r;
@@ -214,7 +216,7 @@ async function capturarUm(p, agora) {
   const ks = Object.keys(r.telas);
   if (!ks.length) { p.printsErro = { em: agora, msg: (r.log || []).join(' · ').slice(0, 300) || 'sem print' }; await D.gravar(p); return { ok: false, erro: p.printsErro.msg }; }
   await wa.redisPipeline(ks.flatMap((k) => [['SET', `iqw:shot:${p.id}:${k}`, r.telas[k].b64], ['EXPIRE', `iqw:shot:${p.id}:${k}`, String(TTL_SHOT)]]));
-  p.prints = { versao: PRINTS_VERSAO, em: agora, telas: ks.map((k) => ({ k, de: r.telas[k].de, ate: r.telas[k].ate })), idade: r.idade, alturas: r.alturas, cortado: !!r.cortado, urlFinal: r.urlFinal || p.url, titulo: r.titulo || null, log: (r.log || []).slice(0, 12) };
+  p.prints = { versao: PRINTS_VERSAO, captura: CAPTURA_VERSAO, em: agora, telas: ks.map((k) => ({ k, de: r.telas[k].de, ate: r.telas[k].ate })), idade: r.idade, alturas: r.alturas, cortado: !!r.cortado, urlFinal: r.urlFinal || p.url, titulo: r.titulo || null, log: (r.log || []).slice(0, 12) };
   delete p.printsErro;
   // notas de Experiência/Visual dadas em cima do print antigo (só a tela de idade) são descartadas pra serem refeitas
   const av = p.avaliacao; let refazer = false;
@@ -237,7 +239,7 @@ async function capturarPrints(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(r.ok ? 200 : 502).json({ projetoId: p.id, cliente: p.cliente, ...r });
 }
-const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < 20 * 3600000);
+const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || (p.prints.captura || 2) < CAPTURA_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < 20 * 3600000);
 async function capturarLote(req, res, agora) {
   const t0 = Date.now();
   const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
@@ -299,6 +301,12 @@ async function visualGravar(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ ok: true, projetoId: p.id, resultado: D.avaliar(p).resultado });
 }
+// GET ?acao=refazer-visual&projetoId= → apaga as notas de Experiência/Visual (volta pra fila de avaliação)
+async function refazerVisual(req, res, agora) {
+  const p = await D.ler(String(req.query.projetoId || '')); if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  const av = p.avaliacao; if (av && av.notas) { const antes = D.avaliar(p).resultado; for (const c of CRIT_VISUAIS) { delete av.notas[c]; if (av.justificativas) delete av.justificativas[c]; if (av.evidencias) delete av.evidencias[c]; } av.parcial = true; if (p.status === 'avaliado') p.status = 'concluido'; p.historico = [...(p.historico || []), { em: agora, por: 'sistema', o: 'avaliação visual reaberta: ' + String(req.query.motivo || 'refazer com prints novos').slice(0, 160), notaAnterior: antes && antes.nota }].slice(-60); await D.gravar(p); }
+  res.status(200).json({ ok: true, projetoId: p.id });
+}
 async function filaTecnica(req, res, agora) {
   const todos = await D.lerTodos();
   const fila = todos.filter((p) => p.url && (!p.tecnicaAuto || agora - p.tecnicaAuto.em > 30 * 86400000)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
@@ -350,6 +358,7 @@ module.exports = async (req, res) => {
     if (acao === 'print') return await printPagina(req, res);
     if (acao === 'capturar') return await capturarPrints(req, res, agora);
     if (acao === 'capturar-lote') return await capturarLote(req, res, agora);
+    if (acao === 'refazer-visual') return await refazerVisual(req, res, agora);
     if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
     if (acao === 'tecnica-lote') return await tecnicaLote(req, res, agora);
     if (acao === 'fila-visual') return await filaVisual(req, res);

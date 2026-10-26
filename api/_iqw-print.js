@@ -114,6 +114,11 @@ async function prepararPagina(page, url, log) {
   // rola tudo pra carregar imagens preguiçosas e disparar as animações de entrada
   await page.evaluate(async () => { const h = () => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight); for (let y = 0; y < Math.min(h(), 9000); y += Math.round(innerHeight * 0.8)) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 250)); } scrollTo(0, 0); });
   await espera(1200);
+  // termina as animações de entrada (Elementor, AOS, WOW…) — senão as fatias de baixo saem vazias, congeladas no 1º quadro
+  await page.addStyleTag({ content: `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important}
+.elementor-invisible,.wow,[data-aos],.aos-init,.animate__animated,.animated,.fade-in,.reveal,[class*="sr-"]{visibility:visible!important;opacity:1!important;transform:none!important}` }).catch(() => {});
+  await page.evaluate(() => { document.querySelectorAll('.elementor-invisible').forEach((e) => e.classList.remove('elementor-invisible')); document.querySelectorAll('[data-aos]').forEach((e) => e.classList.add('aos-animate')); });
+  await espera(600);
   const final = await page.evaluate(sondaBloqueio, RX_IDADE.source);
   if (final.idade) idade = 'falhou'; else if (idade === 'tinha') idade = 'passou';
   return { idade, alturaTotal: await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)), tituloPagina: await page.title().catch(() => ''), urlFinal: page.url() };
@@ -136,11 +141,21 @@ async function capturar(url, { executablePath } = {}) {
   const out = { telas: {}, idade: {}, log, alturas: {} };
   // um navegador novo por tela: o Chromium de servidor roda em processo único e não aceita contextos paralelos
   for (const tela of ['mobile', 'desktop']) {
-    const browser = await pp.launch({ args: executablePath ? ['--no-sandbox', '--disable-dev-shm-usage'] : ch.args, executablePath: executablePath || await ch.executablePath(), headless: 'shell', defaultViewport: null });
+    const browser = await pp.launch({ args: [...(executablePath ? ['--no-sandbox', '--disable-dev-shm-usage'] : ch.args), '--lang=pt-BR'], executablePath: executablePath || await ch.executablePath(), headless: 'shell', defaultViewport: null });
     try {
       const cfg = TELAS[tela]; const page = (await browser.pages())[0] || await browser.newPage();
       try {
         await page.setUserAgent(cfg.ua); await page.setViewport(cfg.viewport); await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9' });
+        // navegador "brasileiro": idioma e fuso de São Paulo (lojas que traduzem pelo idioma do navegador abrem em português)
+        await page.emulateTimezone('America/Sao_Paulo').catch(() => {});
+        // "tudo está visível": quem revela conteúdo ao rolar (IntersectionObserver) mostra tudo de uma vez — a fatia de baixo não sai vazia
+        await page.evaluateOnNewDocument(() => {
+          const Orig = window.IntersectionObserver; if (!Orig) return;
+          window.IntersectionObserver = class { constructor(cb) { this.cb = cb; this.ts = new Set(); }
+            observe(t) { this.ts.add(t); setTimeout(() => { if (!this.ts.has(t)) return; const r = t.getBoundingClientRect(); try { this.cb([{ target: t, isIntersecting: true, intersectionRatio: 1, boundingClientRect: r, intersectionRect: r, rootBounds: null, time: performance.now() }], this); } catch {} }, 60); }
+            unobserve(t) { this.ts.delete(t); } disconnect() { this.ts.clear(); } takeRecords() { return []; } };
+        });
+        await page.evaluateOnNewDocument(() => { try { Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' }); Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt'] }); } catch {} });
         page.on('dialog', (d) => d.accept().catch(() => {}));
         const prep = await prepararPagina(page, url, log);
         out.idade[tela] = prep.idade; out.urlFinal = prep.urlFinal; out.titulo = prep.tituloPagina;
