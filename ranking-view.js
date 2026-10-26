@@ -42,7 +42,8 @@
   const RK_LBL = { hs: 'Health Score', renovacao: 'Renovação', vendas: 'Vendas', nrr: 'NRR' };
   const RK_MAX = { hs: 100, renovacao: 100, vendas: 200, nrr: 200 };
   const pct1 = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
-  const clsPts = (pts, max) => (pts == null ? 'na' : pts >= max * 0.9 ? 'g' : pts >= max * 0.5 ? 'y' : pts > 0 ? 'r' : 'na');
+  // pontos somam (nunca tiram): quem pontuou não fica vermelho — metade do máximo ou mais = verde, algum ponto = amarelo, 0 = neutro
+  const clsPts = (pts, max) => (pts == null || pts <= 0 ? 'na' : pts >= max * 0.5 ? 'g' : 'y');
   const rkTxt = (k, x, mes) => {
     if (!x) return 'sem dado';
     if (k === 'hs') return x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2)' : `Health Score ${x.pts} de 100`;
@@ -155,7 +156,11 @@
       : `${mesLongo(d.mes)} · média de ${d.dias} foto${d.dias === 1 ? '' : 's'} diária${d.dias === 1 ? '' : 's'}${d.primeiroDia ? ` (${dBR(d.primeiroDia)} → ${dBR(d.ultimoDia)})` : ''}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
 
     const podio = rank.slice(0, 3);
-    const podioHTML = podio.length ? `<div class="rk-podio">${podio.map((p) => `<button class="rk-pod ${cls(p.base)}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver como a nota foi formada"><span class="rk-pod-pos">${medalha(p.posicao)} ${p.posicao}º</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score ${cls(p.base)}">${p.score}<small class="na"> pts</small></span><span class="rk-pod-sub">${hoje ? 'Health Score ' + delta(p.deltaScore) + ' · ' + (p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`) : `${p.dias} dia${p.dias === 1 ? '' : 's'} · melhor ${p.melhorPosicao || '—'}º · pior ${p.piorPosicao || '—'}º`}</span></button>`).join('')}</div>` : '';
+    // pódio de verdade (André, 26/10/26): 2º · 1º · 3º lado a lado, degraus de alturas diferentes, ouro/prata/bronze
+    const MED = { 1: { cls: 'ouro', ico: '🥇' }, 2: { cls: 'prata', ico: '🥈' }, 3: { cls: 'bronze', ico: '🥉' } };
+    const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `${p.dias} dia${p.dias === 1 ? '' : 's'} · melhor ${p.melhorPosicao || '—'}º · pior ${p.piorPosicao || '—'}º`);
+    const ordemPodio = [podio[1], podio[0], podio[2]].filter(Boolean);
+    const podioHTML = podio.length ? `<div class="rk-podio">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
 
     const hsCols = (tit) => PILARES.map((k) => `<th class="r rk-th-hs" title="${LBL[k]} — pilar do Health Score${tit}">${CURTO[k]}</th>`).join('');
     const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : '<th class="r" title="melhor e pior posição nas fotos do mês">Melhor · pior</th>'}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}${hsCols(hoje ? '' : ' · média das fotos do mês')}</tr>`;

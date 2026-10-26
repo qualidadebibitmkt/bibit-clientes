@@ -1614,3 +1614,23 @@ body::before {
 .rk-nota-mes { font-size: 12.5px; margin: 0 0 6px; }
 @media (max-width: 900px) { .rk-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .rk-cards, .rk-det-grid { grid-template-columns: 1fr; } }
+
+/* Ranking — pódio de verdade (26/10/26): 2º · 1º · 3º, degraus, ouro/prata/bronze */
+.rk-podio { --ouro: #e9b949; --prata: #c9d1db; --bronze: #cd8a4f; grid-template-columns: 1fr 1.15fr 1fr; align-items: end; gap: 16px; }
+.rk-podio .rk-pod { position: relative; padding: 22px 14px 0; overflow: hidden; border-width: 1px; gap: 6px; --med: var(--bronze); border-color: color-mix(in srgb, var(--med) 55%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--med) 14%, var(--garrafa-2)), var(--garrafa-2) 60%); }
+.rk-podio .rk-pod-ouro { --med: var(--ouro); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ouro) 45%, transparent), 0 10px 40px -12px color-mix(in srgb, var(--ouro) 55%, transparent); }
+.rk-podio .rk-pod-prata { --med: var(--prata); }
+.rk-podio .rk-pod-bronze { --med: var(--bronze); }
+.rk-pod-medalha { font-size: 44px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45)); }
+.rk-pod-ouro .rk-pod-medalha { font-size: 58px; }
+.rk-podio .rk-pod-avatar { width: 64px; height: 64px; font-size: 22px; box-shadow: 0 0 0 3px var(--med); }
+.rk-podio .rk-pod-ouro .rk-pod-avatar { width: 84px; height: 84px; font-size: 28px; }
+.rk-podio .rk-pod-score { color: var(--med); }
+.rk-podio .rk-pod-ouro .rk-pod-score { font-size: 54px; }
+.rk-pod-score small { font-family: var(--ui); font-size: 15px; font-weight: 600; color: var(--creme-45); margin-left: 2px; }
+.rk-pod-degrau { display: grid; place-items: center; width: calc(100% + 28px); margin: 12px -14px 0; background: linear-gradient(180deg, color-mix(in srgb, var(--med) 85%, #000 0%), color-mix(in srgb, var(--med) 55%, #000)); color: var(--garrafa-0); font-family: var(--display); font-weight: 700; font-size: 26px; height: 52px; }
+.rk-pod-ouro .rk-pod-degrau { height: 96px; font-size: 40px; }
+.rk-pod-prata .rk-pod-degrau { height: 70px; font-size: 32px; }
+.rk-podio .rk-pod:hover { filter: brightness(1.08); background: linear-gradient(180deg, color-mix(in srgb, var(--med) 20%, var(--garrafa-3)), var(--garrafa-3) 60%); }
+@media (max-width: 700px) { .rk-podio { grid-template-columns: 1fr; } .rk-pod-degrau { height: 40px !important; font-size: 22px !important; } }
+@media (max-width: 700px) { .rk-podio .rk-pod-ouro { order: -1; } }
