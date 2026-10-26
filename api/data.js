@@ -223,7 +223,8 @@ function shapeCliente(task) {
       const byName = (n) => (task.custom_fields || []).find((f) => f.name === n);
       const nota = cfNumber(byName('HS · Contato'));
       // 0 = campo limpo (ClickUp grava 0 ao limpar número); a IA nunca grava 0 (Make aplica mínimo 1)
-      return { nota: nota != null && nota > 0 ? nota : null, resumo: cfText(byName('HS · Resumo WhatsApp')) || null };
+      // e o 1 é o 0 gravado (convenção do _iec.js: notaClickUp = max(1, nota)) — volta a ser 0 no painel e no score
+      return { nota: nota != null && nota > 0 ? (nota <= 1 ? 0 : nota) : null, resumo: cfText(byName('HS · Resumo WhatsApp')) || null };
     })(),
     hs: (() => {
       const n = (id) => { const v = cfNumber(getCF(task, id)); return v != null && v > 0 ? v : null; }; // 0 = sem dado

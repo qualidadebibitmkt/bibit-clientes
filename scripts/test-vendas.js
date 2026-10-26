@@ -90,5 +90,14 @@ t('nome do recebimento não leva valor em R$ pro painel', () => {
   assert.strictEqual(V2['a b'].meses['2026-10'].itens[0].nome, 'Parcela 2 (saldo)');
 });
 
+t('nome do recebimento: outros formatos de valor também somem, sem engolir o resto do nome', () => {
+  const nome = (n) => V.porPessoa([{ ...task({ id: 'x', valor: 500, pag: '2026-10-02', closer: ['A B'] }), name: n }])['a b'].meses['2026-10'].itens[0].nome;
+  assert.strictEqual(nome('Parcela 2 - 3.250,00'), 'Parcela 2');
+  assert.strictEqual(nome('Up Sell de 1.500 para 3.000'), 'Up Sell');
+  assert.strictEqual(nome('Up-sell: 1500'), 'Up-sell');
+  assert.strictEqual(nome('R$ 1.500 2ª parcela'), '2ª parcela');
+  assert.strictEqual(nome('R $ 3.250'), 'Cross Sell'); // nome vazio → tipo
+});
+
 console.log(`\n${ok} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
 if (falhas) process.exitCode = 1;

@@ -132,7 +132,7 @@
     const filtros = `<div class="pl-filtros"><span class="balcao-l">período</span><div class="chips">${chips}</div></div>`;
 
     if (!d) {
-      el.innerHTML = `<div class="pl-head"><div class="hs-termo pl-termo rk-termo"><div class="hs-termo-media"><span class="hs-big na">…</span><span class="hs-termo-l">ranking<br><span>${st.erro ? 'não carregou: ' + esc(st.erro) : 'calculando o placar da Operação…'}</span></span></div></div>${filtros}</div>`;
+      el.innerHTML = `<div class="pl-head rk-head">${filtros}</div><div class="hs-termo pl-termo rk-termo rk-placar"><div class="hs-termo-media"><span class="hs-big na rk-placar-n">…</span><span class="hs-termo-l">ranking<br><span>${st.erro ? 'não carregou: ' + esc(st.erro) : 'calculando o placar da Operação…'}</span></span></div></div>`;
       bind(el); return;
     }
 
@@ -158,7 +158,7 @@
     const ordemPodio = [podio[1], podio[0], podio[2]].filter(Boolean);
     const podioHTML = podio.length ? `<div class="rk-podio rk-podio-${ordemPodio.length}">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
 
-    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. o placar de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : ''}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}</tr>`;
+    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score vs. o placar de ${esc(dBR(d.anteriorDia))}${d.anteriorPosDia ? ` e da posição vs. ${esc(dBR(d.anteriorPosDia))}` : ' (a posição passa a comparar a partir de amanhã, com o placar novo de pontos)'}">7 dias</th>` : ''}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}</tr>`;
     const linha = (p) => {
       const aberto = st.aberto === p.id;
       const mes = (p.vendas && p.vendas.mes) || (hoje ? ma : st.periodo);

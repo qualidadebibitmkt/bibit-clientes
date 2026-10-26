@@ -1701,3 +1701,5 @@ body::before {
 .rk-placar .pl-meta-n { font-size: 44px; }
 .rk-placar .hs-termo-p { background: rgba(0,0,0,0.24); border-color: rgba(233,185,73,0.22); }
 @media (max-width: 640px) { .rk-placar { padding: 20px 18px; } .rk-placar .hs-big.rk-placar-n { font-size: 64px; } }
+/* auditoria 26/10/26 (2): no celular o pódio com 2 pessoas também fica em 1 coluna */
+@media (max-width: 700px) { .rk-podio.rk-podio-2, .rk-podio.rk-podio-1 { grid-template-columns: 1fr; justify-content: stretch; } }

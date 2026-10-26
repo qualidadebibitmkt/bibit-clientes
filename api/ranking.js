@@ -111,10 +111,19 @@ async function garantirFoto(dia, lista) {
   if (!wa.redisReady()) return false;
   const key = 'rk:snap:' + dia;
   let ja = null; try { const raw = await wa.redis(['GET', key]); ja = raw ? JSON.parse(raw) : null; } catch { ja = null; }
-  // não troca um placar bom por um pior no mesmo dia: se uma fonte falhar (CSAT, WhatsApp) o cálculo sai com menos pilares
-  const cob = (ps) => (ps || []).reduce((a, x) => a + (x.cobertura || 0), 0);
-  if (ja && cob(ja.pessoas) > cob(foto(lista))) return false;
-  await wa.redisPipeline([['SET', key, JSON.stringify({ dia, pessoas: foto(lista), em: Date.now() })], ['EXPIRE', key, String(SNAP_TTL)]]);
+  // não troca um placar bom por um pior no mesmo dia: se uma fonte falhar (CSAT, WhatsApp, cards do Ranking, vendas) o
+  // cálculo sai com menos dados. Compara só quem está nas duas fotos (quem saiu do ranking no meio do dia não trava a foto)
+  // e as fontes da pessoa toda (cards e vendas zeram Renovação/NRR/Vendas sem mudar a cobertura do Health Score).
+  const fontes = { cards: lista.some((p) => p.cardsDisponivel), vendas: lista.some((p) => p.rk && p.rk.vendas && p.rk.vendas.disponivel) };
+  const nova = foto(lista);
+  if (ja) {
+    const antes = new Map((ja.pessoas || []).map((x) => [x.id, x]));
+    let cobAntes = 0, cobAgora = 0;
+    for (const x of nova) { const a = antes.get(x.id); if (!a) continue; cobAntes += a.cobertura || 0; cobAgora += x.cobertura || 0; }
+    const fa = ja.fontes || {};
+    if (cobAgora < cobAntes || (fa.cards && !fontes.cards) || (fa.vendas && !fontes.vendas)) return false;
+  }
+  await wa.redisPipeline([['SET', key, JSON.stringify({ dia, pessoas: nova, em: Date.now(), fontes })], ['EXPIRE', key, String(SNAP_TTL)]]);
   return !ja;
 }
 
@@ -204,13 +213,15 @@ module.exports = async (req, res) => {
     if (q.snap) { res.status(200).json({ ok: true, dia, fotoNova, pessoas: lista.length }); return; }
 
     // variação vs. a foto mais antiga dos últimos 7 dias (sem contar hoje)
-    let anterior = null;
+    let anterior = null, anteriorPos = null;
     try {
       const ds = []; for (let i = 7; i >= 1; i--) ds.push(diaBR(Date.now() - i * 86400000));
       const fs = await lerFotos(ds);
       if (fs.length) anterior = fs[0];
+      anteriorPos = fs.find((f) => f.em) || null; // posição: só fotos do ranking de pontos (com 'em', desde 26/10/26)
     } catch { /* opcional */ }
     const antMap = new Map((anterior ? anterior.pessoas : []).map((p) => [p.id, p]));
+    const posMap = new Map((anteriorPos ? anteriorPos.pessoas : []).map((p) => [p.id, p]));
     for (const p of lista) {
       const a = antMap.get(p.id);
       p.anterior = a ? { dia: anterior.dia, score: a.score, posicao: a.posicao } : null;
@@ -218,9 +229,10 @@ module.exports = async (req, res) => {
       const antBase = a ? (a.b !== undefined ? a.b : a.score) : null;
       p.deltaScore = antBase != null && p.base != null ? p.base - antBase : null;
       // posição só compara com placar do ranking de pontos (fotos com 'em', a partir de 26/10/26); antes a posição era de outra regra
-      p.deltaPosicao = a && anterior.em && a.posicao && p.posicao ? a.posicao - p.posicao : null; // positivo = subiu
+      const ap = posMap.get(p.id);
+      p.deltaPosicao = ap && ap.posicao && p.posicao ? ap.posicao - p.posicao : null; // positivo = subiu
     }
-    res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });
+    res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, anteriorPosDia: anteriorPos ? anteriorPos.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });
   } catch (e) {
     res.status(500).json({ error: 'ranking_error', message: String(e.message || e) });
   }
