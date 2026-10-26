@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 89;
+  const VERSION = 90;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -703,8 +703,22 @@
   function expansoesHTML(c) {
     const ex = c.expansoes || [];
     if (!ex.length) return `<p class="eyebrow">Expansões · cross e upsell</p><div class="fn-empty">Nenhuma expansão registrada — copo com espaço pra mais uma dose.</div>`;
-    const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem}</span><span class="exp-nome">${esc(e.nome)}</span><span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
+    // valores das vendas (André, 26/10/26): cross = valor da venda; upsell = quanto a mensalidade subiu
+    const brl = fmtBRL;
+    const cross = ex.filter((e) => e.origem === 'cross');
+    const totCross = cross.reduce((a, e) => a + (e.valor || 0), 0);
+    const recCross = cross.reduce((a, e) => a + (e.recebido || 0), 0);
+    const totUp = ex.filter((e) => e.origem === 'upsell').reduce((a, e) => a + (e.valor || 0), 0);
+    const resumo = [
+      cross.length ? `<span><b>${brl(totCross)}</b> em cross sell${totCross ? ` · ${brl(recCross)} recebido` : ''}</span>` : '',
+      totUp ? `<span><b>+${brl(totUp)}/mês</b> em upsell</span>` : '',
+    ].filter(Boolean).join('');
+    const val = (e) => e.valor == null ? '<span class="exp-valor na">sem valor no card</span>'
+      : e.origem === 'upsell' ? `<span class="exp-valor">+${brl(e.valor)}<small>/mês</small></span>`
+      : `<span class="exp-valor">${brl(e.valor)}${e.situacao ? `<small class="${e.situacao === 'recebido' ? 'exp-ok' : ''}">${esc(e.situacao)}</small>` : ''}</span>`;
+    const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem}</span><span class="exp-nome">${esc(e.nome)}</span>${val(e)}<span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
     return `<p class="eyebrow">Expansões · ${ex.length} venda${ex.length === 1 ? '' : 's'} (cross/upsell)</p>
+      ${resumo ? `<div class="exp-resumo">${resumo}</div>` : ''}
       <div class="exp-rows">${rows}</div>`;
   }
 
@@ -862,11 +876,13 @@
     const quase = verdes.filter((x) => !x.md.ok).sort((a, b) => b.md.st.dias - a.md.st.dias);
     const inicioHist = hsHist && hsHist.dias.length ? fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime()) : null;
     const nomes = (c) => equipeDe(c).map((p) => p.name.split(' ')[0]).join(', ');
-    const linhaMaduro = ({ c, md }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass('green', 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td"><span class="hs-streak g maduro">${md.st.piso ? '≥' : ''}${md.st.dias}d</span></td><td class="hs-td g">${fmtNota(md.csat)}</td><td class="hs-td-txt">${c.produtos && c.produtos.length ? esc(c.produtos.join(', ')) : '<span class="na">—</span>'}</td><td class="hs-td-txt">${esc(nomes(c) || '—')}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
+    // cross sells já vendidos (André, 26/10/26): total e quanto já foi recebido
+    const expCross = (c) => { const x = (c.expansoes || []).filter((e) => e.origem === 'cross'); return { n: x.length, tot: x.reduce((a, e) => a + (e.valor || 0), 0), rec: x.reduce((a, e) => a + (e.recebido || 0), 0) }; };
+    const linhaMaduro = ({ c, md }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass('green', 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td"><span class="hs-streak g maduro">${md.st.piso ? '≥' : ''}${md.st.dias}d</span></td><td class="hs-td g">${fmtNota(md.csat)}</td><td class="hs-td-txt">${c.produtos && c.produtos.length ? esc(c.produtos.join(', ')) : '<span class="na">—</span>'}</td><td class="hs-td-txt">${esc(nomes(c) || '—')}</td><td class="hs-td hs-td-ltv${expCross(c).n ? '' : ' na'}" title="${expCross(c).n ? `${expCross(c).n} cross sell${expCross(c).n === 1 ? '' : 's'} · ${fmtBRL(expCross(c).rec)} recebido` : 'nenhum cross sell registrado'}">${expCross(c).n ? fmtBRL(expCross(c).tot) : '—'}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     const expandir = `
       <p class="eyebrow">Prontos pra expandir · cross-sell / upsell ${prontos.length ? `<span class="hs-ok-n">${prontos.length}</span>` : ''}<span class="hs-hist-info">Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp</span></p>
       ${prontos.length
-        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Green há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
+        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Green há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
         : `<div class="fn-empty">Ninguém cruzou os ${MADURO_DIAS} dias ainda${inicioHist ? ` — as fotos diárias começaram em ${inicioHist}, então a primeira turma madura aparece por volta de ${fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime() + (MADURO_DIAS - 1) * 864e5)}` : ''}.</div>`}
       ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
     const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ID'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem métrica Meta'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');

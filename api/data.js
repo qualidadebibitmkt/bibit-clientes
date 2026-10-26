@@ -16,10 +16,11 @@ const LISTS = {
   webdesign:  { id: '901713153156', name: 'Web Designer' },
 };
 const GROWTH_LIST = '901712531318';
-const CROSS_LIST = '901713519081';   // vendas de expansão — só nome/mês saem ao navegador
+const CROSS_LIST = '901713519081';   // vendas de expansão — nome, mês, valor e quanto já foi recebido (André, 26/10/26)
 const UPSELL_LIST = '901713575176';
 // Valor recorrente (Growth e Upsell): LIDO SÓ NO SERVIDOR para calcular o NRR em %.
-// O valor em R$ nunca é enviado ao navegador (regra do painel: financeiro fora).
+// O valor recorrente em R$ não vai ao navegador; o valor das VENDAS (cross/upsell) aparece nas Expansões por decisão do
+// André (26/10/26), como o LTV (Bruno, 17/09/26).
 const CF_VALOR_REC = '65f9eee2-b80d-4a6b-959f-61395ae91b02';
 const CSAT_LIST = '901713333681'; // CSAT - Envios
 // CSAT - WD (André, 23/10/26): enviado ao cliente após CADA entrega de web (LP, Website, E-Commerce). Vira a nota de
@@ -435,10 +436,17 @@ module.exports = async (req, res) => {
       c.metrics.porPapel.wd = media;
     }
 
-    // ---- Expansões (cross/upsell) e NRR % — SEM valores em R$ no navegador ----
+    // ---- Expansões (cross/upsell) e NRR % ----
     // Unidade = a venda (card raiz; parcelas/subtarefas não duplicam). Cliente casado
     // pelo campo Cliente quando existir, senão pelo nome do card (mesmo matcher).
-    const expMap = new Map();   // clientId -> [{nome, quando, origem}]
+    // Valor da venda (André, 26/10/26): cross = "Valor da Venda"; upsell = "Diferença" (a mais por mês). Recebido = parcelas
+    // em "encerrado/recebido" (venda parcelada) ou o card inteiro, quando ele está recebido — mesma régua do Ranking.
+    const CF_VALOR_VENDA = '01454349-1cb6-4e8a-a665-7d7e74420d64', CF_DIFERENCA = 'bd43ec2a-261f-4d79-af88-20a54a323f20';
+    const RECEBIDO = /encerrado\s*\/\s*recebido/i;
+    const stTxt = (t) => String((t.status && t.status.status) || '');
+    const filhosDe = new Map();
+    for (const t of crossTasks) if (t.parent) { if (!filhosDe.has(t.parent)) filhosDe.set(t.parent, []); filhosDe.get(t.parent).push(t); }
+    const expMap = new Map();   // clientId -> [{nome, quando, origem, valor, recebido, situacao}]
     const upRecMap = new Map(); // clientId -> soma de valor RECORRENTE dos upsells (interno)
     const addVenda = (t, origem) => {
       if (t.parent) return; // parcela — a venda é o pai
@@ -447,10 +455,19 @@ module.exports = async (req, res) => {
       if (!c) c = matcher(t.name);
       if (!c) return;
       if (!expMap.has(c.id)) expMap.set(c.id, []);
+      const valor = origem === 'cross' ? cfNumber(getCF(t, CF_VALOR_VENDA)) : (cfNumber(getCF(t, CF_DIFERENCA)) ?? cfNumber(getCF(t, CF_VALOR_VENDA)));
+      const filhos = origem === 'cross' ? (filhosDe.get(t.id) || []) : [];
+      let recebido = null, situacao = stTxt(t) || null;
+      if (filhos.length) {
+        const rec = filhos.filter((f) => RECEBIDO.test(stTxt(f)));
+        recebido = rec.reduce((a, f) => a + (cfNumber(getCF(f, CF_VALOR_VENDA)) || 0), 0);
+        situacao = rec.length === filhos.length ? 'recebido' : rec.length ? `${rec.length} de ${filhos.length} parcelas recebidas` : `${filhos.length} parcelas · nenhuma recebida`;
+      } else if (RECEBIDO.test(stTxt(t))) { recebido = valor; situacao = 'recebido'; }
+      else recebido = 0;
       expMap.get(c.id).push({
         nome: t.name,
         quando: Number(t.due_date || t.date_created) || null,
-        origem,
+        origem, valor: valor != null && valor > 0 ? valor : null, recebido, situacao,
       });
       // REGRA DA CASA (Bruno, 01/09/26): cross-sell é SEMPRE venda pontual — nunca
       // entra no NRR. Só UPSELL expande mensalidade (via campo Valor Recorrente).
