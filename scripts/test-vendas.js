@@ -85,5 +85,10 @@ t('cards do ClickUp: mês pelo título, pessoa pelo campo Pessoa; NRR 0 = sem ca
   assert.deepStrictEqual(RR.proxima(0, RR.REGUA_NRR), { alvo: 100, pts: 40 }); assert.strictEqual(RR.proxima(200, RR.REGUA_NRR), null);
 });
 
+t('nome do recebimento não leva valor em R$ pro painel', () => {
+  const V2 = V.porPessoa([{ ...task({ id: 'x', valor: 3250, pag: '2026-10-02', closer: ['A B'] }), name: 'Parcela 2 (saldo) — R$ 3250' }]);
+  assert.strictEqual(V2['a b'].meses['2026-10'].itens[0].nome, 'Parcela 2 (saldo)');
+});
+
 console.log(`\n${ok} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
 if (falhas) process.exitCode = 1;
