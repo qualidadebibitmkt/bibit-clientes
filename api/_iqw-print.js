@@ -60,7 +60,10 @@ function marcarAlvos() {
     else if (/^(sim|yes|sou maior|tenho (mais de )?18|tenho \d\d|maior de (18|idade)|\+?18\+?|i('| a)m (over )?(18|21)|over (18|21)|sou maior de idade|confirmo|tenho idade)/i.test(t)) out.sim.push(marca(el));
     else if (/^(entrar|enter|confirmar|confirm|acessar|continuar|continue|prosseguir|enviar|submit|verificar|verify|ok|ir para o site|visitar)\b/i.test(t)) out.enviar.push(marca(el));
   }
+  // só campos dentro de camada fixa (o bloqueio de idade) — nunca o formulário de contato da página
+  const naCamada = (el) => { for (let x = el; x && x !== document.body; x = x.parentElement) { const cs = getComputedStyle(x); if (cs.position === 'fixed' || (x.tagName === 'DIALOG' && x.open)) return true; } return false; };
   for (const el of document.querySelectorAll('input, select')) {
+    if (!naCamada(el)) continue;
     if (!vis(el) || ['hidden', 'submit', 'button', 'checkbox', 'radio', 'email', 'password', 'search'].includes(el.type)) continue;
     const dica = [el.placeholder, el.name, el.id, el.getAttribute('aria-label'), el.maxLength > 0 ? 'max' + el.maxLength : '', el.type].join(' ').toLowerCase();
     out.campos.push({ id: marca(el), dica, tag: el.tagName, tipo: el.type });
@@ -75,7 +78,7 @@ function valorCampo(c) {
   if (/m[eê]s|month|\bmm\b/.test(d)) return '06';
   if (/dia|day|\bdd\b/.test(d)) return '15';
   if (/nasc|birth|dd\/mm|data/.test(d)) return '15/06/1990';
-  if (/idade|age/.test(d)) return '35';
+  if (/\bidade\b|\bage\b/.test(d)) return '35';
   if (/max2/.test(d)) return '15';
   return null;
 }
