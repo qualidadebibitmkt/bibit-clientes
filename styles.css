@@ -1703,3 +1703,13 @@ body::before {
 @media (max-width: 640px) { .rk-placar { padding: 20px 18px; } .rk-placar .hs-big.rk-placar-n { font-size: 64px; } }
 /* auditoria 26/10/26 (2): no celular o pódio com 2 pessoas também fica em 1 coluna */
 @media (max-width: 700px) { .rk-podio.rk-podio-2, .rk-podio.rk-podio-1 { grid-template-columns: 1fr; justify-content: stretch; } }
+
+/* ---------- v135: botão Voltar dentro do painel (André, 26/10/26) ---------- */
+.nav-voltar { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 8px 16px 8px 10px; border-radius: 999px;
+  background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.18); color: var(--creme); font-family: var(--ui); font-size: 13px; font-weight: 600; cursor: pointer; }
+.nav-voltar svg { width: 16px; height: 16px; }
+.nav-voltar span { font-weight: 400; color: var(--creme-70); max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-voltar span:not(:empty)::before { content: 'para '; }
+.nav-voltar:hover { background: var(--garrafa-3); border-color: rgba(233,185,73,0.45); }
+.nav-voltar:focus-visible { outline: 2px solid #e9b949; outline-offset: 2px; }
+.nav-voltar[hidden] { display: none; }

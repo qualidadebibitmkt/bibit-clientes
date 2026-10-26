@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 88;
+  const VERSION = 89;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1266,7 +1266,7 @@
         <p class="eyebrow">Placar geral <span class="hs-hist-info">nota de cada pessoa em cada pilar = média dos clientes em que ela está · o número pequeno é quantos clientes estão abaixo da meta naquele pilar</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th>Papel</th><th class="r">Clientes</th><th class="r">Resultado</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Relacionamento</th><th class="r" title="combinações cliente × pilar abaixo da meta">Abaixo</th></tr></thead><tbody>${rows.sort((x, y) => y.r.abaixo.length - x.r.abaixo.length || y.a.clientes.length - x.a.clientes.length).map(({ a, r }) => `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="ver ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td-txt">${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(', ') || 'equipe')}</td><td class="hs-td">${a.clientes.length}</td>${PILARES.map((k) => td(k, r.por[k])).join('')}<td class="hs-td ${r.abaixo.length ? 'r' : 'g'}">${r.abaixo.length}</td></tr>`).join('')}</tbody></table></div>
         <div class="hs-regras pl-regras"><div><b>Como ler</b> cada célula é a média da pessoa naquele pilar, nos clientes em que ela está. Em Resultado, cada pessoa é medida pela frente dela: tráfego (gestor do card) ou performance dos posts da área (social, AV, RP).</div><div><b>Clique</b> no nome ou no chip pra abrir a visão completa do colaborador: clientes, o que está abaixo da meta, silêncio, atrasadas e pareceres da IA.</div></div>`;
-      el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; renderColab(el); }));
+      el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; render(); }));
       return;
     }
 
@@ -1353,13 +1353,46 @@
 
       <div class="hs-regras pl-regras"><div><b>Resultado</b> a frente da pessoa no cliente: tráfego pra quem é o Gestor de Tráfego do card; performance dos posts da área pra Social Media, Audiovisual e RP (régua da nota de conteúdo).</div><div><b>Satisfação</b> nota que o cliente dá ao papel da pessoa no CSAT (tráfego/social/RP/AV).</div><div><b>Produtividade</b> só as tarefas da pessoa: abertas vencidas + concluídas fora do prazo em 30 dias.</div><div><b>Contato</b> atuação da pessoa no grupo: sem mensagem com o cliente falando = 0 · sem mensagem em grupo parado = 50 · respostas lentas descontam.</div></div>`;
 
-    el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; state.colabFoco = null; renderColab(el); }));
+    el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; state.colabFoco = null; render(); }));
     el.querySelectorAll('[data-foco]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.foco || null; state.colabFoco = (!k || state.colabFoco === k) ? null : k; renderColab(el); const f = el.querySelector('.cb-foco'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
     el.querySelectorAll('[data-pilar-ir]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.pilarIr; if (!state.pilarFiltro) state.pilarFiltro = {}; if (k !== 'trafego') state.pilarFiltro[k] = a.id; state.view = k; render(); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
   }
 
+  // ---------- botão Voltar (André, 26/10/26): volta para a página anterior dentro do painel ----------
+  // "página" = aba + cliente escolhido + colaborador + sub-aba do Resultado; filtros não contam como página
+  const NOME_VIEW = { geral: 'Visão geral', health: 'Health Score', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', colab: 'Colaborador', ranking: 'Ranking', calendario: 'Calendários', funcoes: 'Funções' };
+  const nav = { pilha: [], atual: null, voltando: false };
+  const navFoto = () => ({ view: state.view, cliente: state.cliente || null, colab: state.colab || null, colabFoco: state.colabFoco || null, resultadoSub: state.resultadoSub || null, pilarFiltro: state.pilarFiltro ? { ...state.pilarFiltro } : null, rolagem: 0 });
+  const navChave = (f) => JSON.stringify([f.view, f.cliente, f.view === 'colab' ? f.colab : null, f.view === 'trafego' ? f.resultadoSub : null]);
+  function navRotulo(f) {
+    const cli = f.cliente && state.data && (state.data.clients || []).find((c) => String(c.id) === String(f.cliente));
+    return (NOME_VIEW[f.view] || 'página anterior') + (cli ? ' · ' + cli.name : '');
+  }
+  function navRegistrar() {
+    const agora = navFoto();
+    if (nav.atual && !nav.voltando && navChave(nav.atual) !== navChave(agora)) {
+      nav.atual.rolagem = nav.ultimaRolagem || 0;
+      nav.pilha.push(nav.atual); if (nav.pilha.length > 30) nav.pilha.shift();
+      window.scrollTo(0, 0);
+    }
+    nav.voltando = false; nav.atual = agora;
+    const b = $('#navVoltar'); if (!b) return;
+    const ant = nav.pilha[nav.pilha.length - 1];
+    b.hidden = !ant;
+    if (ant) { const l = b.querySelector('span'); if (l) l.textContent = navRotulo(ant); b.title = 'voltar para ' + navRotulo(ant); }
+  }
+  function navVoltar() {
+    const f = nav.pilha.pop(); if (!f) return;
+    Object.assign(state, { view: f.view, cliente: f.cliente, colab: f.colab, colabFoco: f.colabFoco, resultadoSub: f.resultadoSub, pilarFiltro: f.pilarFiltro });
+    const sel = $('#clientSelect'); if (sel) sel.value = state.cliente || '';
+    nav.voltando = true; render();
+    requestAnimationFrame(() => window.scrollTo(0, f.rolagem || 0));
+  }
+  window.addEventListener('scroll', () => { nav.ultimaRolagem = window.scrollY; }, { passive: true });
+
   function render() {
+    navRegistrar();
     const views = { geral: $('#viewGeral'), calendario: $('#viewCalendario'), funcoes: $('#viewFuncoes'), health: $('#viewHealth'), colab: $('#viewColab'), ranking: $('#viewRanking') };
     const pilarEl = $('#viewPilar');
     Object.entries(views).forEach(([k, el]) => { el.hidden = k !== state.view; });
@@ -1390,6 +1423,7 @@
     document.querySelectorAll('.tab').forEach((t) =>
       t.addEventListener('click', () => { state.view = t.dataset.view; render(); }));
     $('#clientSelect').addEventListener('change', (e) => setCliente(e.target.value || null));
+    $('#navVoltar').addEventListener('click', navVoltar);
     // PONTO ÚNICO de interação: todas as ações de clique do dash passam por aqui,
     // na fase de captura — o trilho que comprovadamente funciona em qualquer ambiente.
     document.addEventListener('pointerdown', (e) => {
