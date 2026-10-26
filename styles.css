@@ -1582,3 +1582,35 @@ body::before {
 .hs-chip.is-on i, .pl-chip.is-on i { color: color-mix(in srgb, var(--garrafa-0) 70%, transparent); }
 .hs-chip.is-on:hover, .pl-chip.is-on:hover { background: var(--creme); color: var(--garrafa-0); }
 .chips-rot { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--creme-45); align-self: center; margin-right: 2px; }
+
+/* Ranking — detalhamento ao clicar no colaborador (26/10/26) */
+.rk-det-top { display: grid; gap: 8px; margin-bottom: 14px; font-size: 13px; color: var(--creme-70); }
+.rk-det-total { font-family: var(--display); font-size: 30px; font-weight: 600; color: var(--creme); }
+.rk-barra { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: rgba(243,236,218,0.08); }
+.rk-seg { height: 100%; }
+.rk-seg + .rk-seg { border-left: 2px solid var(--garrafa-1); }
+.rk-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: var(--creme-70); }
+.rk-legenda i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.rk-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rk-card { background: var(--garrafa-2); border: 1px solid var(--linha); border-radius: var(--radius-sm); padding: 12px 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.rk-card .rk-det-h { margin-bottom: 0; }
+.rk-card-pts { font-family: var(--display); font-size: 24px; font-weight: 600; margin-left: auto; }
+.rk-card-pts.g { color: var(--flag-green); } .rk-card-pts.y { color: var(--flag-yellow); } .rk-card-pts.r { color: var(--flag-red); } .rk-card-pts.na { color: var(--creme-45); }
+.rk-card-txt { font-size: 12.5px; line-height: 1.45; color: var(--creme-70); }
+.rk-card-txt b { color: var(--creme); }
+.rk-mini { display: grid; gap: 3px; margin-top: 6px; }
+.rk-mini span { display: flex; gap: 6px; align-items: baseline; }
+.rk-mini i { font-style: normal; font-size: 10.5px; color: var(--creme-45); }
+.rk-mini b { margin-left: auto; }
+.rk-itens { margin: 6px 0 0; padding-left: 16px; display: grid; gap: 3px; }
+.rk-itens i { font-style: normal; color: var(--creme-45); margin-right: 4px; }
+.rk-regua { display: flex; flex-wrap: wrap; gap: 4px; }
+.rk-regua-i { font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--linha); color: var(--creme-45); white-space: nowrap; }
+.rk-regua-i b { color: var(--creme-70); }
+.rk-regua-i.is-on { background: var(--creme); color: var(--garrafa-0); border-color: var(--creme); }
+.rk-regua-i.is-on b { color: var(--garrafa-0); }
+.rk-falta { font-size: 11.5px; color: var(--ambar); }
+.rk-det-eyebrow { margin-top: 4px; }
+.rk-nota-mes { font-size: 12.5px; margin: 0 0 6px; }
+@media (max-width: 900px) { .rk-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .rk-cards, .rk-det-grid { grid-template-columns: 1fr; } }

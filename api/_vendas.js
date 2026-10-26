@@ -62,13 +62,14 @@ function quando(t) {
 // tarefas cruas do ClickUp (com subtarefas) → { [nome normalizado]: { nome, meses: { 'AAAA-MM': { valor, vendas } } } }
 function porPessoa(crossTasks = [], upsellTasks = []) {
   const out = {};
-  const somar = (nome, mes, valor) => {
+  const somar = (nome, mes, valor, item) => {
     const k = norm(nome);
     if (!out[k]) out[k] = { nome, meses: {} };
-    const m = out[k].meses[mes] || (out[k].meses[mes] = { valor: 0, vendas: 0 });
-    m.valor += valor; m.vendas += 1;
+    const m = out[k].meses[mes] || (out[k].meses[mes] = { valor: 0, vendas: 0, itens: [] });
+    m.valor += valor; m.vendas += 1; m.itens.push(item);
   };
-  const processar = (tasks, valorDe) => {
+  const dia = (ms) => new Intl.DateTimeFormat('pt-BR', { timeZone: BRT, day: '2-digit', month: '2-digit' }).format(new Date(ms));
+  const processar = (tasks, valorDe, tipo) => {
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const temFilho = new Set(tasks.filter((t) => t.parent).map((t) => t.parent));
     for (const t of tasks) {
@@ -80,17 +81,20 @@ function porPessoa(crossTasks = [], upsellTasks = []) {
       const ds = donos(t, t.parent ? byId.get(t.parent) : null);
       if (!ds.length) continue;
       const mes = mesBR(ms);
-      for (const d of ds) somar(d, mes, valor / ds.length);
+      // o que foi recebido (só o nome do card e o dia — o valor fica no servidor)
+      const pai = t.parent ? byId.get(t.parent) : null;
+      const item = { nome: pai ? `${pai.name} · ${t.name}` : t.name, tipo, dia: dia(ms), dividido: ds.length > 1 ? ds.length : null };
+      for (const d of ds) somar(d, mes, valor / ds.length, item);
     }
   };
-  processar(crossTasks, (t) => num(cf(t, CF.valorVenda)));
+  processar(crossTasks, (t) => num(cf(t, CF.valorVenda)), 'Cross Sell');
   processar(upsellTasks, (t) => {
     const dif = num(cf(t, CF.diferenca));
     if (dif != null) return dif;
     const a = num(cf(t, CF.planoAtual)), b = num(cf(t, CF.planoAntigo));
     if (a != null && b != null) return a - b;
     return num(cf(t, CF.valorVenda));
-  });
+  }, 'Up Sell');
   return out;
 }
 
@@ -99,7 +103,8 @@ function pilar(mapa, nomePessoa, mes) {
   const p = mapa && mapa[norm(nomePessoa)];
   const m = p && p.meses[mes];
   const { pts, faixa } = pontos(m ? m.valor : 0);
-  return { pts, faixa, recebimentos: m ? m.vendas : 0 };
+  const prox = REGUA.find((r) => r.pts > pts);
+  return { pts, faixa, recebimentos: m ? m.vendas : 0, itens: m ? m.itens.slice(0, 15) : [], proxima: prox ? { faixa: prox.rot, pts: prox.pts } : null };
 }
 
 module.exports = { pontos, porPessoa, pilar, REGUA, MINIMO, norm, mesBR };

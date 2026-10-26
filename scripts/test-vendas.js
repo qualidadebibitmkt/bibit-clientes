@@ -61,7 +61,8 @@ t('upsell recebido entra pela Diferença', () => {
 t('pilar da pessoa no mês: pontos e faixa, sem expor R$; quem não vendeu soma 0', () => {
   const m = V.porPessoa([task({ id: 'a', valor: 12400, pag: '2026-09-10', closer: ['Willian Pereira'] })]);
   const p = V.pilar(m, 'Willian Pereira', '2026-09');
-  assert.deepStrictEqual(p, { pts: 100, faixa: 'R$ 10 mil a 20 mil', recebimentos: 1 });
+  assert.strictEqual(p.pts, 100); assert.strictEqual(p.faixa, 'R$ 10 mil a 20 mil'); assert.strictEqual(p.recebimentos, 1);
+  assert.strictEqual(p.itens[0].tipo, 'Cross Sell'); assert.deepStrictEqual(p.proxima, { faixa: 'acima de R$ 20 mil', pts: 200 });
   assert.strictEqual(V.pilar(m, 'Gabriela Domingos Coelho', '2026-09').pts, 0);
   assert.ok(!JSON.stringify(p).includes('12400'));
 });
@@ -80,7 +81,8 @@ t('total do Ranking = Health Score + Renovação + Vendas + NRR; pilar sem dado 
 });
 t('cards do ClickUp: mês pelo título, pessoa pelo campo Pessoa; NRR 0 = sem carteira', () => {
   const c = RR.cardsPorMes([{ name: 'Ranking - 10/26 - ROMULO ALCANTRA', custom_fields: [{ id: '202d0b1a-6350-4835-adaf-820bf094dd10', value: [{ username: 'Romulo Alcantra' }] }, { id: 'dbeb96f2-e705-44c9-ba2c-c0f2ab8851e7', value: '0' }, { id: '98af79e4-c1dd-49e7-badd-ae76546833fa', value: '91.66' }] }]);
-  assert.deepStrictEqual(c['2026-10']['romulo alcantra'], { renovacao: 91.66, nrr: null });
+  assert.deepStrictEqual(c['2026-10']['romulo alcantra'], { renovacao: 91.66, nrr: null, ativos: null, totais: null, churn: null });
+  assert.deepStrictEqual(RR.proxima(0, RR.REGUA_NRR), { alvo: 100, pts: 40 }); assert.strictEqual(RR.proxima(200, RR.REGUA_NRR), null);
 });
 
 console.log(`\n${ok} ok${falhas ? `, ${falhas} falha(s)` : ''}`);

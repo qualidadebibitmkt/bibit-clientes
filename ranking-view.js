@@ -67,16 +67,61 @@
     return `<td class="hs-td ${cls(x.nota)}" title="${esc(tit)}"><b class="rk-nota">${x.nota}</b>${b ? `<small class="na rk-bruto">${esc(b)}</small>` : ''}${hoje && x.abaixo ? `<small class="na rk-ab">${x.abaixo}↓</small>` : ''}</td>`;
   }
 
-  function detalheHTML(p) {
-    const blocos = PILARES.map((k) => {
-      const x = p.pilares[k];
-      if (!x || !x.porCliente || !x.porCliente.length) return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="na">sem dado</span></div><div class="fn-empty">${k === 'trafego' ? 'a pessoa não é gestor de tráfego nem responsável por social/AV/RP em nenhum cliente com dado' : 'nenhum cliente com dado neste pilar'}</div></div>`;
-      return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="${cls(x.nota)}">nota ${x.nota}</span><small class="na">peso ${x.peso} · ${x.n} cliente${x.n === 1 ? '' : 's'}${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}</small></div>
-        <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
-    }).join('');
-    const mes = (p.vendas && p.vendas.mes) || mesAtual();
-    const soma = RK.map((k) => { const x = p.rk && p.rk[k]; return `<div class="rk-det-p"><div class="rk-det-h"><b>${RK_LBL[k]}</b><span class="${k === 'hs' ? cls(x && x.pts) : clsPts(x && x.pts, RK_MAX[k])}">${x && x.pts != null ? x.pts : 0} de ${RK_MAX[k]}</span></div><div class="fn-empty">${esc(rkTxt(k, x, mes))}</div></div>`; }).join('');
-    return `<tr class="rk-det"><td colspan="13"><p class="eyebrow">Pontos do Ranking — total ${p.score == null ? '—' : p.score} de 600</p><div class="rk-det-grid">${soma}</div><p class="eyebrow">Como o Health Score de ${esc(primeiro(p.nome))} foi formado</p><div class="rk-det-grid">${blocos}</div><div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
+  // detalhamento ao clicar no colaborador (André, 26/10/26): de onde vem cada ponto, a régua com a faixa atual, o que falta
+  // pra próxima faixa e, na visão de hoje, como o Health Score foi formado cliente a cliente
+  const SEG_COR = { hs: 'var(--creme)', renovacao: 'var(--flag-green)', vendas: 'var(--ambar)', nrr: 'var(--fn-social)' };
+  const brl = (n) => Number(n).toLocaleString('pt-BR');
+  function reguaHTML(k, R, x) {
+    const rg = (R && R.regua) || {};
+    let itens = [];
+    if (k === 'renovacao') itens = (rg.renovacao || []).map(([lim, pts]) => ({ rot: `${lim}%+`, pts })).concat([{ rot: 'abaixo de 60%', pts: 0 }]);
+    else if (k === 'nrr') itens = (rg.nrr || []).map(([lim, pts]) => ({ rot: `${lim}%+`, pts })).concat([{ rot: 'abaixo de 100%', pts: 0 }]);
+    else if (k === 'vendas') itens = (rg.vendas || []).map((r) => ({ rot: r.faixa, pts: r.pts })).reverse().concat([{ rot: 'sem venda', pts: 0 }]);
+    const atual = x && x.pts != null ? x.pts : null;
+    return `<div class="rk-regua">${itens.map((r) => `<span class="rk-regua-i${atual === r.pts && (atual > 0 || x.pct != null || k === 'vendas') ? ' is-on' : ''}">${esc(r.rot)} <b>${r.pts}</b></span>`).join('')}</div>`;
+  }
+  function cardPilar(k, p, R, mes) {
+    const x = (p.rk && p.rk[k]) || {};
+    const pts = x.pts == null ? 0 : x.pts;
+    let corpo = '', falta = '';
+    if (k === 'hs') {
+      corpo = x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2 com dado) — fica sem posição.' : `Média ponderada dos pilares com dado:`;
+      corpo += `<div class="rk-mini">${PILARES.map((kk) => { const y = p.pilares[kk]; return `<span>${LBL[kk]} <i>peso ${y && y.peso || ''}</i> <b class="${cls(y && y.nota)}">${y && y.nota != null ? y.nota : '—'}</b></span>`; }).join('')}</div>`;
+      if (x.pts != null && x.pts < 100) falta = x.pts >= 90 ? 'faixa verde (≥ 90)' : x.pts >= 70 ? `faltam ${90 - x.pts} pra faixa verde (90)` : `faltam ${70 - x.pts} pra faixa amarela (70)`;
+    } else if (k === 'renovacao') {
+      corpo = x.pct == null ? `Sem % de renovação no card de ${mesLongo(mes)}.` : `<b>${pct1(x.pct)}</b> de renovação em ${mesLongo(mes)}${x.totais ? ` — ${x.ativos} de ${x.totais} cliente${x.totais === 1 ? '' : 's'} da carteira continuaram${x.churn ? ` (${x.churn} saíram no mês)` : ''}` : ''}.`;
+      if (x.proxima) falta = `próxima faixa: ${x.proxima.alvo}% de renovação = ${x.proxima.pts} pontos`;
+    } else if (k === 'vendas') {
+      if (x.disponivel === false) corpo = 'Não deu pra ler as vendas do ClickUp agora.';
+      else if (!x.recebimentos) corpo = `Nenhum Cross Sell ou Up Sell recebido em ${mesLongo(mes)} com ${esc(primeiro(p.nome))} como Closer (ou Responsável, quando o card não tem Closer).`;
+      else corpo = `<b>${esc(x.faixa)}</b> recebidos em ${mesLongo(mes)}:<ul class="rk-itens">${(x.itens || []).map((it) => `<li><i>${esc(it.dia)}</i> ${esc(it.tipo)} · ${esc(it.nome)}${it.dividido ? ` <small class="na">(dividido entre ${it.dividido})</small>` : ''}</li>`).join('')}</ul>`;
+      if (x.proxima) falta = `próxima faixa: ${x.proxima.faixa} = ${x.proxima.pts} pontos`;
+    } else if (k === 'nrr') {
+      corpo = x.pct == null ? `Sem NRR no card de ${mesLongo(mes)} (sem carteira com receita no início do mês).` : `<b>${pct1(x.pct)}</b> de NRR em ${mesLongo(mes)} — receita da carteira no mês comparada com a do início do mês (com cross sell, upsell, downsell e churn).`;
+      if (x.proxima) falta = `próxima faixa: NRR de ${brl(x.proxima.alvo)}% = ${x.proxima.pts} pontos`;
+    }
+    const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
+    return `<div class="rk-card"><div class="rk-det-h"><b>${RK_LBL[k]}</b><span class="rk-card-pts ${c}">${pts}</span><small class="na">de ${RK_MAX[k]}</small></div><div class="rk-card-txt">${corpo}</div>${k === 'hs' ? '' : reguaHTML(k, R, x)}${falta ? `<div class="rk-falta">↗ ${esc(falta)}</div>` : ''}</div>`;
+  }
+  function detalheHTML(p, d, hoje) {
+    const R = d.regras || {};
+    const mes = (p.vendas && p.vendas.mes) || (hoje ? mesAtual() : d.mes);
+    const total = p.score == null ? 0 : p.score;
+    const barra = `<div class="rk-barra" title="total ${total} de 600">${RK.map((k) => { const v = (p.rk && p.rk[k] && p.rk[k].pts) || 0; return v ? `<span class="rk-seg" style="width:${(v / 600) * 100}%;background:${SEG_COR[k]}" title="${RK_LBL[k]}: ${v}"></span>` : ''; }).join('')}</div><div class="rk-legenda">${RK.map((k) => `<span><i style="background:${SEG_COR[k]}"></i>${RK_LBL[k]} ${(p.rk && p.rk[k] && p.rk[k].pts) || 0}</span>`).join('')}</div>`;
+    const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}${!hoje && p.dias ? ` · ${p.dias} foto${p.dias === 1 ? '' : 's'} no mês · melhor ${p.melhorPosicao || '—'}º, pior ${p.piorPosicao || '—'}º` : ''}</div>${barra}</div>`;
+    const cards = `<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div>`;
+    let hsCli = '';
+    if (hoje) {
+      hsCli = `<p class="eyebrow rk-det-eyebrow">Como o Health Score de ${esc(primeiro(p.nome))} foi formado, cliente a cliente</p><div class="rk-det-grid">` + PILARES.map((k) => {
+        const x = p.pilares[k];
+        if (!x || !x.porCliente || !x.porCliente.length) return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="na">sem dado</span></div><div class="fn-empty">${k === 'trafego' ? 'a pessoa não é gestor de tráfego nem responsável pelos posts de Social, Audiovisual ou RP em nenhum cliente com dado' : 'nenhum cliente com dado neste pilar'}</div></div>`;
+        return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="${cls(x.nota)}">nota ${x.nota}</span><small class="na">peso ${x.peso} · ${x.n} cliente${x.n === 1 ? '' : 's'}${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}</small></div>
+          <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
+      }).join('') + '</div>';
+    } else {
+      hsCli = `<p class="rk-nota-mes na">No mês, o Health Score é a média das fotos diárias (${p.dias || 0}). O detalhe cliente a cliente fica na visão "hoje".</p>`;
+    }
+    return `<tr class="rk-det"><td colspan="13">${cab}${cards}${hsCli}<div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
   }
 
   function paint() {
@@ -117,7 +162,7 @@
       const tds = hoje
         ? `<td class="hs-td rk-td-delta" title="variação do Health Score">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
         : `<td class="hs-td na">${p.melhorPosicao || '—'}º · ${p.piorPosicao || '—'}º</td>`;
-      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="${hoje ? 'ver como os pontos foram formados' : 'Health Score: média das fotos do mês'}"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}</tr>${aberto && hoje ? detalheHTML(p) : ''}`;
+      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}${PILARES.map((k) => celPilar(k, p, hoje)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
     };
 
     el.innerHTML = `

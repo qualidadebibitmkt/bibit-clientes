@@ -30,8 +30,9 @@ const BRT = 'America/Sao_Paulo';
 const diaBR = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: BRT, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
 
 // fora do ranking: quem saiu (Beltrão) e a Web Designer (Michelle) — decisão do André em 23/10/26: Web Design não entra no
-// Ranking (ela segue na aba Colaborador e nos pilares). Will entra (André, 22/10/26) — por isso não usa o FORA_PLACAR do colab.js
-const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle'];
+// Ranking (ela segue na aba Colaborador e nos pilares). Não usa o FORA_PLACAR do colab.js.
+// Will (Head/Estrategista) saiu do Ranking em 26/10/26 — decisão do André ("ele não faz mais parte")
+const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle', 'willian pereira', 'willian'];
 const fora = (nome) => { const n = norm(nome); return FORA.some((x) => n === norm(x) || n.startsWith(norm(x) + ' ')); };
 
 const round0 = (n) => Math.round(n);

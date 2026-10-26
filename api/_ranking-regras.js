@@ -26,6 +26,9 @@ const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').tri
 const CF_RENOV = '98af79e4-c1dd-49e7-badd-ae76546833fa'; // % Renovação Contratual
 const CF_NRR = 'dbeb96f2-e705-44c9-ba2c-c0f2ab8851e7';   // NRR Individual
 const CF_PESSOA = '202d0b1a-6350-4835-adaf-820bf094dd10';
+const CF_ATIVOS = '8e75aeed-2d48-407f-93d5-f750fd5d118a';  // Clientes Ativos
+const CF_TOTAIS = '5a869c78-ddcb-46bd-b9d4-4944aa84d215';  // Clientes Totais (ativos + churn do mês)
+const CF_CHURN = 'd39fff04-d330-4738-80ab-1b71439de504';   // Churn (nº de clientes no mês)
 function cardsPorMes(tasks = []) {
   const out = {};
   for (const t of tasks) {
@@ -37,22 +40,26 @@ function cardsPorMes(tasks = []) {
     const renov = num(cf(CF_RENOV) && cf(CF_RENOV).value);
     let nrr = num(cf(CF_NRR) && cf(CF_NRR).value);
     if (nrr === 0) nrr = null; // 0 = sem carteira/base no mês (ex.: Rômulo em out/26), não "NRR zero"
-    (out[mes] = out[mes] || {})[norm(nome)] = { renovacao: renov, nrr };
+    const ativos = num(cf(CF_ATIVOS) && cf(CF_ATIVOS).value), totais = num(cf(CF_TOTAIS) && cf(CF_TOTAIS).value), churn = num(cf(CF_CHURN) && cf(CF_CHURN).value);
+    (out[mes] = out[mes] || {})[norm(nome)] = { renovacao: renov, nrr, ativos, totais, churn };
   }
   return out;
 }
+
+// próxima faixa da régua acima da pontuação atual (pra mostrar "o que falta")
+function proxima(pts, regua) { const r = [...regua].reverse().find(([, p]) => p > (pts || 0)); return r ? { alvo: r[0], pts: r[1] } : null; }
 
 function pilaresRanking({ hsBase, hsInsuficiente, vendas, card }) {
   const renovPct = card ? card.renovacao : null;
   const nrrPct = card ? card.nrr : null;
   const p = {
     hs: { pts: hsInsuficiente || hsBase == null ? null : hsBase, max: 100 },
-    renovacao: { pct: renovPct, pts: pontosRenovacao(renovPct), max: 100 },
-    vendas: { pts: vendas ? vendas.pts : null, faixa: vendas ? vendas.faixa : null, recebimentos: vendas ? vendas.recebimentos : 0, disponivel: vendas ? vendas.disponivel !== false : false, max: 200 },
-    nrr: { pct: nrrPct, pts: pontosNrr(nrrPct), max: 200 },
+    renovacao: { pct: renovPct, pts: pontosRenovacao(renovPct), max: 100, ativos: card ? card.ativos : null, totais: card ? card.totais : null, churn: card ? card.churn : null, proxima: renovPct == null ? null : proxima(pontosRenovacao(renovPct), REGUA_RENOVACAO) },
+    vendas: { pts: vendas ? vendas.pts : null, faixa: vendas ? vendas.faixa : null, recebimentos: vendas ? vendas.recebimentos : 0, itens: vendas ? vendas.itens || [] : [], proxima: vendas ? vendas.proxima || null : null, disponivel: vendas ? vendas.disponivel !== false : false, max: 200 },
+    nrr: { pct: nrrPct, pts: pontosNrr(nrrPct), max: 200, proxima: nrrPct == null ? null : proxima(pontosNrr(nrrPct), REGUA_NRR) },
   };
   const total = PILARES_RK.reduce((s, k) => s + (p[k].pts || 0), 0);
   return { rk: p, total };
 }
 
-module.exports = { REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };
+module.exports = { proxima, REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };
