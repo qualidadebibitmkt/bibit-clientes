@@ -213,7 +213,7 @@ const TTL_SHOT = 60 * 86400;
 async function capturarUm(p, agora) {
   let r;
   // trava de tempo: página que não termina de carregar não pode prender a fila (a função morreria aos 300 s sem gravar nada)
-  try { r = await Promise.race([PR.capturar(p.url), new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado (120 s) abrindo a página')), 120000))]); } catch (e) { r = { telas: {}, idade: {}, log: [String(e.message || e).slice(0, 200)] }; }
+  try { r = await Promise.race([PR.capturar(p.url), new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado (230 s) abrindo a página')), 230000))]); } catch (e) { r = { telas: {}, idade: {}, log: [String(e.message || e).slice(0, 200)] }; }
   const ks = Object.keys(r.telas);
   if (!ks.length) { p.printsErro = { em: agora, msg: (r.log || []).join(' · ').slice(0, 300) || 'sem print' }; await D.gravar(p); return { ok: false, erro: p.printsErro.msg }; }
   await wa.redisPipeline(ks.flatMap((k) => [['SET', `iqw:shot:${p.id}:${k}`, r.telas[k].b64], ['EXPIRE', `iqw:shot:${p.id}:${k}`, String(TTL_SHOT)]]));
@@ -242,7 +242,7 @@ async function capturarPrints(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(r.ok ? 200 : 502).json({ projetoId: p.id, cliente: p.cliente, ...r });
 }
-const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || (p.prints.captura || 2) < CAPTURA_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < 20 * 3600000);
+const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || (p.prints.captura || 2) < CAPTURA_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < (/tempo esgotado \(120/.test(p.printsErro.msg) ? 0 : 20 * 3600000));
 async function capturarLote(req, res, agora) {
   const t0 = Date.now();
   const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (Number(!!a.prints) - Number(!!b.prints)) || (num(b.conclusao) || 0) - (num(a.conclusao) || 0)); // sem print nenhum primeiro
