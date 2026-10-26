@@ -467,8 +467,11 @@ module.exports = async (req, res) => {
       const late = abertas.filter(isLateT).length + concl.filter(conclForaT).length;
       return Math.round(((total - late) / total) * 1000) / 10;
     };
-    // campanha parada (André, 21/10/26): zera o tráfego depois de 7 dias em execução; briefing nunca conta
+    // campanha parada (André, 21/10/26): zera o tráfego depois de 7 dias em execução. Antes da execução (novo cliente,
+    // briefing, estratégia, kickoff) e em paralisado, campanha parada nunca conta — o tráfego fica fora (André, 26/10/26)
     const stKey = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+    const SEM_CARGA_TRAFEGO = new Set(['novocliente', 'briefing', 'estrategia', 'kickoff', 'paralisado']);
+    const tarefasDe = (cid) => { const ts = tasks.filter((t) => t.clienteId === cid); return { abertas: ts.filter(isOpenT).length, concluidas30d: ts.filter(concluidaT).length }; };
     // Resultado (André, 22/10/26): performance de conteúdo por área (IQC) entra no pilar junto com o tráfego.
     // Métricas por post vivem no Redis; se o Redis não responder, o pilar segue só com tráfego.
     let conteudoPorCliente = {};
@@ -496,10 +499,10 @@ module.exports = async (req, res) => {
       id: c.id, tipoRelatorio: c.tipoRelatorio, hs: c.hs, conteudo: c.conteudo,
       csat: c.metrics?.csat ?? null, nps: c.metrics?.nps ?? null, prodPct: prodDe(c.id),
       contato: c.contato?.nota ?? null,
-      campanhaParada: !!(c.campanha && c.campanha.rodando === false) && stKey(c) !== 'briefing',
+      campanhaParada: !!(c.campanha && c.campanha.rodando === false) && !SEM_CARGA_TRAFEGO.has(stKey(c)),
       diasExec: c.dataEntradaExec ? (Date.now() - c.dataEntradaExec) / 864e5 : null,
     })));
-    for (const c of clients) c.healthScore = hsResultados[c.id] || null;
+    for (const c of clients) { c.healthScore = hsResultados[c.id] || null; c.tarefas30d = tarefasDe(c.id); }
 
     // ---- hora da última análise de contato (marcada pelo Make ao ler a transcrição) ----
     try {

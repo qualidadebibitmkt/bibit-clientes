@@ -42,6 +42,7 @@ module.exports = async (req, res) => {
         ? Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, p]) => [k, p.nota]))
         : null,
       atualizadoEm: c.hs?.atualizadoEm ?? null,
+      tarefas: c.tarefas30d || null, // abertas + concluídas nos últimos 30 dias (base da Produtividade)
     }));
 
   res.status(200).json({ generatedAt: captured.generatedAt, count: rows.length, clientes: rows });

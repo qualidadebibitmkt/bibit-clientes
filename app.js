@@ -114,9 +114,12 @@
   const temAlertaWA = (c) => !!(c.contato && (c.contato.iec ? /CRÍTICO|ALTO/.test(c.contato.iec.nivelAlerta || '') : (c.contato.resumo && ALERTA_RX.test(c.contato.resumo))));
   // nunca respondeu CSAT (Bruno, 25/09/26): cliente sem nenhuma resposta na lista de CSAT; quem ainda está em briefing não conta
   // campanha de anúncios parada (Bruno, 28/09/26): Reportei ligado, coleta feita, mas sem investimento na última semana
-  const semCampanha = (c) => !!(c.campanha && c.campanha.rodando === false) && stKeyOf(c) !== 'briefing';
+  // antes da execução (novo cliente, briefing, estratégia, kickoff) e em paralisado, campanha parada não conta (André, 26/10/26)
+  const SEM_CARGA_TRAFEGO = new Set(['novocliente', 'briefing', 'estrategia', 'kickoff', 'paralisado']);
+  const semCampanha = (c) => !!(c.campanha && c.campanha.rodando === false) && !SEM_CARGA_TRAFEGO.has(stKeyOf(c));
   // campanha parada: nos 7 primeiros dias de execução não pesa (carência); depois zera o tráfego (André, 21/10/26)
-  const campCarencia = (c) => semCampanha(c) && !(c.healthScore && c.healthScore.pilares && c.healthScore.pilares.trafego.nota === 0);
+  // olha a FRENTE de tráfego — desde 22/10 a nota do pilar é o Resultado (média com conteúdo), não só o tráfego
+  const campCarencia = (c) => semCampanha(c) && c.healthScore?.pilares?.trafego?.frentes?.trafego?.nota !== 0;
   const campEfeito = (c) => (campCarencia(c) ? 'em carência (7 dias) — tráfego fora do score' : 'tráfego zerado no score');
   const nuncaCSAT = (c) => (!c.metrics || !c.metrics.respostas) && stKeyOf(c) !== 'briefing';
   function maduroDe(c) {
