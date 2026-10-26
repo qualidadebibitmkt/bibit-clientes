@@ -482,6 +482,11 @@ module.exports = async (req, res) => {
     if (acao === 'log') { const l = await wa.redis(['LRANGE', 'iqc:log', '0', '29']); res.status(200).json({ log: (l || []).map((x) => { try { return JSON.parse(x); } catch { return x; } }) }); return; }
     if (acao === 'metricas' && post) return await gravarMetricas(req, res, agora);
     if (acao === 'aprov-insumo') return await aprovInsumo(req, res, agora);
+    if (acao === 'links-pendentes') { // tarefas com link do Instagram no "ID Post Meta" esperando virar ID (Make → Instagram → ClickUp)
+      const painel = await lerPainel(req);
+      const lista = (painel.tasks || []).filter((t) => t.igLink && !t.igId && t.clienteName).map((t) => ({ taskId: t.id, nome: t.name, area: t.listKey, cliente: t.clienteName, shortcode: t.igLink }));
+      res.setHeader('Cache-Control', 'no-store'); res.status(200).json({ total: lista.length, pendentes: lista }); return;
+    }
     if (acao === 'aprov-limpar') { // remove as aprovações automáticas (whatsapp/tácita) dos posts de um mês — decisão de gestor fica
       const mes = String(req.query.mes || ''); if (!/^\d{4}-\d{2}$/.test(mes)) { res.status(400).json({ error: 'mes' }); return; }
       const painel = await lerPainel(req); const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.mes === mes);

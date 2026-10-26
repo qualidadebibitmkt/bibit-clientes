@@ -43,6 +43,9 @@ const CF_DATA_AGENDAMENTO = 'df70c49b-b84b-418f-a0f9-df8c53e24fe2';
 const CF_ID_POST_META = '8e5227c0-2a2d-4200-8d3c-8e9477c64c75';
 const CF_TIPO_POST = 'd94df729-10bc-4f9f-9abd-3755ccff3254';
 // "IG: 123 | FB: 456_789" (IG+FB / carrossel) ou só "123" (foto / reel). Post só de Facebook (tem "_") não tem insight do Instagram.
+// link do Instagram colado no "ID Post Meta" (post publicado à mão, fora do publicador — André, 26/10/26): guarda o
+// código do post; uma automação do Make troca o link pelo ID e preenche a data de publicação (/api/iqc?acao=links-pendentes)
+function igShortcodeDe(txt) { const m = String(txt || '').match(/instagram\.com\/(?:[^/?#]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]{5,})/i); return m ? m[1] : null; }
 function igIdDe(txt) {
   const s = String(txt || '').trim(); if (!s) return null;
   if (/IG:/i.test(s)) { const m = s.match(/IG:\s*([0-9]+)/i); return m ? m[1] : null; }
@@ -183,6 +186,7 @@ function shapeOperacaoTask(task, listKey) {
     assigneeIds: (task.assignees || []).map((u) => u && u.id).filter(Boolean),
     // IQC: só nas listas de conteúdo
     igId: ['social', 'audiovisual', 'rp'].includes(listKey) ? igIdDe(cfText(getCF(task, CF_ID_POST_META))) : null,
+    igLink: ['social', 'audiovisual', 'rp'].includes(listKey) ? igShortcodeDe(cfText(getCF(task, CF_ID_POST_META))) : null,
     tipoPost: ['social', 'audiovisual', 'rp'].includes(listKey) ? (cfDropdown(getCF(task, CF_TIPO_POST))?.name || null) : null,
   };
 }
