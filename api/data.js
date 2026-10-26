@@ -455,8 +455,17 @@ module.exports = async (req, res) => {
       if (!c) c = matcher(t.name);
       if (!c) return;
       if (!expMap.has(c.id)) expMap.set(c.id, []);
-      const valor = origem === 'cross' ? cfNumber(getCF(t, CF_VALOR_VENDA)) : (cfNumber(getCF(t, CF_DIFERENCA)) ?? cfNumber(getCF(t, CF_VALOR_VENDA)));
+      // upsell: mesma ordem do Ranking (_vendas.js) — Diferença; senão Plano Atual − Plano Antigo; senão Valor da Venda
+      const CF_PLANO_ATUAL = 'd159b59c-0bcb-44c4-a360-951884e72045', CF_PLANO_ANTIGO = 'ac36c53a-d748-4e3c-bfa6-a21cda34b8d1';
       const filhos = origem === 'cross' ? (filhosDe.get(t.id) || []) : [];
+      let valor;
+      if (origem === 'cross') {
+        valor = cfNumber(getCF(t, CF_VALOR_VENDA));
+        if (!(valor > 0) && filhos.length) { const soma = filhos.reduce((a, f) => a + (cfNumber(getCF(f, CF_VALOR_VENDA)) || 0), 0); valor = soma > 0 ? soma : valor; } // venda só com valor nas parcelas
+      } else {
+        const dif = cfNumber(getCF(t, CF_DIFERENCA)); const pa = cfNumber(getCF(t, CF_PLANO_ATUAL)), pb = cfNumber(getCF(t, CF_PLANO_ANTIGO));
+        valor = dif != null ? dif : pa != null && pb != null ? pa - pb : cfNumber(getCF(t, CF_VALOR_VENDA));
+      }
       let recebido = null, situacao = stTxt(t) || null;
       if (filhos.length) {
         const rec = filhos.filter((f) => RECEBIDO.test(stTxt(f)));
@@ -467,7 +476,7 @@ module.exports = async (req, res) => {
       expMap.get(c.id).push({
         nome: t.name,
         quando: Number(t.due_date || t.date_created) || null,
-        origem, valor: valor != null && valor > 0 ? valor : null, recebido, situacao,
+        origem, valor: valor != null && (valor > 0 || (origem === 'upsell' && valor < 0)) ? valor : null, recebido, situacao,
       });
       // REGRA DA CASA (Bruno, 01/09/26): cross-sell é SEMPRE venda pontual — nunca
       // entra no NRR. Só UPSELL expande mensalidade (via campo Valor Recorrente).
