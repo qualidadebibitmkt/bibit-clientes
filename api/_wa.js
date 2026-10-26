@@ -4,7 +4,8 @@
 // possíveis; suportamos os dois).
 //
 // Privacidade: guardamos só grupo, nome de exibição, últimos 4 dígitos do número,
-// data e texto — por 8 dias (chave diária com expiração), pra análise semanal. Nada
+// data e texto — por 25 dias (chave diária com expiração). 25 dias cobrem o ciclo inteiro de aprovação do
+// calendário (envio no dia 20 → aprovação até o dia 10 do mês seguinte; 26/10/26). O IEC segue lendo só 7 dias. Nada
 // disso vai pro ClickUp ou pro navegador; só a nota e o resumo gerados pela análise.
 
 const REST_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '';
@@ -13,7 +14,7 @@ const REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_A
 // Token que protege os endpoints (query ?t=). Override por env quando quiser rotacionar.
 const INBOUND_TOKEN = process.env.WA_INBOUND_TOKEN || 'fcauXax-ED89jAjgX-jSBqQeeCRhHUO6';
 
-const TTL_DIAS = 8;
+const TTL_DIAS = 25;
 
 function redisReady() { return !!(REST_URL && REST_TOKEN); }
 

@@ -154,7 +154,12 @@ Classifique cada post da lista:
 Regras:
 - Aprovação em bloco ("calendário aprovado", "pode seguir com tudo", "tá ótimo") vale "sem_ajustes" para todos os posts, exceto os que o cliente citou com ajuste.
 - Só pessoas do lado do CLIENTE decidem. Cada linha já vem marcada pelo sistema: [CLIENTE] pode aprovar; [BIBIT] e [AUTOMAÇÃO] são da agência e NÃO são aprovação.
-- Silêncio não é aprovação. Elogio sem decisão ("ficou lindo") não é aprovação sozinho, salvo se acompanhado de ok/pode seguir.
+- Silêncio não é aprovação.
+- Reação POSITIVA do cliente ao calendário enviado É aprovação, mesmo sem a palavra "aprovado": "ficou ótimo", "amei", "adorei", "perfeito", "sensacional", "top", "tudo certo", "pode seguir", 👍/✅ respondendo ao envio. Só não vale quando o elogio é claramente sobre outra coisa (um post já publicado, uma reunião, um vídeo).
+- Elogio + ajuste pontual ("ficou ótimo, só acrescentaria 'também' na legenda") = calendario.resposta "aprovado_com_ajustes": o post do ajuste vira "apos_ajustes" e os demais "sem_ajustes". Se não der pra saber qual post o ajuste atinge, só esse fica "revisar"; os demais continuam "sem_ajustes".
+- "Tive algumas considerações", "vou mandar os ajustes" sem dizer quais = "aprovado_com_ajustes" com os posts em "revisar" até os ajustes aparecerem na conversa.
+- Resposta do cliente com áudio ou documento sem texto: não dá pra saber o conteúdo — marque "revisar" e diga isso no motivo.
+- Pedido de adiamento ("vamos aguardar pra semana que vem") não é aprovação nem reprovação: "sem_resposta".
 - Use SOMENTE o que está na transcrição. Não invente decisões. Se um post já consta como decidido no "estado atual" e não há mensagem nova sobre ele, repita o estado atual.
 - Identifique o post pelo número ("post 3"), pela data ("o do dia 12"), pelo tema/legenda ou pela ordem citada. Em dúvida, "revisar".
 - "evidencia" = trecho literal (até 160 caracteres) da mensagem do cliente, com data/hora como aparece na transcrição.
@@ -194,7 +199,17 @@ async function aprovInsumo(req, res, agora) {
     if (!c || !c.waGrupo || !ATIVOS.includes(stKey(c))) continue;
     const grupo = wa.normGrupo(c.waGrupo);
     let msgs = [];
-    try { msgs = await wa.lerMsgs(grupo, 7, agora); } catch { continue; }
+    // janela da aprovação: desde o dia 18 do mês anterior ao do calendário (o envio é no dia 20) até agora — antes eram
+    // só 7 dias e a mensagem de envio saía da janela antes de o cliente responder (26/10/26)
+    const [cy, cm] = g.mes.split('-').map(Number);
+    const iniJanela = Date.UTC(cy, cm - 2, 18) + BRT_OFF;
+    const diasJanela = Math.min(wa.TTL_DIAS - 1, Math.max(7, Math.ceil((agora - iniJanela) / 864e5)));
+    try {
+      msgs = (await wa.lerMsgs(grupo, diasJanela, agora)).filter((m) => m.t >= iniJanela);
+      // as chaves antigas foram gravadas com validade de 8 dias: estica pra validade nova enquanto o calendário está em aprovação
+      const ks = []; for (let i = 0; i <= diasJanela; i++) ks.push(['EXPIRE', wa.keyFor(grupo, wa.dayKey(agora - i * 864e5)), String(wa.TTL_DIAS * 86400)]);
+      await wa.redisPipeline(ks);
+    } catch { continue; }
     await wa.carregarEquipe();
     const uteis = msgs.filter((m) => !/^\[reação/.test(String(m.m || '')));
     if (!uteis.length) continue;
@@ -205,7 +220,7 @@ async function aprovInsumo(req, res, agora) {
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
     const mesNome = `${MESES[Number(g.mes.slice(5)) - 1].toUpperCase()}/${g.mes.slice(0, 4)}`;
-    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (últimos 7 dias, ${uteis.length} mensagens):\n${transcricao}`;
+    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (desde o envio do calendário, ${uteis.length} mensagens):\n${transcricao}`;
     out.push({ clienteId: g.clienteId, cliente: g.cliente, mes: g.mes, posts: g.posts.length, pendentes: g.pendentes, mensagens: uteis.length, prompt });
   }
   res.setHeader('Cache-Control', 'no-store');
@@ -222,7 +237,7 @@ function parseJsonIA(b) {
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
 // versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
-const VERSAO_APROV = '2026-10-26.1';
+const VERSAO_APROV = '2026-10-26.2';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');
