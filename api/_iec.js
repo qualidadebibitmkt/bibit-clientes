@@ -96,6 +96,8 @@ function parseExtracao(txt) {
 const arr = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 const bool = (x) => x === true || String(x).toLowerCase() === 'true' || String(x).toLowerCase() === 'sim';
 const limpa = (s, n) => String(s || '').replace(/[*"\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, n);
+// corta no fim de palavra (com reticências), nunca no meio — "Prazo de b" aparecia na ficha
+const cortaFrase = (s, n) => { const t = limpa(s, 10000); if (t.length <= n) return t; const c = t.lastIndexOf(' ', n - 1); return (c > n * 0.6 ? t.slice(0, c) : t.slice(0, n - 1)).replace(/[\s,;:.\-]+$/, '') + '…'; };
 
 // ---- cálculo ------------------------------------------------------------------
 // extracao: objeto da IA (ver prompt). codigo: metricasCliente() do buffer. anterior: registro do dia anterior (ou null).
@@ -149,15 +151,18 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   // alertas: IA + código, sempre em TIPOS CANÔNICOS (o nível vem da regra, não da IA); um por tipo; carrega a data de
   // identificação do dia anterior quando o alerta persiste
   const alertas = [];
-  const push = (nivel, tipo, descricao) => { if (!nivel || !tipo) return; const t = limpa(tipo, 60); if (alertas.some((a) => a.tipo.toLowerCase() === t.toLowerCase())) return; alertas.push({ nivel, tipo: t, descricao: limpa(descricao, 160) }); };
+  const push = (nivel, tipo, descricao) => { if (!nivel || !tipo) return; const t = limpa(tipo, 60); if (alertas.some((a) => a.tipo.toLowerCase() === t.toLowerCase())) return; alertas.push({ nivel, tipo: t, descricao: cortaFrase(descricao, 220) }); };
+  // "pergunta do cliente sem resposta da Bibit" só vale quando o CÓDIGO confirma um turno do cliente em aberto: o código
+  // sabe quem é Bibit e quem é cliente; a IA já atribuiu ao cliente uma pergunta enviada pela Bibit (André, 26/10/26 —
+  // cliente que nem escreveu na semana apareceu com "pergunta sem resposta"). Nesse caso vale a descrição do código.
   for (const a of arr(ex.alertas)) {
     if (!a) continue;
     const c = canonAlerta(a.nivel, a.tipo, a.descricao);
+    if (c && c.tipo === TIPOS.perguntaSemResposta) continue; // vem só do código (abaixo)
     if (c) push(c.nivel, c.tipo, a.descricao || a.tipo);
   }
   if (ameaca) push('CRÍTICO', TIPOS.ameaca, c4.evidencia || 'cliente ameaçou cancelar');
   if (graveNaoResolvida) push('CRÍTICO', TIPOS.grave, c4.evidencia || 'reclamação grave sem resolução');
-  for (const p of arr(ex.perguntas_cliente_sem_resposta)) if (p) push('ALTO', TIPOS.perguntaSemResposta, p.o_que || p.descricao || p);
   for (const p of (cod.semRespostaBibit || [])) push('ALTO', TIPOS.perguntaSemResposta, `${p.s}: ${p.m}`);
   if (c2.pendentes) push('MODERADO', TIPOS.solicitacaoPendente, `${c2.pendentes} solicitação(ões) aguardando o cliente`);
   if (delta != null && delta <= -10) push('MODERADO', TIPOS.queda, `IEC caiu ${Math.abs(delta)} pontos em relação a ${anterior.dia}`);
@@ -196,18 +201,27 @@ function calcularIEC({ extracao, codigo, anterior, agora = Date.now(), dia }) {
   };
 }
 
-// RESUMO final no formato do campo "HS · Resumo WhatsApp": cabeçalho quantitativo + narrativa da IA + alertas. Sem
-// markdown, sem aspas duplas, sem quebra de linha. Alvo 150–400 caracteres (corte em 400 no fim de frase).
-function montarResumo(r) {
+// RESUMO final no formato do campo "HS · Resumo WhatsApp" — em português simples, sem sigla (André, 26/10/26: "tem que ser
+// algo claro"). Números do pilar Relacionamento + narrativa da IA + pontos de atenção. Sem markdown, sem aspas duplas, sem
+// quebra de linha. Alvo 150–400 caracteres (corte em 400 no fim de frase).
+function variacaoTexto(r) {
   const fmtDia = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
-  const sinal = r.delta == null ? 'sem histórico anterior' : `${r.delta > 0 ? '+' : ''}${r.delta} vs ${fmtDia(r.anterior.dia)} (${r.evolucao.toLowerCase()})`;
+  if (r.delta == null) return 'primeira medição';
+  if (r.delta === 0) return `igual a ${fmtDia(r.anterior.dia)}`;
+  return `${r.delta > 0 ? 'subiu' : 'caiu'} ${Math.abs(r.delta)} ponto${Math.abs(r.delta) === 1 ? '' : 's'} desde ${fmtDia(r.anterior.dia)}`;
+}
+function montarResumo(r) {
   const c = r.criterios;
-  const partes = [`${c.presenca.dias} dia(s) ativo(s)`, c.responsividade.aplicavel ? `responsividade ${c.responsividade.taxa}%` : 'responsividade N/A', `${c.iniciativa.n} iniciativa(s)`, c.tom.aplicavel ? `tom ${c.tom.pts}/40` : 'tom N/A'];
-  const teto = r.tetoAplicado != null ? ` Teto ${r.tetoAplicado} aplicado: ${r.tetos.map((t) => t.motivo).join('; ')}.` : '';
-  let txt = `IEC ${r.iec} (${r.classificacao}, ${sinal}): ${partes.join(', ')}.${teto}`;
+  const fatos = [
+    `cliente escreveu em ${c.presenca.dias} de 7 dias`,
+    c.responsividade.aplicavel ? `respondeu ${c.responsividade.respondidas} de ${c.responsividade.elegiveis} pedido${c.responsividade.elegiveis === 1 ? '' : 's'} da Bibit` : 'nenhum pedido da Bibit vencido',
+    `puxou assunto ${c.iniciativa.n} ${c.iniciativa.n === 1 ? 'vez' : 'vezes'}`,
+  ];
+  if (c.tom.aplicavel) fatos.push(`tom ${c.tom.nivel === 'insatisfacao' ? 'de insatisfação' : c.tom.nivel}`);
+  const teto = r.tetoAplicado != null ? ` Nota limitada a ${r.tetoAplicado}: ${r.tetos.map((t) => t.motivo).join('; ')}.` : '';
+  let txt = `Relacionamento ${r.iec}/100, ${r.classificacao.toLowerCase()} (${variacaoTexto(r)}). Últimos 7 dias: ${fatos.join(', ')}.${teto}`;
   if (r.resumoIA) txt += ' ' + r.resumoIA.replace(/\.?$/, '.');
-  if (r.alertas.length) txt += ' Alertas: ' + r.alertas.slice(0, 3).map((a) => `${a.nivel} ${a.tipo}${a.status === 'persistente' ? ` (desde ${fmtDia(a.desde)})` : ''}`).join('; ') + '.';
-  else txt += ' Sem alerta.';
+  if (r.alertas.length) txt += ' Atenção: ' + r.alertas.slice(0, 3).map((a) => a.tipo).join('; ') + '.';
   txt = txt.replace(/[*"\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   if (txt.length > 400) { const corte = txt.lastIndexOf('. ', 399); txt = (corte > 150 ? txt.slice(0, corte + 1) : txt.slice(0, 397) + '...'); }
   return txt;

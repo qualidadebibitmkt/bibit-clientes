@@ -531,6 +531,9 @@ module.exports = async (req, res) => {
           if (c.contato) {
             c.contato.equipe = { ...met, semana: msgs.length }; c.contato.pareceres = pareceres;
             const ult = hist[0] || null;
+            // registros gravados antes da correção de 26/10/26 podem trazer "pergunta do cliente sem resposta" que na
+            // verdade era mensagem da Bibit: sem nenhum dia com mensagem do cliente, esse alerta é impossível — sai
+            if (ult && ult.criterios && ult.criterios.presenca && !ult.criterios.presenca.dias) ult.alertas = (ult.alertas || []).filter((a) => !/^pergunta do cliente sem resposta/i.test(a.tipo || ''));
             // só números, rótulos e os textos já curados (resumo/alertas) saem ao navegador — nunca a transcrição
             c.contato.iec = ult ? {
               dia: ult.dia, em: ult.em, iec: ult.iec, classificacao: ult.classificacao, delta: ult.delta, evolucao: ult.evolucao, anterior: ult.anterior,

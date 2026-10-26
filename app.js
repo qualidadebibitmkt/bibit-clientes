@@ -435,21 +435,45 @@
     return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
   }
 
-  // detalhe do IEC (Índice de Engajamento do Cliente, diário desde 21/10/26): critérios, evolução, alertas e tendência
-  function iecDetalheHTML(iec) {
-    if (!iec) return '';
+  // detalhe do pilar Relacionamento (análise diária do grupo de WhatsApp) — em português simples, sem sigla (André, 26/10/26)
+  const NIVEL_LBL = { 'CRÍTICO': 'Crítico', ALTO: 'Alto', MODERADO: 'Moderado' };
+  // tira do resumo gravado no ClickUp o cabeçalho de números e a lista de alertas (já aparecem organizados acima) —
+  // aceita o formato antigo ("IEC 0 (CRÍTICO, …): … Teto … Alertas: …") e o novo ("Relacionamento 0/100, … Atenção: …")
+  function narrativaDoResumo(txt) {
+    let t = String(txt || '').trim();
+    t = t.replace(/^IEC \d+ \(.*?\)\):[^.]*\.\s*/, '').replace(/^Teto \d+ aplicado:[^.]*\.\s*/, '');
+    t = t.replace(/^Relacionamento \d+\/100,[^.]*?\)\.\s*Últimos 7 dias:[^.]*\.\s*/, '').replace(/^Nota limitada a \d+:[^.]*\.\s*/, '');
+    t = t.replace(/\s*(Alertas|Atenção):.*$/, '').replace(/\s*Sem alerta\.?$/, '');
+    return t.trim();
+  }
+  function iecDetalheHTML(iec, c) {
+    const resumo = narrativaDoResumo(c?.contato?.resumo);
+    const quando = c?.contato?.atualizadoEm ? `atualizado ${fmtCurto(c.contato.atualizadoEm)} às ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '';
+    if (!iec) return `${resumo ? `<p class="rel-resumo">${esc(resumo)}</p>` : ''}${quando ? `<p class="hs-regua">${quando}</p>` : ''}`;
     const cr = iec.criterios || {};
-    const crit = (lbl, c, extra) => c ? `<span class="iec-crit${c.aplicavel ? '' : ' na'}" title="${lbl}">${lbl} <b>${c.aplicavel ? `${c.pts}/${c.max}` : 'N/A'}</b>${extra ? `<i>${esc(extra)}</i>` : ''}</span>` : '';
-    const evo = iec.delta == null ? 'sem histórico anterior' : `${iec.delta > 0 ? '+' : ''}${iec.delta} pt vs ${iec.anterior ? fmtCurto(new Date(iec.anterior.dia + 'T12:00:00Z').getTime()) : 'anterior'} · ${(iec.evolucao || '').toLowerCase()}`;
+    const dt = (d) => fmtCurto(new Date(d + 'T12:00:00Z').getTime());
+    const evo = iec.delta == null ? 'primeira medição' : iec.delta === 0 ? `igual a ${iec.anterior ? dt(iec.anterior.dia) : 'ontem'}` : `${iec.delta > 0 ? 'subiu' : 'caiu'} ${Math.abs(iec.delta)} pt desde ${iec.anterior ? dt(iec.anterior.dia) : 'ontem'}`;
     const evoCls = iec.delta == null ? 'na' : iec.delta >= 1 ? 'g' : iec.delta === 0 ? 'y' : 'r';
-    const alertas = (iec.alertas || []).map((a) => `<span class="iec-alerta n-${a.nivel === 'CRÍTICO' ? 'c' : a.nivel === 'ALTO' ? 'a' : 'm'}" title="${a.status === 'persistente' ? 'identificado em ' + fmtCurto(new Date(a.desde + 'T12:00:00Z').getTime()) : 'novo hoje'}">${a.nivel} · ${esc(a.tipo)}${a.descricao ? `<i>${esc(a.descricao)}</i>` : ''}</span>`).join('');
     const hist = (iec.historico || []).filter((h) => h.iec != null);
-    const spark = hist.length > 1 ? `<span class="iec-spark" title="IEC dos últimos ${hist.length} dias">${hist.map((h) => `<i class="${h.iec >= 80 ? 'g' : h.iec >= 60 ? 'y' : 'r'}" style="height:${Math.max(2, Math.round(h.iec / 100 * 18))}px" title="${fmtCurto(new Date(h.dia + 'T12:00:00Z').getTime())}: ${h.iec}"></i>`).join('')}</span>` : '';
-    const teto = iec.tetoAplicado != null ? `<span class="iec-crit na" title="${esc((iec.tetos || []).map((t) => t.motivo).join('; '))}">teto <b>${iec.tetoAplicado}</b></span>` : '';
-    return `<div class="iec-box">
-      <div class="iec-head"><b>IEC ${iec.iec}</b> <span class="iec-class">${esc(iec.classificacao || '')}</span> <span class="iec-evo ${evoCls}">${evo}</span>${spark}</div>
-      <div class="iec-crits">${crit('Presença', cr.presenca, cr.presenca ? `${cr.presenca.dias} dia(s)` : '')}${crit('Responsividade', cr.responsividade, cr.responsividade?.aplicavel ? `${cr.responsividade.taxa}% (${cr.responsividade.respondidas}/${cr.responsividade.elegiveis})` : 'sem solicitação vencida')}${crit('Iniciativa', cr.iniciativa, cr.iniciativa ? `${cr.iniciativa.n}` : '')}${crit('Tom', cr.tom, cr.tom?.aplicavel ? (cr.tom.evidencia || cr.tom.nivel) : 'cliente não escreveu')}${teto}</div>
-      ${alertas ? `<div class="iec-alertas">${alertas}</div>` : ''}
+    const spark = hist.length > 1 ? `<span class="iec-spark" title="nota de Relacionamento dos últimos ${hist.length} dias">${hist.map((h) => `<i class="${h.iec >= 80 ? 'g' : h.iec >= 60 ? 'y' : 'r'}" style="height:${Math.max(2, Math.round(h.iec / 100 * 18))}px" title="${dt(h.dia)}: ${h.iec}"></i>`).join('')}</span>` : '';
+    const item = (lbl, valor, c2, extra) => c2 ? `<div class="rel-item${c2.aplicavel ? '' : ' na'}"><span>${lbl}</span><b>${valor}</b><i>${c2.aplicavel ? `${c2.pts} de ${c2.max} pts` : 'não conta'}${extra ? ` · ${esc(extra)}` : ''}</i></div>` : '';
+    const rp = cr.responsividade;
+    const tomTxt = { elogio: 'elogios', cordial: 'cordial', neutro: 'neutro', insatisfacao: 'insatisfeito', grave: 'reclamação grave' };
+    const itens = [
+      item('Dias em que o cliente escreveu', cr.presenca ? `${cr.presenca.dias} de 7` : '—', cr.presenca),
+      item('Pedidos da Bibit que o cliente respondeu', rp?.aplicavel ? `${rp.respondidas} de ${rp.elegiveis}` : 'nenhum vencido', rp),
+      item('Vezes que o cliente puxou assunto', cr.iniciativa ? `${cr.iniciativa.n}` : '—', cr.iniciativa),
+      item('Tom das mensagens do cliente', cr.tom?.aplicavel ? (tomTxt[cr.tom.nivel] || cr.tom.nivel) : 'não escreveu', cr.tom),
+    ].join('');
+    const teto = iec.tetoAplicado != null ? `<p class="rel-teto">Nota limitada a ${iec.tetoAplicado}: ${esc((iec.tetos || []).map((t) => t.motivo).join('; '))}.</p>` : '';
+    const alertas = (iec.alertas || []).map((a) => `<li class="n-${a.nivel === 'CRÍTICO' ? 'c' : a.nivel === 'ALTO' ? 'a' : 'm'}"><span class="rel-niv">${NIVEL_LBL[a.nivel] || a.nivel}</span><div><b>${esc(a.tipo.charAt(0).toUpperCase() + a.tipo.slice(1))}</b>${a.descricao ? `<i>${esc(a.descricao)}</i>` : ''}${a.status === 'persistente' && a.desde ? `<small>desde ${dt(a.desde)}</small>` : ''}</div></li>`).join('');
+    return `<div class="rel-box">
+      <div class="rel-head"><span class="rel-class">${esc((iec.classificacao || '').toLowerCase())}</span><span class="iec-evo ${evoCls}">${evo}</span>${spark}${quando ? `<span class="hs-regua rel-quando">${quando}</span>` : ''}</div>
+      <p class="rel-sub">Últimos 7 dias no grupo de WhatsApp</p>
+      <div class="rel-itens">${itens}</div>
+      ${teto}
+      ${resumo ? `<p class="rel-lbl">O que aconteceu</p><p class="rel-resumo">${esc(resumo)}</p>` : ''}
+      ${alertas ? `<p class="rel-lbl">Pontos de atenção</p><ul class="rel-alertas">${alertas}</ul>` : ''}
     </div>`;
   }
 
@@ -463,7 +487,7 @@
     if (tem('trafego') || det.some((f) => !f.frente)) {
       const trs = det.filter((f) => !f.frente);
       let txt;
-      if (trs.length) txt = trs.map((f) => `${f.rotulo} ${f.unid === 'pts' ? `${f.valor} pts` : fmtV(f.rotulo, f.valor)} → ${f.nota != null ? f.nota : '—'} <span class="hs-regua">(${f.regua})</span>`).join(' · ');
+      if (trs.length) txt = trs.map((f) => f.valor == null ? `<span class="hs-regua">${esc(f.regua)}</span>` : `${f.rotulo} da última semana ${f.unid === 'pts' ? `${f.valor} pts` : fmtV(f.rotulo, f.valor)} → vale ${f.nota != null ? f.nota : '—'} pts <span class="hs-regua">(${String(f.regua).replace(/^faixa fixa /, 'faixa ')})</span>`).join(' · ');
       else if (semCampanha(c)) txt = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · ${campEfeito(c)}</span>`;
       else txt = `<span class="hs-regua">sem dado do Reportei${c.temReportei ? '' : ' (cliente sem Reportei ID no card)'}</span>`;
       linhas.push(`<b>Tráfego Pago</b>${fr.trafego && fr.trafego.nota != null ? ` <b class="${hsCls(fr.trafego.nota)}">${fr.trafego.nota}</b>` : ''}: ${txt}`);
@@ -472,7 +496,7 @@
     const AREA = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager' };
     for (const [k, lbl] of Object.entries(AREA)) {
       if (!tem(k) && !fr[k]) continue;
-      if (fr[k] && fr[k].nota != null) { linhas.push(`<b>${lbl}</b> <b class="${hsCls(fr[k].nota)}">${Math.round(fr[k].nota)}</b>: <span class="hs-regua">desempenho de ${fr[k].n} post${fr[k].n === 1 ? '' : 's'} (engajamento e compartilhamento vs. meta, 7 dias após o post)</span>`); continue; }
+      if (fr[k] && fr[k].nota != null) { linhas.push(`<b>${lbl}</b> <b class="${hsCls(fr[k].nota)}">${Math.round(fr[k].nota)}</b>: <span class="hs-regua">desempenho de ${fr[k].n} post${fr[k].n === 1 ? '' : 's'} dos últimos 30 dias — curtidas, comentários e compartilhamentos comparados à meta do cliente, medidos 7 dias depois de publicar</span>`); continue; }
       const pubs = tasksOf(c.id).filter((x) => x.listKey === k && x.igId && x.dataAgendamento && x.dataAgendamento >= agora - 30 * DIA);
       const esperando = pubs.filter((x) => x.dataAgendamento > agora - 7 * DIA).length;
       const motivo = pubs.length ? (esperando ? `${esperando} post${esperando === 1 ? '' : 's'} publicado${esperando === 1 ? '' : 's'} esperando completar 7 dias` : 'posts publicados aguardando coleta das métricas') : 'nenhum post publicado pelo painel nos últimos 30 dias';
@@ -492,18 +516,24 @@
     const fmtV = (k, v) => (v == null ? '—' : k === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
     const linhas = Object.entries(hs.pilares).map(([k, p]) => {
       let det = '';
+      let nota = p.nota;
       if (k === 'trafego') det = resultadoFrentesHTML(c, p, fmtV); // Resultado: uma linha por área do cliente (André, 26/10/26)
-      if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
-      if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} no prazo (30 dias)`;
-      const ctAt = c.contato?.atualizadoEm ? `<span class="hs-regua"> · atualizado ${fmtCurto(c.contato.atualizadoEm)} ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>` : '';
-      if (k === 'contato') det = p.nota != null
-        ? esc(c.contato?.resumo || 'análise diária do grupo de WhatsApp') + ctAt + iecDetalheHTML(c.contato?.iec)
-        : (c.contato?.resumo ? `<span class="hs-regua">prévia (sem nota até a análise diária):</span> ${esc(c.contato.resumo)}` : '<span class="hs-regua">sem análise do grupo ainda — não pesa no score</span>');
-      return `<div class="hs-row ${p.nota == null ? 'off' : ''}">
-        <span class="hs-row-l"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i></span>
-        <span class="hs-row-det">${det}</span>
-        <span class="hs-row-n ${hsCls(p.nota)}">${p.nota != null ? p.nota : '—'}</span>
-      </div>`;
+      if (k === 'satisfacao') {
+        const cs = p.detalhe?.csat, np = p.detalhe?.nps;
+        det = cs == null && np == null ? '<span class="hs-regua">o cliente ainda não respondeu a pesquisa de satisfação (CSAT/NPS) — não pesa</span>' : `Pesquisa de satisfação: CSAT ${fmtNota(cs)} · NPS ${fmtNota(np)} <span class="hs-regua">(notas de 0 a 10)</span>`;
+      }
+      if (k === 'produtividade') det = p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas entregues no prazo nos últimos 30 dias` : '<span class="hs-regua">sem tarefas nos últimos 30 dias</span>';
+      if (k === 'contato') {
+        const iec = c.contato?.iec;
+        // o ClickUp guarda no mínimo 1 (0 = campo vazio): mostra a nota real da análise quando a diferença é só isso
+        if (iec && iec.iec != null && nota != null && Math.abs(nota - iec.iec) <= 1) nota = iec.iec;
+        det = p.nota != null || iec ? iecDetalheHTML(iec, c)
+          : (c.contato?.resumo ? `<span class="hs-regua">prévia (sem nota até a análise diária):</span> ${esc(narrativaDoResumo(c.contato.resumo))}` : '<span class="hs-regua">o grupo de WhatsApp ainda não foi analisado — não pesa no score</span>');
+      }
+      return `<section class="hs-pilar ${p.nota == null ? 'off' : ''}">
+        <header class="hs-pilar-top"><b>${PILAR_LBL[k]}</b><i>peso ${p.peso}</i><span class="hs-row-n ${hsCls(nota)}">${nota != null ? nota : '—'}</span></header>
+        <div class="hs-pilar-det">${det}</div>
+      </section>`;
     }).join('');
     return `<p class="eyebrow">Health Score · ${hs.cobertura} pilares${hs.insuficiente ? ' <span class="csat-alert">insuficiente — flag manual mantida</span>' : ''}</p>
       <div class="hs-box">

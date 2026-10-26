@@ -93,10 +93,14 @@ t('pergunta do cliente sem resposta (código) vira alerta ALTO', () => {
   const r = I.calcularIEC({ extracao: ex(), codigo: { ...base, semRespostaBibit: [{ t: 1, s: 'Joana', m: 'quando sai o vídeo?' }] }, anterior: null, dia: DIA });
   assert.ok(r.alertas.some((a) => a.nivel === 'ALTO')); assert.strictEqual(r.nivelAlerta, 'ALTO');
 });
+t('pergunta "do cliente" vinda só da IA, sem turno aberto do cliente no código, NÃO vira alerta (autoria errada)', () => {
+  const r = I.calcularIEC({ extracao: ex({ perguntas_cliente_sem_resposta: [{ o_que: 'Posso seguir com o agendamento?' }], alertas: [{ nivel: 'ALTO', tipo: 'pergunta do cliente sem resposta da Bibit', descricao: 'Posso seguir com o agendamento?' }] }), codigo: { ...base, msgs7d: 0, nDiasAtivos: 0 }, anterior: null, dia: DIA });
+  assert.ok(!r.alertas.some((a) => a.tipo === I.TIPOS.perguntaSemResposta), JSON.stringify(r.alertas));
+});
 t('resumo: formato compatível (150–400, sem markdown/aspas/quebra), com nota, classificação e variação', () => {
   const ontem = { dia: '2026-10-20', iec: 70, alertas: [] };
   const r = I.calcularIEC({ extracao: ex(), codigo: base, anterior: ontem, dia: DIA }); const s = I.montarResumo(r);
-  assert.ok(s.length >= 150 && s.length <= 400, 'tamanho ' + s.length); assert.ok(!/[*"\n]/.test(s)); assert.ok(/^IEC 75 \(MORNO, \+5 vs 20\/10 \(melhora\)\)/.test(s), s);
+  assert.ok(s.length >= 150 && s.length <= 400, 'tamanho ' + s.length); assert.ok(!/[*"\n]/.test(s)); assert.ok(/^Relacionamento 75\/100, morno \(subiu 5 pontos desde 20\/10\)/.test(s), s); assert.ok(!/IEC|responsividade/i.test(s), s);
   const longo = I.calcularIEC({ extracao: ex({ resumo: 'x'.repeat(600), alertas: [{ nivel: 'ALTO', tipo: 'reclamações recorrentes', descricao: 'y' }] }), codigo: base, anterior: null, dia: DIA });
   assert.ok(I.montarResumo(longo).length <= 400);
   console.log('  exemplo de resumo:', s);
