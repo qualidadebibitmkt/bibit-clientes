@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 92;
+  const VERSION = 93;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -970,8 +970,11 @@
   function medidaPilar(k, c, pessoa = null) {
     const hs = c.healthScore;
     if (k === 'trafego') {
-      if (!hs || hs.pilares.trafego.nota == null) return null;
-      const n = hs.pilares.trafego.nota;
+      // sub-aba "Tráfego Pago" (André, 26/10/26): só a frente de tráfego — Social, RP, Audiovisual e Web têm sub-aba própria
+      // (antes mostrava a nota do pilar Resultado inteiro, misturando os posts com o tráfego — ex.: GSN 46 com tráfego 100)
+      const fr = hs && hs.pilares.trafego.frentes && hs.pilares.trafego.frentes.trafego;
+      if (!fr || fr.nota == null) return null;
+      const n = fr.nota;
       return { valor: n, txt: `${n} pts`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n), nota: n, cls: hsCls(n) };
     }
     if (k === 'satisfacao' && pessoa) {
@@ -1052,7 +1055,8 @@
   const bindSubResultado = (el) => el.querySelectorAll('[data-rsub]').forEach((n) => n.addEventListener('click', () => { state.resultadoSub = n.dataset.rsub; render(); }));
 
   function renderPilar(el, k) {
-    const M = METAS_PILAR[k];
+    // na sub-aba Tráfego Pago a meta é só da frente de tráfego (26/10/26)
+    const M = k === 'trafego' ? { ...METAS_PILAR.trafego, desc: 'nota de tráfego ≥ 70 (fora da faixa vermelha) — faixa fixa da métrica do objetivo do cliente na última semana: ROAS, CPM, custo por conversa ou por lead. Social, RP, Audiovisual e Web têm sub-aba própria; o pilar Resultado do Health Score é a média dessas frentes' } : METAS_PILAR[k];
     const { clients } = state.data;
     const base = clients.filter((c) => stKeyOf(c) !== 'briefing');
     if (!state.pilarFiltro) state.pilarFiltro = {};
@@ -1162,8 +1166,8 @@
     if (k === 'trafego' && com.length) {
       // benchmark interno: o melhor de cada métrica dentro do corte (referência Falconi — "lacuna em relação ao melhor")
       const best = {};
-      for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || [])) { if (f.valor == null || f.valor <= 0) continue; const menor = f.rotulo !== 'ROAS' && f.unid !== 'pts'; if (!best[f.rotulo] || (menor ? f.valor < best[f.rotulo].v : f.valor > best[f.rotulo].v)) best[f.rotulo] = { v: f.valor, c }; }
-      const unidDe = {}; for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || [])) if (f.unid) unidDe[f.rotulo] = f.unid;
+      for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || []).filter((x) => !x.frente)) { if (f.valor == null || f.valor <= 0) continue; const menor = f.rotulo !== 'ROAS' && f.unid !== 'pts'; if (!best[f.rotulo] || (menor ? f.valor < best[f.rotulo].v : f.valor > best[f.rotulo].v)) best[f.rotulo] = { v: f.valor, c }; }
+      const unidDe = {}; for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || []).filter((x) => !x.frente)) if (f.unid) unidDe[f.rotulo] = f.unid;
       // frentes de conteúdo e web são pontos (0–100), não R$ (auditoria 26/10/26)
       const fmtM = (r, v) => (r === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : unidDe[r] === 'pts' ? `${Math.round(v)} pts` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
       const rows = Object.entries(best);
@@ -1171,7 +1175,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? f.valor + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? f.valor + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       ${k === 'trafego' ? subResultadoHTML() : ''}
