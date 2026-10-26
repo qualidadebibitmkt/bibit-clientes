@@ -75,7 +75,7 @@ async function painelMes(req, res, agora) {
   const clientesMes = [...new Set(doMes.map((p) => p.clienteId))];
   const aprovRaw = clientesMes.length ? await wa.redisPipeline(clientesMes.map((c) => ['GET', `iqc:aprov:${c}:${mes}`])) : [];
   const calendarios = {};
-  aprovRaw.forEach((r, i) => { if (r && r.result) { try { const a = JSON.parse(r.result); calendarios[clientesMes[i]] = { resposta: a.calendario?.resposta || null, quando: a.calendario?.quando || null, evidencia: a.calendario?.evidencia || null, analisadoEm: a.em, observacoes: a.observacoes || null }; } catch {} } });
+  aprovRaw.forEach((r, i) => { if (r && r.result) { try { const a = JSON.parse(r.result); calendarios[clientesMes[i]] = { resposta: a.calendario?.resposta || null, quando: a.calendario?.quando || null, evidencia: a.calendario?.evidencia || null, analisadoEm: a.em, observacoes: a.observacoes || null, porArea: Array.isArray(a.calendarios) ? a.calendarios.map((x) => ({ area: x.area, enviadoPor: x.enviadoPor || null, resposta: x.resposta || null, quando: x.quando || null, evidencia: x.evidencia || null })) : null }; } catch {} } });
   const pend = {
     revisar: doMes.filter((p) => p.aprovacao && p.aprovacao.revisar).map((p) => ({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, motivo: p.aprovacao.motivo, evidencia: p.aprovacao.evidencia })),
     semResposta: clientesMes.filter((c) => !calendarios[c] || !calendarios[c].resposta || calendarios[c].resposta === 'sem_resposta').map((c) => ({ clienteId: c, cliente: (doMes.find((p) => p.clienteId === c) || {}).cliente, pendentes: doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).length })).filter((x) => x.pendentes > 0),
@@ -152,7 +152,8 @@ Classifique cada post da lista:
 - "revisar": o cliente falou de um ajuste mas NÃO dá pra saber com segurança a qual post se refere, ou a mensagem é ambígua.
 
 Regras:
-- Aprovação em bloco ("calendário aprovado", "pode seguir com tudo", "tá ótimo") vale "sem_ajustes" para todos os posts, exceto os que o cliente citou com ajuste.
+- CADA ÁREA MANDA O SEU CALENDÁRIO (André, 26/10/26): Social Media, RP Manager e Audiovisual enviam calendários separados, cada um pela pessoa da área (lista "QUEM ENVIA" abaixo). A área de um calendário é a de QUEM o enviou. A resposta do cliente a um calendário vale SÓ para os posts daquela área — aprovar o calendário de Social nunca aprova post de RP ou de Audiovisual. Se a mesma pessoa cobre duas áreas, decida pelo conteúdo do envio (vídeo/reel/gravação/roteiro = Audiovisual; UGC/influenciador/imprensa/assessoria = RP Manager; artes estáticas/carrossel/legendas = Social Media). Área que não enviou calendário: seus posts ficam "pendente".
+- Aprovação em bloco ("calendário aprovado", "pode seguir com tudo", "tá ótimo") vale "sem_ajustes" para todos os posts DAQUELA ÁREA, exceto os que o cliente citou com ajuste.
 - Só pessoas do lado do CLIENTE decidem. Cada linha já vem marcada pelo sistema: [CLIENTE] pode aprovar; [BIBIT] e [AUTOMAÇÃO] são da agência e NÃO são aprovação.
 - Silêncio não é aprovação.
 - Reação POSITIVA do cliente ao calendário enviado É aprovação, mesmo sem a palavra "aprovado": "ficou ótimo", "amei", "adorei", "perfeito", "sensacional", "top", "tudo certo", "pode seguir", 👍/✅ respondendo ao envio. Só não vale quando o elogio é claramente sobre outra coisa (um post já publicado, uma reunião, um vídeo).
@@ -166,7 +167,7 @@ Regras:
 - "evidencia" = trecho literal (até 160 caracteres) da mensagem do cliente, com data/hora como aparece na transcrição.
 
 Responda SOMENTE com um JSON válido, sem texto antes ou depois, sem cercas de código, nesta estrutura:
-{"calendario":{"enviado":true,"quando":"dd/mm HH:mm ou null","resposta":"aprovado|aprovado_com_ajustes|reprovado|sem_resposta|nao_identificado","evidencia":"..."},
+{"calendarios":[{"area":"social|rp|audiovisual","enviadoPor":"nome de quem enviou","enviado":true,"quando":"dd/mm HH:mm ou null","resposta":"aprovado|aprovado_com_ajustes|reprovado|sem_resposta|nao_identificado","evidencia":"..."}],
 "posts":[{"taskId":"...","numero":3,"status":"sem_ajustes|apos_ajustes|reprovado|alteracao_externa|pendente|revisar","motivo":"curto","evidencia":"...","quando":"dd/mm HH:mm","confianca":"alta|media|baixa"}],
 "observacoes":"até 200 caracteres sobre o que ficou em aberto"}`;
 
@@ -219,11 +220,16 @@ async function aprovInsumo(req, res, agora) {
     // economia: se já houve análise e ninguém do lado do cliente escreveu desde então, não repete a chamada à IA
     let estado = null; try { const raw = await wa.redis(['GET', `iqc:aprov:${g.clienteId}:${g.mes}`]); estado = raw ? JSON.parse(raw) : null; } catch {}
     if (estado && estado.em && estado.versao === VERSAO_APROV && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m, c.name)) && !req.query.forcar) continue;
-    const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
+    const AREA_NOME = { social: 'Social Media', rp: 'RP Manager', audiovisual: 'Audiovisual' };
+    const saiu = (x) => /beltr[aã]o/i.test(String(x && x.name || ''));
+    const nomesArea = (k) => ((c.team && c.team[k]) || []).filter((x) => !saiu(x)).map((x) => x.name);
+    // Audiovisual sem videomaker no card (o Beltrão saiu): quem cobre é a Gabriela (RP) — André, 26/10/26
+    const quemEnvia = ['social', 'rp', 'audiovisual'].filter((k) => g.posts.some((p) => p.area === k)).map((k) => { let n = nomesArea(k); if (k === 'audiovisual' && !n.length) n = nomesArea('rp').map((x) => `${x} (cobrindo o Audiovisual)`); return `- ${AREA_NOME[k]}: ${n.length ? n.join(', ') : 'responsável não cadastrado no card'}`; }).join('\n');
+    const lista = g.posts.sort((a, b) => (a.area === b.area ? a.publicadoEm - b.publicadoEm : a.area < b.area ? -1 : 1)).map((p) => `- [${AREA_NOME[p.area] || p.area}] taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
     const mesNome = `${MESES[Number(g.mes.slice(5)) - 1].toUpperCase()}/${g.mes.slice(0, 4)}`;
-    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nPOSTS DO CALENDÁRIO:\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (desde o envio do calendário, ${uteis.length} mensagens):\n${transcricao}`;
+    const prompt = `${APROV_PROMPT_RUBRICA}\n\nCliente: ${g.cliente}\nCALENDÁRIO EM ANÁLISE: ${mesNome} (${g.posts.length} posts; ${g.pendentes} sem decisão registrada). Só valem mensagens sobre ESTE calendário/mês; se a conversa for claramente sobre o calendário de outro mês, responda "sem_resposta" e deixe os posts "pendente".\nAgora: ${fmtHora(agora)}\n\nQUEM ENVIA O CALENDÁRIO DE CADA ÁREA:\n${quemEnvia}\n\nPOSTS DO CALENDÁRIO (por área):\n${lista}\n\nTRANSCRIÇÃO DO GRUPO (desde o envio do calendário, ${uteis.length} mensagens):\n${transcricao}`;
     out.push({ clienteId: g.clienteId, cliente: g.cliente, mes: g.mes, posts: g.posts.length, pendentes: g.pendentes, mensagens: uteis.length, prompt });
   }
   res.setHeader('Cache-Control', 'no-store');
@@ -240,7 +246,7 @@ function parseJsonIA(b) {
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
 // versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
-const VERSAO_APROV = '2026-10-26.3';
+const VERSAO_APROV = '2026-10-26.4';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');
@@ -250,7 +256,10 @@ async function aprovResultado(req, res, agora) {
   const painel = await lerPainel(req);
   const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.clienteId === clienteId && p.mes === mes);
   const regs = await D.lerRegistros(posts.map((p) => p.taskId));
-  const resposta = String((ia.calendario && ia.calendario.resposta) || 'nao_identificado');
+  // calendário por área (26/10/26); formato antigo (um calendário só) vira o de Social
+  const cals = Array.isArray(ia.calendarios) ? ia.calendarios : ia.calendario ? [{ ...ia.calendario, area: 'social' }] : [];
+  const calDe = (area) => cals.find((x) => x && x.area === area) || null;
+  const resposta = String((calDe('social') && calDe('social').resposta) || (cals[0] && cals[0].resposta) || 'nao_identificado');
   const porTask = new Map(), porNumero = new Map();
   for (const x of (ia.posts || [])) { if (x && x.taskId) porTask.set(String(x.taskId), x); if (x && x.numero != null) porNumero.set(Number(x.numero), x); }
   const alterados = [];
@@ -260,20 +269,21 @@ async function aprovResultado(req, res, agora) {
     if (atual.fonte === 'gestor') continue; // decisão humana prevalece
     const x = porTask.get(p.taskId) || (p.numero != null ? porNumero.get(p.numero) : null);
     let novo = null;
-    const emBloco = resposta === 'aprovado' || resposta === 'aprovado_com_ajustes';
+    const cal = calDe(p.area); const respArea = String((cal && cal.resposta) || 'sem_resposta');
+    const emBloco = respArea === 'aprovado' || respArea === 'aprovado_com_ajustes';
     // aprovação em bloco: post que a IA deixou "pendente" (não citado) vale sem ajustes — é a regra do prompt; antes o
     // "pendente" da IA prevalecia e o calendário aprovado com 1 ajuste ficava com 11 posts pendentes (D'Ouro, 26/10/26)
     if (x && emBloco && String(x.status) === 'pendente') {
-      novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco (post não citado)', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), quando: (ia.calendario && ia.calendario.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
+      novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco (post não citado)', evidencia: String((cal && cal.evidencia) || '').slice(0, 200), quando: (cal && cal.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
     } else if (x && STATUS_IA.has(String(x.status))) {
       const st = String(x.status);
       novo = st === 'revisar'
         ? { status: 'pendente', revisar: true, motivo: String(x.motivo || '').slice(0, 200), evidencia: String(x.evidencia || '').slice(0, 200), quando: x.quando || null, confianca: x.confianca || null, fonte: 'whatsapp', em: agora }
         : { status: st, revisar: false, motivo: String(x.motivo || '').slice(0, 200), evidencia: String(x.evidencia || '').slice(0, 200), quando: x.quando || null, confianca: x.confianca || null, fonte: 'whatsapp', em: agora };
     } else if (emBloco) {
-      novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), quando: (ia.calendario && ia.calendario.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
-    } else if (resposta === 'reprovado') {
-      novo = { status: 'pendente', revisar: true, motivo: 'calendário reprovado — confirmar post a post', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), fonte: 'whatsapp', em: agora };
+      novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco', evidencia: String((cal && cal.evidencia) || '').slice(0, 200), quando: (cal && cal.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
+    } else if (respArea === 'reprovado') {
+      novo = { status: 'pendente', revisar: true, motivo: 'calendário reprovado — confirmar post a post', evidencia: String((cal && cal.evidencia) || '').slice(0, 200), fonte: 'whatsapp', em: agora };
     }
     if (!novo) continue;
     // nunca volta uma decisão pra pendente sem evidência nova; pendente→pendente não grava
@@ -284,7 +294,7 @@ async function aprovResultado(req, res, agora) {
     await D.gravarRegistro(p.taskId, reg, mes);
     alterados.push({ taskId: p.taskId, nome: p.nome, status: novo.status, revisar: !!novo.revisar });
   }
-  const estado = { clienteId, mes, calendario: ia.calendario || null, observacoes: String(ia.observacoes || '').slice(0, 300), em: agora, alterados: alterados.length, versao: VERSAO_APROV };
+  const estado = { clienteId, mes, calendario: calDe('social') || cals[0] || null, calendarios: cals, observacoes: String(ia.observacoes || '').slice(0, 300), em: agora, alterados: alterados.length, versao: VERSAO_APROV };
   await wa.redisPipeline([['SET', `iqc:aprov:${clienteId}:${mes}`, JSON.stringify(estado)], ['EXPIRE', `iqc:aprov:${clienteId}:${mes}`, String(D.TTL)]]);
   res.status(200).json({ ok: true, clienteId, mes, resposta, alterados });
 }
@@ -489,10 +499,11 @@ module.exports = async (req, res) => {
     }
     if (acao === 'aprov-limpar') { // remove as aprovações automáticas (whatsapp/tácita) dos posts de um mês — decisão de gestor fica
       const mes = String(req.query.mes || ''); if (!/^\d{4}-\d{2}$/.test(mes)) { res.status(400).json({ error: 'mes' }); return; }
-      const painel = await lerPainel(req); const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.mes === mes);
+      const areas = req.query.area ? String(req.query.area).split(',') : null; // ex.: area=rp,audiovisual limpa só essas áreas
+      const painel = await lerPainel(req); const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.mes === mes && (!areas || areas.includes(p.area)));
       const regs = await D.lerRegistros(posts.map((p) => p.taskId)); let n = 0;
       for (const p of posts) { const r = regs[p.taskId]; if (r && r.aprovacao && r.aprovacao.fonte !== 'gestor') { delete r.aprovacao; await D.gravarRegistro(p.taskId, r, mes); n++; } }
-      const cl = [...new Set(posts.map((p) => p.clienteId))]; if (cl.length) await wa.redisPipeline(cl.map((c) => ['DEL', `iqc:aprov:${c}:${mes}`]));
+      const cl = [...new Set(posts.map((p) => p.clienteId))]; if (cl.length && !areas) await wa.redisPipeline(cl.map((c) => ['DEL', `iqc:aprov:${c}:${mes}`]));
       res.status(200).json({ ok: true, mes, limpos: n }); return;
     }
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
