@@ -4,8 +4,9 @@
 // (clica "sim / tenho 18", preenche ano de nascimento etc.; se não der, tira o bloqueio da frente) e fotografa a página
 // inteira em fatias, no celular e no computador.
 let chromium = null, puppeteer = null;
-function libs() {
-  if (!puppeteer) { const m = require('@sparticuz/chromium'); chromium = m.default || m; const p = require('puppeteer-core'); puppeteer = p.default || p; }
+// os dois pacotes são ES Modules: import() dinâmico (a Vercel não aceita require() de ESM)
+async function libs() {
+  if (!puppeteer) { const m = await import('@sparticuz/chromium'); chromium = m.default || m; const p = await import('puppeteer-core'); puppeteer = p.default || p; }
   return { chromium, puppeteer };
 }
 
@@ -131,7 +132,7 @@ async function fotografar(page, tela) {
 
 // abre a URL no celular e no computador e devolve as fatias (jpeg base64) + como foi a verificação de idade
 async function capturar(url, { executablePath } = {}) {
-  const log = []; const { chromium: ch, puppeteer: pp } = libs();
+  const log = []; const { chromium: ch, puppeteer: pp } = await libs();
   const out = { telas: {}, idade: {}, log, alturas: {} };
   // um navegador novo por tela: o Chromium de servidor roda em processo único e não aceita contextos paralelos
   for (const tela of ['mobile', 'desktop']) {
