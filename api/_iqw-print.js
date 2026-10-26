@@ -83,11 +83,11 @@ async function clicar(page, id) { try { await page.click(`[data-bbt="${id}"]`, {
 
 // abre, passa cookies e idade, rola até o fim (carrega imagens e animações) e devolve o estado da idade
 async function prepararPagina(page, url, log) {
-  try { await page.goto(url, { waitUntil: 'networkidle2', timeout: 35000 }); } catch (e) { log.push('carregamento lento: ' + String(e.message || e).slice(0, 80)); try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 }); } catch (e2) { throw new Error('página não abriu: ' + String(e2.message || e2).slice(0, 120)); } }
+  try { await page.goto(url, { waitUntil: 'load', timeout: 30000 }); } catch (e) { log.push('carregamento lento: ' + String(e.message || e).slice(0, 80)); try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 }); } catch (e2) { throw new Error('página não abriu: ' + String(e2.message || e2).slice(0, 120)); } }
   await espera(2500);
   let idade = 'sem-bloqueio'; const inicial = await page.evaluate(sondaBloqueio, RX_IDADE.source);
   if (inicial.idade) idade = 'tinha';
-  for (let rodada = 0; rodada < 3; rodada++) {
+  for (let rodada = 0; rodada < 2; rodada++) {
     const alvos = await page.evaluate(marcarAlvos);
     for (const id of alvos.cookie.slice(0, 2)) { if (await clicar(page, id)) log.push('cookies aceitos'); await espera(500); }
     const sonda = await page.evaluate(sondaBloqueio, RX_IDADE.source);
@@ -104,7 +104,7 @@ async function prepararPagina(page, url, log) {
     let clicou = false;
     for (const id of [...alvos.sim, ...alvos.enviar].slice(0, 3)) { if (await clicar(page, id)) { clicou = true; log.push('clicou para passar a idade'); break; } }
     if (!clicou && preencheu) { await page.keyboard.press('Enter').catch(() => {}); log.push('Enter no formulário de idade'); }
-    try { await page.waitForNetworkIdle({ idleTime: 600, timeout: 6000 }); } catch {}
+    try { await page.waitForNetworkIdle({ idleTime: 500, timeout: 3500 }); } catch {}
     await espera(1500);
     const depois = await page.evaluate(sondaBloqueio, RX_IDADE.source);
     if (!depois.idade) { idade = 'passou'; break; }
