@@ -105,13 +105,14 @@ function calcular(captured, mes, cards) {
 // b = Health Score compilado; score = total de pontos do Ranking (fotos antes de 26/10/26 à tarde não têm b: score = Health Score)
 const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.papeis, pessoa: p.pessoa || null, score: p.score, b: p.base, flag: p.flag, posicao: p.posicao, clientes: p.clientes, abaixo: p.abaixo, cobertura: p.cobertura, p: Object.fromEntries(PILARES.map((k) => [k, p.pilares[k].nota])) }));
 
+// o placar do dia é o ÚLTIMO cálculo do dia (antes era o primeiro e ficava congelado — ex.: em 26/10 os posts de RP da
+// Gabriela ganharam métrica à tarde e o Resultado dela não entrava no mês porque a foto do dia era da manhã)
 async function garantirFoto(dia, lista) {
   if (!wa.redisReady()) return false;
   const key = 'rk:snap:' + dia;
   const ja = await wa.redis(['EXISTS', key]);
-  if (ja) return false;
-  await wa.redisPipeline([['SET', key, JSON.stringify({ dia, pessoas: foto(lista) })], ['EXPIRE', key, String(SNAP_TTL)]]);
-  return true;
+  await wa.redisPipeline([['SET', key, JSON.stringify({ dia, pessoas: foto(lista), em: Date.now() })], ['EXPIRE', key, String(SNAP_TTL)]]);
+  return !ja;
 }
 
 async function lerFotos(dias) {
