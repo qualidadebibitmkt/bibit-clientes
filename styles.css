@@ -1722,3 +1722,10 @@ body::before {
 .exp-valor small.exp-ok { color: var(--flag-green); }
 .exp-valor.na { font-weight: 400; font-size: 12px; color: var(--creme-45); }
 @media (max-width: 640px) { .exp-row { flex-wrap: wrap; } .exp-nome { flex-basis: 100%; order: 2; } }
+
+/* ---------- v137: lista completa nos pilares, rótulo META em cima do traço (André, 26/10/26) ---------- */
+.pl-bar-cab { cursor: default; padding-top: 0; padding-bottom: 0; }
+.pl-bar-cab:hover { background: none; }
+.pl-bar-cab .pl-bar-track { background: none; height: 16px; }
+.pl-bar-cab .pl-bar-track b { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; color: var(--creme); background: var(--garrafa-2); border: 1px solid rgba(243,236,218,0.3); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.pl-bar-ok .pl-bar-a .g { font-weight: 600; }

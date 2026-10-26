@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 90;
+  const VERSION = 91;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1187,8 +1187,17 @@
         <div class="pl-filtros"><span class="balcao-l">${k === 'trafego' ? 'por tipo de campanha' : 'por colaborador'}</span><div class="chips">${chips}${limpar}</div></div>
       </div>
 
-      <p class="eyebrow">Abaixo da meta <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador em cada grupo: calado com o cliente falando = 0 · calado em grupo parado = 50 · respostas lentas descontam' : k === 'satisfacao' ? 'nota que cada cliente dá ao papel do colaborador no CSAT' : 'tarefas do colaborador em cada cliente') : 'valor de cada cliente, do pior pro melhor — o traço é a meta'}</span></p>
-      ${abaixo.length ? `<div class="pl-pareto">${abaixo.map((x) => { const esc100 = k === 'satisfacao' ? 10 : 100; const w = Math.max(2, Math.round((x.m.valor / esc100) * 100)); const metaPos = Math.round(((k === 'satisfacao' ? 9 : k === 'produtividade' ? 95 : 70) / esc100) * 100); return `<button class="pl-bar ${x.m.cls}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">falta ${fmtLac(x.m.lacuna)}</span></button>`; }).join('')}</div>` : `<div class="fn-empty">Ninguém abaixo da meta${filtroLbl ? ' neste corte' : ''}. 🥂</div>`}
+      <p class="eyebrow">Cliente a cliente · distância da meta <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador em cada grupo: calado com o cliente falando = 0 · calado em grupo parado = 50 · respostas lentas descontam' : k === 'satisfacao' ? 'nota que cada cliente dá ao papel do colaborador no CSAT' : 'tarefas do colaborador em cada cliente') : 'todos os clientes com dado, do pior pro melhor — à esquerda do traço da META falta, à direita já bateu'}</span></p>
+      ${com.length ? (() => {
+        // lista completa (André, 26/10/26): abaixo e acima da meta, do pior pro melhor, com o rótulo META em cima do traço
+        const esc100 = k === 'satisfacao' ? 10 : 100;
+        const metaNum = k === 'satisfacao' ? 9 : k === 'produtividade' ? 95 : 70;
+        const metaPos = Math.round((metaNum / esc100) * 100);
+        const todos = [...com].sort((a, b) => a.m.valor - b.m.valor || b.m.lacuna - a.m.lacuna);
+        const cab = `<div class="pl-bar pl-bar-cab" aria-hidden="true"><span></span><span class="pl-bar-track"><b style="left:${metaPos}%">META</b></span><span></span><span></span></div>`;
+        const dir = (x) => x.m.lacuna > 0 ? `falta ${fmtLac(x.m.lacuna)}` : x.m.valor > metaNum ? `<span class="g">+${fmtLac(x.m.valor - metaNum)} acima</span>` : '<span class="g">na meta</span>';
+        return `<div class="pl-pareto">${cab}${todos.map((x) => { const w = Math.max(2, Math.min(100, Math.round((x.m.valor / esc100) * 100))); return `<button class="pl-bar ${x.m.cls}${x.m.lacuna > 0 ? '' : ' pl-bar-ok'}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">${dir(x)}</span></button>`; }).join('')}</div>`;
+      })() : `<div class="fn-empty">Nenhum cliente com dado${filtroLbl ? ' neste corte' : ''}.</div>`}
 
       ${placar}
       ${porPessoa}
@@ -1197,7 +1206,7 @@
       ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste corte.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (!c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
-      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Abaixo da meta" é a pauta da reunião semanal, do pior pro melhor.</div><div><b>Peso no score</b> ${k === 'trafego' ? 30 : k === 'produtividade' ? 20 : 25}.</div></div>`;
+      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? 30 : k === 'produtividade' ? 20 : 25}.</div></div>`;
 
     el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[k] = n.dataset.plF || null; renderPilar(el, k); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
