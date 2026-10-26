@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 94;
+  const VERSION = 95;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1291,6 +1291,45 @@
     return { por, abaixo };
   }
 
+  // ---- período na aba Colaborador (André, 26/10/26): "hoje" = situação ao vivo; mês = média das fotos diárias do Ranking ----
+  const rkMes = {}; let rkMeses = null; const rkCarregando = new Set();
+  const mesAtualBR = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 7);
+  const mesCurto = (m) => { const [y, mm] = m.split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(mm) - 1] + '/' + y.slice(2); };
+  async function carregarRkMes(mes) {
+    if (rkMes[mes] || rkCarregando.has(mes)) return;
+    rkCarregando.add(mes);
+    try { const r = await fetch('/api/ranking?mes=' + mes, { cache: 'no-store' }); const j = await r.json(); if (r.ok) { rkMes[mes] = j; if (Array.isArray(j.meses)) rkMeses = j.meses; } else rkMes[mes] = { erro: j.message || j.error || 'falha ao ler o mês' }; } catch (e) { rkMes[mes] = { erro: e.message || 'falha ao ler o mês' }; }
+    rkCarregando.delete(mes);
+    if (state.view === 'colab') render();
+  }
+  function periodoColabHTML() {
+    const per = state.colabPeriodo || 'hoje'; const ma = mesAtualBR();
+    const meses = [...new Set([ma, ...(rkMeses || [])])].sort().reverse();
+    return `<div class="pl-filtros cb-periodo"><span class="balcao-l">período</span><div class="chips"><button class="hs-chip pl-chip${per === 'hoje' ? ' is-on' : ''}" data-cb-per="hoje">hoje</button>${meses.map((m) => `<button class="hs-chip pl-chip${per === m ? ' is-on' : ''}" data-cb-per="${m}">${mesCurto(m)}${m === ma ? '<i>parcial</i>' : ''}</button>`).join('')}</div></div>`;
+  }
+  const bindPeriodoColab = (el) => el.querySelectorAll('[data-cb-per]').forEach((n) => n.addEventListener('click', () => { state.colabPeriodo = n.dataset.cbPer === 'hoje' ? null : n.dataset.cbPer; render(); }));
+  // visão do mês: pilares em pontos (0–100, média das fotos diárias), Health Score e pontos do Ranking — por pessoa
+  function colabMesHTML(todos, sel, filtros, per) {
+    const d = rkMes[per];
+    const head = (txt) => `<div class="pl-head">${filtros}${periodoColabHTML()}</div>${txt}`;
+    if (!d) { carregarRkMes(per); return head('<div class="fn-empty">Lendo o placar do mês…</div>'); }
+    if (d.erro) return head(`<div class="fn-empty">Não deu pra ler o mês: ${esc(d.erro)}</div>`);
+    const doMes = (a) => (d.pessoas || []).find((p) => chaveNome(p.nome) === chaveNome(a.p.name)) || null;
+    const PTS = (v) => (v == null ? '<span class="na">—</span>' : `${Math.round(v)}`);
+    const clsP = (v) => (v == null ? 'na' : v >= 90 ? 'g' : v >= 70 ? 'y' : 'r');
+    const sub = `${mesCurto(per)}${per === mesAtualBR() ? ' · parcial, até hoje' : ''} · ${d.dias || 0} dia${d.dias === 1 ? '' : 's'} com placar registrado`;
+    const quem = sel ? [sel] : todos;
+    const linhas = quem.map((a) => { const p = doMes(a); const pil = (k) => (p && p.pilares && p.pilares[k] ? p.pilares[k].nota : null);
+      return `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="${sel ? '' : 'ver ' + esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td>${p ? `<td class="hs-td hs-td-score ${clsP(p.base)}">${PTS(p.base)}</td>${PILARES.map((k) => `<td class="hs-td ${clsP(pil(k))}">${PTS(pil(k))}</td>`).join('')}<td class="hs-td">${p.posicao ? p.posicao + 'º' : '<span class="na">sem posição</span>'}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}</td>` : `<td class="hs-td-txt na" colspan="7">fora do Ranking ou sem placar neste mês</td>`}</tr>`; }).join('');
+    const p1 = sel ? doMes(sel) : null;
+    const extra = p1 && p1.rk ? `<div class="hs-termo-pilares cb-mes-rk">${[['renovacao', 'Renovação', p1.rk.renovacao && p1.rk.renovacao.pct != null ? `${String(p1.rk.renovacao.pct).replace('.', ',')}%` : '—'], ['vendas', 'Vendas', p1.rk.vendas && p1.rk.vendas.faixa ? p1.rk.vendas.faixa : '—'], ['nrr', 'NRR', p1.rk.nrr && p1.rk.nrr.pct != null ? `${String(p1.rk.nrr.pct).replace('.', ',')}%` : '—']].map(([k, l, v]) => `<div class="hs-termo-p"><span class="hs-termo-pn">${p1.rk[k] && p1.rk[k].pts != null ? p1.rk[k].pts : 0}</span><span class="hs-termo-pl">${l} · pontos</span><span class="iqc-kpi-s">${esc(v)}</span></div>`).join('')}</div>` : '';
+    return head(`
+      <p class="eyebrow">Placar do mês <span class="hs-hist-info">${esc(sub)} · pilares em pontos de 0 a 100 (a média do mês de cada pilar) · verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70</span></p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Health Score</th><th class="r">Resultado</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Relacionamento</th><th class="r">Posição</th><th class="r">Pontos no Ranking</th></tr></thead><tbody>${linhas}</tbody></table></div>
+      ${extra}
+      <div class="hs-regras pl-regras"><div><b>Mês</b> cada pilar é a média do placar registrado em cada dia do mês (o mesmo do Ranking). O mês em andamento é parcial.</div><div><b>Hoje</b> volte para "hoje" pra ver cliente a cliente, o que está abaixo da meta, atrasadas e pareceres — esses detalhes são da situação atual.</div></div>`);
+  }
+
   function renderColab(el) {
     const { clients } = state.data;
     const base = clients.filter((c) => stKeyOf(c) !== 'briefing');
@@ -1300,6 +1339,14 @@
 
     const chips = todos.map((a) => `<button class="hs-chip pl-chip${sel && sel.id === a.id ? ' is-on' : ''}" data-colab="${esc(a.id)}" title="${esc(a.p.name)} · ${a.clientes.length} cliente${a.clientes.length === 1 ? '' : 's'}">${avatarHTML(a.p, 'avatar avatar-xs')}${esc(a.p.name.split(' ')[0])}<i>${a.clientes.length}</i></button>`).join('');
     const filtros = `<div class="pl-filtros cb-filtros"><span class="balcao-l">colaborador</span><div class="chips">${chips}${sel ? '<button class="hs-chip pl-chip pl-limpar" data-colab="">limpar</button>' : ''}</div></div>`;
+    if (!rkMeses) carregarRkMes(mesAtualBR()); // lista de meses com placar
+    const per = state.colabPeriodo || null;
+    if (per) {
+      el.innerHTML = colabMesHTML(todos, sel, filtros, per);
+      el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; render(); }));
+      bindPeriodoColab(el);
+      return;
+    }
 
     // ---- sem pessoa escolhida: placar geral, uma linha por colaborador, os 4 pilares lado a lado ----
     if (!sel) {
@@ -1311,12 +1358,13 @@
             <div class="hs-termo-media"><span class="hs-big na">${todos.length}</span><span class="hs-termo-l">colaboradores<br><span>${base.length} clientes na carteira · escolha uma pessoa pra ver tudo dela</span></span></div>
             <div class="pl-meta-box"><span class="pl-meta-n">4</span><span class="hs-termo-l">pilares<br><span>resultado ≥ 70 pts (a frente da pessoa: tráfego ou performance dos posts da área) · satisfação ≥ 9 (nota ao papel da pessoa no CSAT) · produtividade ≥ 95% (só as tarefas da pessoa) · relacionamento ≥ 70 pts (atuação da pessoa no grupo)</span></span></div>
           </div>
-          ${filtros}
+          ${filtros}${periodoColabHTML()}
         </div>
         <p class="eyebrow">Placar geral <span class="hs-hist-info">nota de cada pessoa em cada pilar = média dos clientes em que ela está · o número pequeno é quantos clientes estão abaixo da meta naquele pilar</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th>Papel</th><th class="r">Clientes</th><th class="r">Resultado</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Relacionamento</th><th class="r" title="combinações cliente × pilar abaixo da meta">Abaixo</th></tr></thead><tbody>${rows.sort((x, y) => y.r.abaixo.length - x.r.abaixo.length || y.a.clientes.length - x.a.clientes.length).map(({ a, r }) => `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="ver ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td-txt">${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(', ') || 'equipe')}</td><td class="hs-td">${a.clientes.length}</td>${PILARES.map((k) => td(k, r.por[k])).join('')}<td class="hs-td ${r.abaixo.length ? 'r' : 'g'}">${r.abaixo.length}</td></tr>`).join('')}</tbody></table></div>
         <div class="hs-regras pl-regras"><div><b>Como ler</b> cada célula é a média da pessoa naquele pilar, nos clientes em que ela está. Em Resultado, cada pessoa é medida pela frente dela: tráfego (gestor do card) ou performance dos posts da área (social, AV, RP).</div><div><b>Clique</b> no nome ou no chip pra abrir a visão completa do colaborador: clientes, o que está abaixo da meta, silêncio, atrasadas e pareceres da IA.</div></div>`;
       el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; render(); }));
+      bindPeriodoColab(el);
       return;
     }
 
@@ -1382,7 +1430,7 @@
           <div class="pl-meta-box cb-flags"><span class="cb-flags-l">copos dos clientes</span><div class="cb-flag-row">${['green', 'yellow', 'red'].map((f) => `<span class="cb-flag" title="${f === 'green' ? 'Green' : f === 'yellow' ? 'Yellow' : 'Red'} Flag">${glass(f, 22)}<b class="${flagCls(f)}">${flags[f]}</b></span>`).join('')}</div></div>
           <div class="hs-termo-pilares pl-kpis cb-kpis">${PILARES.map(kpi).join('')}</div>
         </div>
-        ${filtros}
+        ${filtros}${periodoColabHTML()}
       </div>
 
       ${focoHTML}
@@ -1404,6 +1452,7 @@
       <div class="hs-regras pl-regras"><div><b>Resultado</b> a frente da pessoa no cliente: tráfego pra quem é o Gestor de Tráfego do card; performance dos posts da área pra Social Media, Audiovisual e RP (régua da nota de conteúdo).</div><div><b>Satisfação</b> nota que o cliente dá ao papel da pessoa no CSAT (tráfego/social/RP/AV).</div><div><b>Produtividade</b> só as tarefas da pessoa: abertas vencidas + concluídas fora do prazo em 30 dias.</div><div><b>Contato</b> atuação da pessoa no grupo: sem mensagem com o cliente falando = 0 · sem mensagem em grupo parado = 50 · respostas lentas descontam.</div></div>`;
 
     el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; state.colabFoco = null; render(); }));
+    bindPeriodoColab(el);
     el.querySelectorAll('[data-foco]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.foco || null; state.colabFoco = (!k || state.colabFoco === k) ? null : k; renderColab(el); const f = el.querySelector('.cb-foco'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
     el.querySelectorAll('[data-pilar-ir]').forEach((n) => n.addEventListener('click', () => { const k = n.dataset.pilarIr; if (!state.pilarFiltro) state.pilarFiltro = {}; if (k !== 'trafego') state.pilarFiltro[k] = a.id; state.view = k; render(); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
@@ -1413,7 +1462,7 @@
   // "página" = aba + cliente escolhido + colaborador + sub-aba do Resultado; filtros não contam como página
   const NOME_VIEW = { geral: 'Visão geral', health: 'Health Score', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', colab: 'Colaborador', ranking: 'Ranking', calendario: 'Calendários', funcoes: 'Funções' };
   const nav = { pilha: [], atual: null, voltando: false };
-  const navFoto = () => ({ view: state.view, cliente: state.cliente || null, colab: state.colab || null, colabFoco: state.colabFoco || null, resultadoSub: state.resultadoSub || null, pilarFiltro: state.pilarFiltro ? { ...state.pilarFiltro } : null, rolagem: 0 });
+  const navFoto = () => ({ view: state.view, cliente: state.cliente || null, colab: state.colab || null, colabFoco: state.colabFoco || null, colabPeriodo: state.colabPeriodo || null, resultadoSub: state.resultadoSub || null, pilarFiltro: state.pilarFiltro ? { ...state.pilarFiltro } : null, rolagem: 0 });
   const navChave = (f) => JSON.stringify([f.view, f.cliente, f.view === 'colab' ? f.colab : null, f.view === 'trafego' ? f.resultadoSub : null]);
   function navRotulo(f) {
     const cli = f.cliente && state.data && (state.data.clients || []).find((c) => String(c.id) === String(f.cliente));
@@ -1434,7 +1483,7 @@
   }
   function navVoltar() {
     const f = nav.pilha.pop(); if (!f) return;
-    Object.assign(state, { view: f.view, cliente: f.cliente, colab: f.colab, colabFoco: f.colabFoco, resultadoSub: f.resultadoSub, pilarFiltro: f.pilarFiltro });
+    Object.assign(state, { view: f.view, cliente: f.cliente, colab: f.colab, colabFoco: f.colabFoco, colabPeriodo: f.colabPeriodo, resultadoSub: f.resultadoSub, pilarFiltro: f.pilarFiltro });
     const sel = $('#clientSelect'); if (sel) sel.value = state.cliente || '';
     nav.voltando = true; render();
     requestAnimationFrame(() => window.scrollTo(0, f.rolagem || 0));

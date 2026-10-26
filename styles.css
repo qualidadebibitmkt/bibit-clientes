@@ -1731,3 +1731,8 @@ body::before {
 .pl-bar-ok .pl-bar-a .g { font-weight: 600; }
 .pl-bar-a .g { color: var(--flag-green); }
 .eyebrow.pl-sec { margin-top: 36px; }
+
+/* ---------- v143: período na aba Colaborador (André, 26/10/26) ---------- */
+.cb-periodo { margin-top: 0; }
+.cb-mes-rk { grid-template-columns: repeat(3, minmax(120px, 1fr)); margin: 14px 0 6px; }
+@media (max-width: 640px) { .cb-mes-rk { grid-template-columns: 1fr; } }
