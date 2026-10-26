@@ -306,12 +306,14 @@ module.exports = async (req, res) => {
 
   try {
     const listKeys = Object.keys(LISTS);
+    let vendasFalhou = false;
     const safe = (p) => p.catch(() => []); // sem permissão nas listas de venda? painel segue vivo, sem expansões
+    const safeV = (p) => p.catch(() => { vendasFalhou = true; return []; }); // idem, marcando que as vendas do Ranking ficaram indisponíveis
     const [growthTasks, csatTasks, crossTasks, upsellTasks, wdTasks, ...opResults] = await Promise.all([
       fetchAllTasks(token, GROWTH_LIST),
       fetchAllTasks(token, CSAT_LIST, true), // respostas fechadas também contam
-      safe(fetchAllTasks(token, CROSS_LIST, true)),
-      safe(fetchAllTasks(token, UPSELL_LIST, true)),
+      safeV(fetchAllTasks(token, CROSS_LIST, true)),
+      safeV(fetchAllTasks(token, UPSELL_LIST, true)),
       safe(fetchAllTasks(token, CSAT_WD_LIST, true)), // CSAT - WD (respondidos estão concluídos)
       ...listKeys.map((k) => fetchAllTasks(token, LISTS[k].id)),
     ]);
@@ -614,7 +616,8 @@ module.exports = async (req, res) => {
       divergenciasCliente,
       // pilar Vendas do Ranking (André, 26/10/26): só chamadas internas (/api/ranking) recebem o mapa por pessoa,
       // e mesmo lá o R$ não sai do servidor — o ranking converte em pontos/faixa antes de responder
-      ...(req._internal ? { _vendas: vendas.porPessoa(crossTasks, upsellTasks) } : {}),
+      // lista de vendas que não respondeu → null (painel mostra "vendas indisponíveis", não "não vendeu")
+      ...(req._internal ? { _vendas: vendasFalhou ? null : vendas.porPessoa(crossTasks, upsellTasks) } : {}),
     });
   } catch (err) {
     if (err.code === 'unauthorized') {
@@ -633,9 +636,11 @@ module.exports = async (req, res) => {
 module.exports.vendasMapa = async function vendasMapa() {
   const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
   if (!token) return null;
+  let falhou = false;
   const [cross, upsell] = await Promise.all([
-    fetchAllTasks(token, CROSS_LIST, true).catch(() => []),
-    fetchAllTasks(token, UPSELL_LIST, true).catch(() => []),
+    fetchAllTasks(token, CROSS_LIST, true).catch(() => { falhou = true; return []; }),
+    fetchAllTasks(token, UPSELL_LIST, true).catch(() => { falhou = true; return []; }),
   ]);
+  if (falhou) return null;
   return vendas.porPessoa(cross, upsell);
 };

@@ -202,7 +202,9 @@ module.exports = async (req, res) => {
     for (const p of lista) {
       const a = antMap.get(p.id);
       p.anterior = a ? { dia: anterior.dia, score: a.score, posicao: a.posicao } : null;
-      p.deltaScore = a && a.score != null && p.score != null ? p.score - a.score : null;
+      // variação compara só a base (4 pilares): o bônus de vendas zera na virada do mês e fotos antigas não têm b
+      const antBase = a ? (a.b !== undefined ? a.b : a.score) : null;
+      p.deltaScore = antBase != null && p.base != null ? p.base - antBase : null;
       p.deltaPosicao = a && a.posicao && p.posicao ? a.posicao - p.posicao : null; // positivo = subiu
     }
     res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });

@@ -78,7 +78,13 @@ async function painelMes(req, res, agora) {
   aprovRaw.forEach((r, i) => { if (r && r.result) { try { const a = JSON.parse(r.result); calendarios[clientesMes[i]] = { resposta: a.calendario?.resposta || null, quando: a.calendario?.quando || null, evidencia: a.calendario?.evidencia || null, analisadoEm: a.em, observacoes: a.observacoes || null, porArea: Array.isArray(a.calendarios) ? a.calendarios.map((x) => ({ area: x.area, enviadoPor: x.enviadoPor || null, resposta: x.resposta || null, quando: x.quando || null, evidencia: x.evidencia || null })) : null }; } catch {} } });
   const pend = {
     revisar: doMes.filter((p) => p.aprovacao && p.aprovacao.revisar).map((p) => ({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, motivo: p.aprovacao.motivo, evidencia: p.aprovacao.evidencia })),
-    semResposta: clientesMes.filter((c) => !calendarios[c] || !calendarios[c].resposta || calendarios[c].resposta === 'sem_resposta').map((c) => ({ clienteId: c, cliente: (doMes.find((p) => p.clienteId === c) || {}).cliente, pendentes: doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).length })).filter((x) => x.pendentes > 0),
+    // por área (auditoria 26/10/26): Social aprovado não tira o cliente da lista se o calendário de RP/Audiovisual com post aguardando não teve resposta
+    semResposta: clientesMes.filter((c) => {
+      const cal = calendarios[c]; const semResp = (r) => !r || r === 'sem_resposta';
+      if (!cal || !cal.porArea) return !cal || semResp(cal.resposta);
+      const areasPend = [...new Set(doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).map((p) => p.area))];
+      return areasPend.some((a) => { const x = cal.porArea.find((y) => areaCanon(y.area) === a); return !x || semResp(x.resposta); });
+    }).map((c) => ({ clienteId: c, cliente: (doMes.find((p) => p.clienteId === c) || {}).cliente, pendentes: doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).length })).filter((x) => x.pendentes > 0),
     semMeta: doMes.filter((p) => !p.meta).length,
     aguardandoJanela: doMes.filter((p) => !p.janela.fechou).length,
     semMetrica: doMes.filter((p) => p.janela.fechou && !p.metricas).length,
@@ -234,7 +240,7 @@ async function aprovInsumo(req, res, agora) {
     // João é quem manda) — por isso a lista junta quem está no card com quem faz essa área na operação (cards de todos os
     // clientes ativos). Antes era só o card, e o calendário de Social do João na Bananinha foi ignorado (26/10/26).
     const nomesArea = (k) => [...new Set([...((c.team && c.team[k]) || []).filter((x) => !saiu(x)).map((x) => x.name), ...(papelGlobal[k] || [])])];
-    const quemEnvia = ['social', 'rp', 'audiovisual'].filter((k) => g.posts.some((p) => p.area === k)).map((k) => { let n = nomesArea(k); if (k === 'audiovisual') n = [...n, ...nomesArea('rp').filter((x) => !n.includes(x)).map((x) => `${x} (cobrindo o Audiovisual)`)]; return `- ${AREA_NOME[k]}: ${n.length ? n.join(', ') : 'responsável não cadastrado'}`; }).join('\n');
+    const quemEnvia = ['social', 'rp', 'audiovisual'].filter((k) => g.posts.some((p) => p.area === k)).map((k) => { let n = nomesArea(k); if (k === 'audiovisual' && (g.mes <= '2026-11' || !n.length)) n = [...n, ...nomesArea('rp').filter((x) => !n.includes(x)).map((x) => `${x} (cobrindo o Audiovisual)`)]; return `- ${AREA_NOME[k]}: ${n.length ? n.join(', ') : 'responsável não cadastrado'}`; }).join('\n');
     const lista = g.posts.sort((a, b) => (a.area === b.area ? a.publicadoEm - b.publicadoEm : a.area < b.area ? -1 : 1)).map((p) => `- [${AREA_NOME[p.area] || p.area}] taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -256,6 +262,8 @@ function parseJsonIA(b) {
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
 // versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
 // (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
+// a IA às vezes devolve o nome da área ("RP Manager", "Social Media", "Videomaker") em vez da chave
+function areaCanon(a) { const n = String(a || '').toLowerCase(); return /rp|imprensa|ugc/.test(n) ? 'rp' : /audio|video|v[ií]deo/.test(n) ? 'audiovisual' : /social/.test(n) ? 'social' : n; }
 const VERSAO_APROV = '2026-10-26.5';
 
 async function aprovResultado(req, res, agora) {
@@ -268,7 +276,7 @@ async function aprovResultado(req, res, agora) {
   const regs = await D.lerRegistros(posts.map((p) => p.taskId));
   // calendário por área (26/10/26); formato antigo (um calendário só) vira o de Social
   const cals = Array.isArray(ia.calendarios) ? ia.calendarios : ia.calendario ? [{ ...ia.calendario, area: 'social' }] : [];
-  const calDe = (area) => cals.find((x) => x && x.area === area) || null;
+  const calDe = (area) => cals.find((x) => x && areaCanon(x.area) === area) || null;
   const resposta = String((calDe('social') && calDe('social').resposta) || (cals[0] && cals[0].resposta) || 'nao_identificado');
   const porTask = new Map(), porNumero = new Map();
   for (const x of (ia.posts || [])) { if (x && x.taskId) porTask.set(String(x.taskId), x); if (x && x.numero != null) porNumero.set(Number(x.numero), x); }
@@ -513,7 +521,11 @@ module.exports = async (req, res) => {
       const painel = await lerPainel(req); const posts = D.postsDoPainel(painel, { todos: true }).filter((p) => p.mes === mes && (!areas || areas.includes(p.area)));
       const regs = await D.lerRegistros(posts.map((p) => p.taskId)); let n = 0;
       for (const p of posts) { const r = regs[p.taskId]; if (r && r.aprovacao && r.aprovacao.fonte !== 'gestor') { delete r.aprovacao; await D.gravarRegistro(p.taskId, r, mes); n++; } }
-      const cl = [...new Set(posts.map((p) => p.clienteId))]; if (cl.length && !areas) await wa.redisPipeline(cl.map((c) => ['DEL', `iqc:aprov:${c}:${mes}`]));
+      const cl = [...new Set(posts.map((p) => p.clienteId))];
+      if (cl.length && !areas) await wa.redisPipeline(cl.map((c) => ['DEL', `iqc:aprov:${c}:${mes}`]));
+      // limpeza por área: mantém o estado (calendário das outras áreas aparece no painel) mas tira a versão, senão a
+      // próxima leitura pulava o cliente até ele escrever de novo e os posts limpos ficavam "aguardando" (auditoria 26/10/26)
+      if (cl.length && areas) for (const c of cl) { const k = `iqc:aprov:${c}:${mes}`; try { const raw = await wa.redis(['GET', k]); if (raw) { const e = JSON.parse(raw); delete e.versao; await wa.redis(['SET', k, JSON.stringify(e), 'KEEPTTL']); } } catch {} }
       res.status(200).json({ ok: true, mes, limpos: n }); return;
     }
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
