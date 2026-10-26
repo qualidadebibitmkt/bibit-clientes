@@ -6,6 +6,7 @@
 // valor em R$ exposto; entra na ficha, na adega (card + ordenação) e no ranking do HS.
 
 const CLICKUP = 'https://api.clickup.com/api/v2';
+const vendas = require('./_vendas');
 
 const LISTS = {
   social:     { id: '901712537466', name: 'Social Media' },
@@ -611,6 +612,9 @@ module.exports = async (req, res) => {
       clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => (req._internal && _waGrupo ? { ...c, waGrupo: _waGrupo } : c)),
       tasks,
       divergenciasCliente,
+      // pilar Vendas do Ranking (André, 26/10/26): só chamadas internas (/api/ranking) recebem o mapa por pessoa,
+      // e mesmo lá o R$ não sai do servidor — o ranking converte em pontos/faixa antes de responder
+      ...(req._internal ? { _vendas: vendas.porPessoa(crossTasks, upsellTasks) } : {}),
     });
   } catch (err) {
     if (err.code === 'unauthorized') {
@@ -622,4 +626,16 @@ module.exports = async (req, res) => {
     }
     res.status(500).json({ error: 'clickup_error', message: err.message });
   }
+};
+
+// pilar Vendas do Ranking (André, 26/10/26): mapa por pessoa direto das listas Cross-Sell e Upsell, sem montar o painel
+// inteiro — usado pelo ranking consolidado do mês (/api/ranking?mes=). Só no servidor; o R$ não sai daqui.
+module.exports.vendasMapa = async function vendasMapa() {
+  const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
+  if (!token) return null;
+  const [cross, upsell] = await Promise.all([
+    fetchAllTasks(token, CROSS_LIST, true).catch(() => []),
+    fetchAllTasks(token, UPSELL_LIST, true).catch(() => []),
+  ]);
+  return vendas.porPessoa(cross, upsell);
 };
