@@ -86,7 +86,8 @@ async function clicar(page, id) { try { await page.click(`[data-bbt="${id}"]`, {
 
 // abre, passa cookies e idade, rola até o fim (carrega imagens e animações) e devolve o estado da idade
 async function prepararPagina(page, url, log) {
-  try { await page.goto(url, { waitUntil: 'load', timeout: 30000 }); } catch (e) { log.push('carregamento lento: ' + String(e.message || e).slice(0, 80)); try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 }); } catch (e2) { throw new Error('página não abriu: ' + String(e2.message || e2).slice(0, 120)); } }
+  let resp = null;
+  try { resp = await page.goto(url, { waitUntil: 'load', timeout: 30000 }); } catch (e) { log.push('carregamento lento: ' + String(e.message || e).slice(0, 80)); try { resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 }); } catch (e2) { throw new Error('página não abriu: ' + String(e2.message || e2).slice(0, 120)); } }
   await espera(2500);
   let idade = 'sem-bloqueio'; const inicial = await page.evaluate(sondaBloqueio, RX_IDADE.source);
   if (inicial.idade) idade = 'tinha';
@@ -124,7 +125,7 @@ async function prepararPagina(page, url, log) {
   await espera(600);
   const final = await page.evaluate(sondaBloqueio, RX_IDADE.source);
   if (final.idade) idade = 'falhou'; else if (idade === 'tinha') idade = 'passou';
-  return { idade, alturaTotal: await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)), tituloPagina: await page.title().catch(() => ''), urlFinal: page.url() };
+  return { status: resp ? resp.status() : null, idade, alturaTotal: await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)), tituloPagina: await page.title().catch(() => ''), urlFinal: page.url() };
 }
 
 async function fotografar(page, tela) {
@@ -161,7 +162,7 @@ async function capturar(url, { executablePath } = {}) {
         await page.evaluateOnNewDocument(() => { try { Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' }); Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt'] }); } catch {} });
         page.on('dialog', (d) => d.accept().catch(() => {}));
         const prep = await prepararPagina(page, url, log);
-        out.idade[tela] = prep.idade; out.urlFinal = prep.urlFinal; out.titulo = prep.tituloPagina;
+        out.idade[tela] = prep.idade; out.urlFinal = prep.urlFinal; if (prep.status) out.status = prep.status; out.titulo = prep.tituloPagina;
         const f = await fotografar(page, tela); out.alturas[tela] = f.altura; if (f.cortado) out.cortado = true;
         for (const x of f.fotos) out.telas[x.k] = x;
       } catch (e) { log.push(`${tela}: ${String(e.message || e).slice(0, 160)}`); out.idade[tela] = out.idade[tela] || 'erro'; }

@@ -217,8 +217,10 @@ async function capturarUm(p, agora) {
   const ks = Object.keys(r.telas);
   if (!ks.length) { p.printsErro = { em: agora, msg: (r.log || []).join(' · ').slice(0, 300) || 'sem print' }; await D.gravar(p); return { ok: false, erro: p.printsErro.msg }; }
   await wa.redisPipeline(ks.flatMap((k) => [['SET', `iqw:shot:${p.id}:${k}`, r.telas[k].b64], ['EXPIRE', `iqw:shot:${p.id}:${k}`, String(TTL_SHOT)]]));
-  p.prints = { versao: PRINTS_VERSAO, captura: CAPTURA_VERSAO, em: agora, telas: ks.map((k) => ({ k, de: r.telas[k].de, ate: r.telas[k].ate })), idade: r.idade, alturas: r.alturas, cortado: !!r.cortado, urlFinal: r.urlFinal || p.url, titulo: r.titulo || null, log: (r.log || []).slice(0, 12) };
+  p.prints = { versao: PRINTS_VERSAO, captura: CAPTURA_VERSAO, em: agora, telas: ks.map((k) => ({ k, de: r.telas[k].de, ate: r.telas[k].ate })), idade: r.idade, alturas: r.alturas, cortado: !!r.cortado, status: r.status || null, urlFinal: r.urlFinal || p.url, titulo: r.titulo || null, log: (r.log || []).slice(0, 12) };
   delete p.printsErro;
+  if (r.status && r.status < 400 && p.indisponivel && p.indisponivel.auto) delete p.indisponivel;
+  if (r.status >= 400) p.indisponivel = { em: agora, motivo: `a página respondeu erro ${r.status}`, auto: true };
   // notas de Experiência/Visual dadas em cima do print antigo (só a tela de idade) são descartadas pra serem refeitas
   const av = p.avaliacao; let refazer = false;
   if (av && av.notas && (av.printsVersao || 1) < PRINTS_VERSAO && CRIT_VISUAIS.some((c) => av.notas[c] && Object.values(av.notas[c]).some((v) => v != null))) {
@@ -274,7 +276,7 @@ async function filaVisual(req, res) {
   const todos = await D.lerTodos();
   const sem = (p) => { const n = p.avaliacao && p.avaliacao.notas; return !n || CRIT_VISUAIS.some((c) => !n[c] || E.CRITERIOS.find((x) => x.k === c).sub.some((s) => n[c][s.k] == null)); };
   const okPrint = (p) => p.prints && (p.prints.versao || 1) >= PRINTS_VERSAO && (p.prints.telas || []).length && !Object.values(p.prints.idade || {}).every((v) => v === 'falhou' || v === 'erro');
-  const fila = todos.filter((p) => okPrint(p) && sem(p));
+  const fila = todos.filter((p) => okPrint(p) && sem(p) && !p.indisponivel);
   const semPrintNovo = todos.filter((p) => p.url && !okPrint(p)).length;
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ total: fila.length, aguardandoPrint: semPrintNovo, criterios: E.CRITERIOS.filter((c) => CRIT_VISUAIS.includes(c.k)).map((c) => ({ k: c.k, rotulo: c.rotulo, objetivo: c.objetivo, sub: c.sub })), escala: E.ESCALA_LBL,
@@ -301,6 +303,18 @@ async function visualGravar(req, res, agora) {
   await D.gravar(p);
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ ok: true, projetoId: p.id, resultado: D.avaliar(p).resultado });
+}
+// GET ?acao=indisponivel&projetoId=&motivo=  → página fora do ar / erro / em construção: não avalia (não vira 0 pra Web Designer)
+//     ?acao=indisponivel&projetoId=&desfazer=1 → volta pra fila
+async function marcarIndisponivel(req, res, agora) {
+  const p = await D.ler(String(req.query.projetoId || '')); if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  if (req.query.desfazer) delete p.indisponivel; else {
+    p.indisponivel = { em: agora, motivo: String(req.query.motivo || 'página fora do ar').slice(0, 200) };
+    const av = p.avaliacao; if (av && av.notas) { for (const c of CRIT_VISUAIS) { delete av.notas[c]; if (av.justificativas) delete av.justificativas[c]; if (av.evidencias) delete av.evidencias[c]; } av.parcial = true; if (p.status === 'avaliado') p.status = 'concluido'; }
+  }
+  p.historico = [...(p.historico || []), { em: agora, por: 'sistema', o: req.query.desfazer ? 'página volta pra avaliação' : 'página indisponível — fora da nota: ' + p.indisponivel.motivo }].slice(-60);
+  await D.gravar(p);
+  res.status(200).json({ ok: true, projetoId: p.id, indisponivel: p.indisponivel || null });
 }
 // GET ?acao=refazer-visual&projetoId= → apaga as notas de Experiência/Visual (volta pra fila de avaliação)
 async function refazerVisual(req, res, agora) {
@@ -360,6 +374,7 @@ module.exports = async (req, res) => {
     if (acao === 'capturar') return await capturarPrints(req, res, agora);
     if (acao === 'capturar-lote') return await capturarLote(req, res, agora);
     if (acao === 'refazer-visual') return await refazerVisual(req, res, agora);
+    if (acao === 'indisponivel') return await marcarIndisponivel(req, res, agora);
     if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
     if (acao === 'tecnica-lote') return await tecnicaLote(req, res, agora);
     if (acao === 'fila-visual') return await filaVisual(req, res);
