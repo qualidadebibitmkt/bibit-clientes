@@ -19,7 +19,15 @@
 
   const st = { mes: null, data: null, loading: false, colab: null, cliente: null, secao: 'simples', erro: null, token: true, busy: false };
 
+  // do dia 20 ao 28 o que está acontecendo é a aprovação do calendário do mês seguinte: a aba já abre nele (André, 26/10/26)
+  function mesInicial() {
+    const d = new Date(Date.now() - 3 * 3600e3);
+    if (d.getUTCDate() < 20 || d.getUTCDate() > 28) return null;
+    const n = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    return n.toISOString().slice(0, 7);
+  }
   async function load(mes) {
+    if (!mes && !st.data) mes = mesInicial();
     st.loading = true; st.erro = null;
     try {
       const r = await fetch('/api/iqc' + (mes ? '?mes=' + mes : ''), { cache: 'no-store' });
