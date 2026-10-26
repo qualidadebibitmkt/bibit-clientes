@@ -47,8 +47,11 @@ function postsDoPainel(painel, { todos = false } = {}) {
     const c = porId.get(t.clienteId);
     // responsável = quem é da ÁREA no card do cliente (campo Equipe: Social Media / Audiovisual / RP Manager), não o assignee do post
     // (André, 23/10/26: os posts de Social ficam todos no Will no ClickUp, mas o João responde por vários clientes). Fallback: assignee.
-    const daArea = c && c.team && (c.team[t.listKey] || [])[0];
-    const resp = daArea || (t.assignees || [])[0] || null;
+    // quem saiu da empresa não responde por post (Gabriel Beltrão, Audiovisual): a Gabriela segurou a transição do
+    // Audiovisual (André, 26/10/26) — sem outro responsável da área, vale o assignee e depois a pessoa de RP do cliente
+    const saiu = (p) => p && /beltr[aã]o/i.test(String(p.name || ''));
+    const daArea = c && c.team && (c.team[t.listKey] || []).find((p) => !saiu(p));
+    const resp = daArea || (t.assignees || []).find((p) => !saiu(p)) || (t.listKey === 'audiovisual' && c && c.team && (c.team.rp || []).find((p) => !saiu(p))) || null;
     const num = (String(t.name).match(/post\s*(\d+)/i) || [])[1];
     out.push({
       taskId: t.id, nome: t.name, url: t.url, area: t.listKey, funcao: AREAS[t.listKey].funcao, publicado,
