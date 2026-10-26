@@ -200,7 +200,7 @@ async function aprovInsumo(req, res, agora) {
     if (!uteis.length) continue;
     // economia: se já houve análise e ninguém do lado do cliente escreveu desde então, não repete a chamada à IA
     let estado = null; try { const raw = await wa.redis(['GET', `iqc:aprov:${g.clienteId}:${g.mes}`]); estado = raw ? JSON.parse(raw) : null; } catch {}
-    if (estado && estado.em && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m, c.name)) && !req.query.forcar) continue;
+    if (estado && estado.em && estado.versao === VERSAO_APROV && !uteis.some((m) => m.t > estado.em && wa.ehCliente(m, c.name)) && !req.query.forcar) continue;
     const lista = g.posts.sort((a, b) => a.publicadoEm - b.publicadoEm).map((p) => `- taskId ${p.taskId} · Post ${p.numero ?? '?'} · ${fmtDia(p.publicadoEm)} · ${D.FORMATO_LBL[p.formato] || p.formato} · "${String(p.nome).replace(/"/g, "'").slice(0, 70)}" · ${p.publicado ? 'já publicado' : 'ainda não publicado'} · estado atual: ${p.aprovacao.status}${p.aprovacao.revisar ? ' (revisar)' : ''}${p.aprovacao.fonte === 'gestor' ? ' [definido pelo gestor — não alterar]' : ''}`).join('\n');
     const transcricao = uteis.map((m) => `${fmtHora(m.t)} ${wa.rotuloAutor(m, c.name)} ${m.s || 'alguém'}: ${m.m}`).join('\n');
     const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -220,6 +220,9 @@ function parseJsonIA(b) {
   return JSON.parse(txt.slice(i, j + 1));
 }
 const STATUS_IA = new Set(['sem_ajustes', 'apos_ajustes', 'reprovado', 'alteracao_externa', 'pendente', 'revisar']);
+// versão da leitura de aprovações: quando a regra/rotulagem muda, calendários já analisados são lidos de novo
+// (2026-10-26: autoria marcada pelo código [CLIENTE]/[BIBIT]; aprovação em bloco completa os posts não citados)
+const VERSAO_APROV = '2026-10-26.1';
 
 async function aprovResultado(req, res, agora) {
   const clienteId = String(req.query.cliente || ''), mes = String(req.query.mes || '');
@@ -239,12 +242,17 @@ async function aprovResultado(req, res, agora) {
     if (atual.fonte === 'gestor') continue; // decisão humana prevalece
     const x = porTask.get(p.taskId) || (p.numero != null ? porNumero.get(p.numero) : null);
     let novo = null;
-    if (x && STATUS_IA.has(String(x.status))) {
+    const emBloco = resposta === 'aprovado' || resposta === 'aprovado_com_ajustes';
+    // aprovação em bloco: post que a IA deixou "pendente" (não citado) vale sem ajustes — é a regra do prompt; antes o
+    // "pendente" da IA prevalecia e o calendário aprovado com 1 ajuste ficava com 11 posts pendentes (D'Ouro, 26/10/26)
+    if (x && emBloco && String(x.status) === 'pendente') {
+      novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco (post não citado)', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), quando: (ia.calendario && ia.calendario.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
+    } else if (x && STATUS_IA.has(String(x.status))) {
       const st = String(x.status);
       novo = st === 'revisar'
         ? { status: 'pendente', revisar: true, motivo: String(x.motivo || '').slice(0, 200), evidencia: String(x.evidencia || '').slice(0, 200), quando: x.quando || null, confianca: x.confianca || null, fonte: 'whatsapp', em: agora }
         : { status: st, revisar: false, motivo: String(x.motivo || '').slice(0, 200), evidencia: String(x.evidencia || '').slice(0, 200), quando: x.quando || null, confianca: x.confianca || null, fonte: 'whatsapp', em: agora };
-    } else if (resposta === 'aprovado' || resposta === 'aprovado_com_ajustes') {
+    } else if (emBloco) {
       novo = { status: 'sem_ajustes', revisar: false, motivo: 'calendário aprovado em bloco', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), quando: (ia.calendario && ia.calendario.quando) || null, confianca: 'media', fonte: 'whatsapp', em: agora };
     } else if (resposta === 'reprovado') {
       novo = { status: 'pendente', revisar: true, motivo: 'calendário reprovado — confirmar post a post', evidencia: String((ia.calendario && ia.calendario.evidencia) || '').slice(0, 200), fonte: 'whatsapp', em: agora };
@@ -258,7 +266,7 @@ async function aprovResultado(req, res, agora) {
     await D.gravarRegistro(p.taskId, reg, mes);
     alterados.push({ taskId: p.taskId, nome: p.nome, status: novo.status, revisar: !!novo.revisar });
   }
-  const estado = { clienteId, mes, calendario: ia.calendario || null, observacoes: String(ia.observacoes || '').slice(0, 300), em: agora, alterados: alterados.length };
+  const estado = { clienteId, mes, calendario: ia.calendario || null, observacoes: String(ia.observacoes || '').slice(0, 300), em: agora, alterados: alterados.length, versao: VERSAO_APROV };
   await wa.redisPipeline([['SET', `iqc:aprov:${clienteId}:${mes}`, JSON.stringify(estado)], ['EXPIRE', `iqc:aprov:${clienteId}:${mes}`, String(D.TTL)]]);
   res.status(200).json({ ok: true, clienteId, mes, resposta, alterados });
 }
