@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "ffmpeg-static": "5.2.0"
+    "@sparticuz/chromium": "153.0.0",
+    "ffmpeg-static": "5.2.0",
+    "puppeteer-core": "25.11.0"
   }
 }

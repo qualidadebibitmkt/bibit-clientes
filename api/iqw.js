@@ -10,6 +10,7 @@ const data = require('./data');
 const wa = require('./_wa');
 const E = require('./_iqw-engine');
 const D = require('./_iqw');
+const PR = require('./_iqw-print');
 
 const hojeBRT = (ms) => new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 10);
 const num = (x) => (x == null || x === '' ? null : Number.isFinite(Number(x)) ? Number(x) : null);
@@ -182,15 +183,72 @@ async function tecnicaAuto(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ ok: true, projetoId: p.id, notas, lighthouse: { mobile: p.tecnicaAuto.mobile, desktop: p.tecnicaAuto.desktop }, links });
 }
-// GET ?acao=print&projetoId=&tela=mobile|desktop → print da página (base64) guardado pelo Lighthouse, pra avaliação visual pela tarefa agendada
+// GET ?acao=print&projetoId=&tela=mobile-1|mobile-2|desktop-1… → fatia do print da página inteira (base64), já passada a verificação
+// de idade. tela=mobile|desktop (sem número) devolve o print antigo do Lighthouse (só a 1ª tela ao abrir).
 async function printPagina(req, res) {
   const p = await D.ler(String(req.query.projetoId || ''));
-  if (!p || !p.tecnicaAuto || !p.tecnicaAuto.screenshots) { res.status(404).json({ error: 'sem print — rode acao=tecnica antes' }); return; }
-  const tela = req.query.tela === 'desktop' ? 'desktop' : 'mobile';
-  const data = p.tecnicaAuto.screenshots[tela]; if (!data) { res.status(404).json({ error: 'sem print ' + tela }); return; }
-  const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(data);
+  if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  const tela = String(req.query.tela || 'mobile-1');
   res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({ projetoId: p.id, tela, mime: m ? m[1] : 'image/jpeg', b64: m ? m[2] : data, url: p.url });
+  if (/^(mobile|desktop)-\d$/.test(tela)) {
+    const info = p.prints && (p.prints.telas || []).find((x) => x.k === tela);
+    const b64 = info ? await wa.redis(['GET', `iqw:shot:${p.id}:${tela}`]) : null;
+    if (!b64) { res.status(404).json({ error: 'sem print ' + tela + ' — rode acao=capturar antes' }); return; }
+    res.status(200).json({ projetoId: p.id, tela, mime: 'image/jpeg', b64, url: p.url, trecho: `${info.de}–${info.ate}px de ${p.prints.alturas && p.prints.alturas[tela.split('-')[0]]}px`, idade: p.prints.idade && p.prints.idade[tela.split('-')[0]] });
+    return;
+  }
+  if (!p.tecnicaAuto || !p.tecnicaAuto.screenshots) { res.status(404).json({ error: 'sem print — rode acao=tecnica antes' }); return; }
+  const t2 = tela === 'desktop' ? 'desktop' : 'mobile';
+  const data = p.tecnicaAuto.screenshots[t2]; if (!data) { res.status(404).json({ error: 'sem print ' + t2 }); return; }
+  const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(data);
+  res.status(200).json({ projetoId: p.id, tela: t2, mime: m ? m[1] : 'image/jpeg', b64: m ? m[2] : data, url: p.url });
+}
+// ---- prints de verdade (navegador no servidor, passa a verificação de idade e fotografa a página inteira) — André, 26/10/26 ----
+// GET ?acao=capturar&projetoId=     → captura um projeto
+// GET ?acao=capturar-lote&limite=2  → captura os próximos da fila (um de cada vez; cada um leva ~30–60 s)
+const PRINTS_VERSAO = 2;
+const TTL_SHOT = 60 * 86400;
+async function capturarUm(p, agora) {
+  let r;
+  try { r = await PR.capturar(p.url); } catch (e) { r = { telas: {}, idade: {}, log: [String(e.message || e).slice(0, 200)] }; }
+  const ks = Object.keys(r.telas);
+  if (!ks.length) { p.printsErro = { em: agora, msg: (r.log || []).join(' · ').slice(0, 300) || 'sem print' }; await D.gravar(p); return { ok: false, erro: p.printsErro.msg }; }
+  await wa.redisPipeline(ks.flatMap((k) => [['SET', `iqw:shot:${p.id}:${k}`, r.telas[k].b64], ['EXPIRE', `iqw:shot:${p.id}:${k}`, String(TTL_SHOT)]]));
+  p.prints = { versao: PRINTS_VERSAO, em: agora, telas: ks.map((k) => ({ k, de: r.telas[k].de, ate: r.telas[k].ate })), idade: r.idade, alturas: r.alturas, cortado: !!r.cortado, urlFinal: r.urlFinal || p.url, titulo: r.titulo || null, log: (r.log || []).slice(0, 12) };
+  delete p.printsErro;
+  // notas de Experiência/Visual dadas em cima do print antigo (só a tela de idade) são descartadas pra serem refeitas
+  const av = p.avaliacao; let refazer = false;
+  if (av && av.notas && (av.printsVersao || 1) < PRINTS_VERSAO && CRIT_VISUAIS.some((c) => av.notas[c] && Object.values(av.notas[c]).some((v) => v != null))) {
+    const antes = D.avaliar(p).resultado; refazer = true;
+    for (const c of CRIT_VISUAIS) { delete av.notas[c]; if (av.justificativas) delete av.justificativas[c]; if (av.evidencias) delete av.evidencias[c]; }
+    av.parcial = true;
+    p.historico = [...(p.historico || []), { em: agora, por: 'sistema', o: 'avaliação visual descartada (o print antigo só mostrava a verificação de idade) — será refeita com a página inteira', notaAnterior: antes && antes.nota }].slice(-60);
+    if (p.status === 'avaliado') p.status = 'concluido';
+  }
+  p.historico = [...(p.historico || []), { em: agora, por: 'sistema (navegador)', o: `prints da página inteira (${ks.length} fatias · idade: ${Object.values(r.idade || {}).join('/') || '—'})` }].slice(-60);
+  await D.gravar(p);
+  return { ok: true, telas: ks, idade: r.idade, alturas: r.alturas, refazer, log: p.prints.log };
+}
+async function capturarPrints(req, res, agora) {
+  const p = await D.ler(String(req.query.projetoId || ''));
+  if (!p) { res.status(404).json({ error: 'projeto não encontrado' }); return; }
+  if (!p.url) { res.status(422).json({ error: 'projeto sem URL final' }); return; }
+  const r = await capturarUm(p, agora);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(r.ok ? 200 : 502).json({ projetoId: p.id, cliente: p.cliente, ...r });
+}
+const precisaPrint = (p, agora) => p.url && (!p.prints || (p.prints.versao || 1) < PRINTS_VERSAO || agora - p.prints.em > 30 * 86400000) && !(p.printsErro && agora - p.printsErro.em < 20 * 3600000);
+async function capturarLote(req, res, agora) {
+  const t0 = Date.now();
+  const fila = (await D.lerTodos()).filter((p) => precisaPrint(p, agora)).sort((a, b) => (num(b.conclusao) || 0) - (num(a.conclusao) || 0));
+  const limite = Math.min(Number(req.query.limite) || 2, 4); const feitos = [];
+  for (const p of fila.slice(0, limite)) {
+    if (feitos.length && Date.now() - t0 > 170000) break; // não estoura os 300 s da função
+    const r = await capturarUm(p, agora);
+    feitos.push({ id: p.id, cliente: p.cliente, tipo: p.tipo, ok: r.ok, telas: r.telas, idade: r.idade, refazer: r.refazer, erro: r.erro });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ restantes: fila.length - feitos.length, feitos });
 }
 // GET ?acao=fila-tecnica&limite=  → projetos com URL e sem técnica automática (ou com mais de 30 dias)
 // GET ?acao=tecnica-lote&limite=3 → roda a técnica automática em paralelo nos próximos da fila
@@ -206,16 +264,18 @@ async function tecnicaLote(req, res, agora) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ restantes: fila.length - lote.length, feitos: out });
 }
-// ---- avaliação visual/experiência pela tarefa agendada (prints do Lighthouse) ----
-// GET ?acao=fila-visual&limite= → projetos com print e sem notas de Experiência/Visual dadas pelo sistema
+// ---- avaliação visual/experiência pela tarefa agendada (prints da página inteira) ----
+// GET ?acao=fila-visual&limite= → projetos com prints novos (idade passada) e sem notas de Experiência/Visual
 const CRIT_VISUAIS = ['experiencia', 'visual'];
 async function filaVisual(req, res) {
   const todos = await D.lerTodos();
   const sem = (p) => { const n = p.avaliacao && p.avaliacao.notas; return !n || CRIT_VISUAIS.some((c) => !n[c] || E.CRITERIOS.find((x) => x.k === c).sub.some((s) => n[c][s.k] == null)); };
-  const fila = todos.filter((p) => p.tecnicaAuto && p.tecnicaAuto.screenshots && (p.tecnicaAuto.screenshots.mobile || p.tecnicaAuto.screenshots.desktop) && sem(p));
+  const okPrint = (p) => p.prints && (p.prints.versao || 1) >= PRINTS_VERSAO && (p.prints.telas || []).length && !Object.values(p.prints.idade || {}).every((v) => v === 'falhou' || v === 'erro');
+  const fila = todos.filter((p) => okPrint(p) && sem(p));
+  const semPrintNovo = todos.filter((p) => p.url && !okPrint(p)).length;
   res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({ total: fila.length, criterios: E.CRITERIOS.filter((c) => CRIT_VISUAIS.includes(c.k)).map((c) => ({ k: c.k, rotulo: c.rotulo, objetivo: c.objetivo, sub: c.sub })), escala: E.ESCALA_LBL,
-    fila: fila.slice(0, Math.min(Number(req.query.limite) || 8, 20)).map((p) => ({ id: p.id, cliente: p.cliente, tipo: E.TIPOS[p.tipo] || p.tipo, url: p.url, prints: Object.entries(p.tecnicaAuto.screenshots).filter(([, v]) => v).map(([k]) => k) })) });
+  res.status(200).json({ total: fila.length, aguardandoPrint: semPrintNovo, criterios: E.CRITERIOS.filter((c) => CRIT_VISUAIS.includes(c.k)).map((c) => ({ k: c.k, rotulo: c.rotulo, objetivo: c.objetivo, sub: c.sub })), escala: E.ESCALA_LBL,
+    fila: fila.slice(0, Math.min(Number(req.query.limite) || 8, 20)).map((p) => ({ id: p.id, cliente: p.cliente, tipo: E.TIPOS[p.tipo] || p.tipo, url: p.url, titulo: p.prints.titulo, idade: p.prints.idade, alturas: p.prints.alturas, cortado: p.prints.cortado, prints: p.prints.telas.map((t) => t.k) })) });
 }
 // GET ?acao=visual-gravar&projetoId=&experiencia.clareza=80&...&visual.publico=60&j_experiencia.clareza=...  (10 notas, justificativas por subcritério)
 async function visualGravar(req, res, agora) {
@@ -229,12 +289,12 @@ async function visualGravar(req, res, agora) {
     for (const s2 of c.sub) {
       const v = num(q[ck + '.' + s2.k]); if (v == null || !E.ESCALA.includes(v)) { erros.push(ck + '.' + s2.k); continue; }
       av.notas[ck][s2.k] = v; av.justificativas[ck][s2.k] = String(q['j_' + ck + '.' + s2.k] || '').slice(0, 400) || 'avaliado pelo sistema a partir dos prints';
-      av.evidencias[ck][s2.k] = `prints celular/computador do Lighthouse (${new Date(p.tecnicaAuto ? p.tecnicaAuto.em : agora).toLocaleDateString('pt-BR')}) · ${p.url}`;
+      av.evidencias[ck][s2.k] = p.prints && p.prints.versao >= PRINTS_VERSAO ? `prints da página inteira no celular e no computador (${new Date(p.prints.em).toLocaleDateString('pt-BR')}, verificação de idade: ${Object.values(p.prints.idade || {}).join('/')}) · ${p.url}` : `prints celular/computador do Lighthouse (${new Date(p.tecnicaAuto ? p.tecnicaAuto.em : agora).toLocaleDateString('pt-BR')}) · ${p.url}`;
     }
   }
   if (erros.length) { res.status(400).json({ error: 'notas faltando ou fora da escala (100/80/60/40/0)', faltando: erros }); return; }
-  av.parcial = true; av.em = agora; p.avaliacao = av;
-  p.historico = [...(p.historico || []), { em: agora, por: 'sistema (avaliação visual)', o: 'experiência e visual avaliados pelos prints' }].slice(-60);
+  av.parcial = true; av.em = agora; if (p.prints && p.prints.versao >= PRINTS_VERSAO) av.printsVersao = PRINTS_VERSAO; p.avaliacao = av;
+  p.historico = [...(p.historico || []), { em: agora, por: 'sistema (avaliação visual)', o: 'experiência e visual avaliados pelos prints da página inteira' }].slice(-60);
   await D.gravar(p);
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({ ok: true, projetoId: p.id, resultado: D.avaliar(p).resultado });
@@ -288,6 +348,8 @@ module.exports = async (req, res) => {
 
     if (acao === 'tecnica') return await tecnicaAuto(req, res, agora);
     if (acao === 'print') return await printPagina(req, res);
+    if (acao === 'capturar') return await capturarPrints(req, res, agora);
+    if (acao === 'capturar-lote') return await capturarLote(req, res, agora);
     if (acao === 'fila-tecnica') return await filaTecnica(req, res, agora);
     if (acao === 'tecnica-lote') return await tecnicaLote(req, res, agora);
     if (acao === 'fila-visual') return await filaVisual(req, res);
