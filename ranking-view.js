@@ -168,10 +168,10 @@
       return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
     };
 
-    el.innerHTML = `
-      <div class="pl-head">
-        <div class="hs-termo pl-termo rk-termo">
-          <div class="hs-termo-media"><span class="hs-big">${mediaTime == null ? '—' : mediaTime}</span><span class="hs-termo-l">pontos · média do time<br><span>${esc(sub)}</span></span></div>
+    // placar do time (André, 26/10/26): logo abaixo do pódio, em destaque
+    const placarHTML = `
+        <div class="hs-termo pl-termo rk-termo rk-placar">
+          <div class="hs-termo-media"><span class="hs-big rk-placar-n">${mediaTime == null ? '—' : mediaTime}</span><span class="hs-termo-l">pontos · média do time<br><span>${esc(sub)}</span></span></div>
           <div class="pl-meta-box"><span class="pl-meta-n">${rank.length}</span><span class="hs-termo-l">no ranking<br><span>Health Score (até 100) + Renovação (100) + Vendas (200) + NRR (200) — os pontos somam, como na matriz de desempenho</span></span></div>
           <div class="hs-termo-pilares pl-kpis rk-kpis">
             <div class="hs-termo-p"><span class="hs-termo-pn g">${nF('green')}</span><span class="hs-termo-pl">Health Score ≥ 90</span></div>
@@ -179,11 +179,14 @@
             <div class="hs-termo-p"><span class="hs-termo-pn ${nF('red') ? 'r' : 'g'}">${nF('red')}</span><span class="hs-termo-pl">Health Score &lt; 70</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn na">${semPos.length}</span><span class="hs-termo-pl">sem posição</span></div>
           </div>
-        </div>
-        ${filtros}
-      </div>
+        </div>`;
+
+    el.innerHTML = `
+      <div class="pl-head rk-head">${filtros}</div>
 
       ${podioHTML}
+
+      ${placarHTML}
 
       <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'ao vivo · clique na linha pra ver os pontos de cada pilar e como o Health Score foi formado, cliente a cliente' : 'Health Score = média do placar de cada dia do mês; Renovação, Vendas e NRR = números do mês'}</span></p>
       ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem placar registrado neste mês ainda — o placar do dia é registrado quando o painel é aberto.'}</div>`}

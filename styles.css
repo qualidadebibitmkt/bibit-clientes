@@ -1688,3 +1688,16 @@ body::before {
 }
 /* iniciais (sem foto) legíveis sobre o metal */
 .rk-podio .rk-pod-avatar:not(.has-foto) { color: rgba(20, 14, 4, 0.85) !important; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+
+/* ---------- v133: placar do time abaixo do pódio, em destaque (André, 26/10/26) ---------- */
+.rk-head .pl-filtros { margin: 0 0 22px; }
+.rk-placar { position: relative; margin: 6px 0 30px; padding: 26px 30px; border: 1.5px solid transparent;
+  background: linear-gradient(180deg, color-mix(in srgb, #e9b949 10%, var(--garrafa-2)), var(--garrafa-2) 70%) padding-box,
+    linear-gradient(135deg, #7a5410 0%, #c99a2e 14%, #f6dc7d 28%, #fff6d0 36%, #e4b947 48%, #8f6514 60%, #d9ad3c 74%, #fbe7a0 86%, #a77a1d 100%) border-box;
+  box-shadow: 0 0 0 1px rgba(233,185,73,0.08), 0 14px 40px -12px rgba(233,185,73,0.35); }
+.rk-placar .hs-big.rk-placar-n { position: static; font-size: 84px; padding-top: 0;
+  background: linear-gradient(180deg, #fff3c4 0%, #f2cf62 30%, #d4a333 62%, #f0cd6a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.rk-placar .hs-termo-l { color: var(--creme-70); }
+.rk-placar .pl-meta-n { font-size: 44px; }
+.rk-placar .hs-termo-p { background: rgba(0,0,0,0.24); border-color: rgba(233,185,73,0.22); }
+@media (max-width: 640px) { .rk-placar { padding: 20px 18px; } .rk-placar .hs-big.rk-placar-n { font-size: 64px; } }
