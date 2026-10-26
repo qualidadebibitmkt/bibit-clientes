@@ -289,7 +289,7 @@
   const filteredTasks = () => (state.cliente ? tasksOf(state.cliente) : state.data.tasks);
 
   // fórmula oficial (André, 20/10/26): mesma do pilar do score e da aba Produtividade —
-  // abertas vencidas + concluídas fora do prazo (30 dias) sobre abertas + concluídas; zero tarefa = 100%
+  // abertas vencidas + concluídas fora do prazo (30 dias) sobre abertas + concluídas; só tarefa COM prazo; nenhuma = sem dado
   function prodOf(ts) {
     return prodDetalhe(ts).pct;
   }
@@ -526,7 +526,11 @@
         const cs = p.detalhe?.csat, np = p.detalhe?.nps;
         det = cs == null && np == null ? '<span class="hs-regua">o cliente ainda não respondeu a pesquisa de satisfação (CSAT/NPS) — não pesa</span>' : `Pesquisa de satisfação: CSAT ${fmtNota(cs)} · NPS ${fmtNota(np)} <span class="hs-regua">(notas de 0 a 10)</span>`;
       }
-      if (k === 'produtividade') det = p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas entregues no prazo nos últimos 30 dias` : '<span class="hs-regua">sem tarefas nos últimos 30 dias</span>';
+      if (k === 'produtividade') {
+        const sp = c.tarefas30d?.semPrazo ?? tasksOf(c.id).filter((t) => isOpen(t) && !t.dueDate).length;
+        det = (p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas entregues no prazo nos últimos 30 dias` : '<span class="hs-regua">nenhuma tarefa com prazo nos últimos 30 dias — não pesa</span>')
+          + (sp ? ` <span class="r">· ${sp} tarefa${sp === 1 ? '' : 's'} aberta${sp === 1 ? '' : 's'} sem prazo — erro de processo, colocar prazo no ClickUp (fica${sp === 1 ? '' : 'm'} fora da conta)</span>` : '');
+      }
       if (k === 'contato' && c.contato?.vencido) {
         det = `<span class="hs-regua">a análise do grupo de WhatsApp está parada desde ${fmtCurto(c.contato.vencido.ultimaAnalise)} — a nota antiga (${c.contato.nota}) não conta no score até voltar a rodar</span>`;
       } else if (k === 'contato') {
@@ -603,7 +607,7 @@
           <div class="metric-label">NPS · meta ≥ 9</div>
         </div>
         <div class="metric${metaClass(prod, 95)}">
-          <div class="metric-num">${prod.toLocaleString('pt-BR')}<span class="metric-unit">%</span></div>
+          <div class="metric-num">${prod == null ? '—' : `${prod.toLocaleString('pt-BR')}<span class="metric-unit">%</span>`}</div>
           <div class="metric-label">Produtividade · meta ≥ 95%</div>
         </div>
         <div class="metric">
@@ -637,7 +641,8 @@
     const sin = [];
     const add = (bad, txtBad, txtOk) => sin.push({ bad, txt: bad ? txtBad : txtOk });
     add(lateTasks.length > 0, `${lateTasks.length} tarefa${lateTasks.length === 1 ? '' : 's'} atrasada${lateTasks.length === 1 ? '' : 's'}`, 'Nenhuma tarefa atrasada');
-    add(prod < 95, `Produtividade em ${prod.toLocaleString('pt-BR')}% (meta ≥ 95%)`, 'Produtividade na meta');
+    if (prod != null) add(prod < 95, `Produtividade em ${prod.toLocaleString('pt-BR')}% (meta ≥ 95%)`, 'Produtividade na meta');
+    { const sp = ts.filter((t) => isOpen(t) && !t.dueDate).length; if (sp) sin.push({ bad: true, txt: `${sp} tarefa${sp === 1 ? '' : 's'} aberta${sp === 1 ? '' : 's'} sem prazo no ClickUp — erro de processo: toda tarefa precisa de prazo (hoje fica${sp === 1 ? '' : 'm'} fora da produtividade)` }); }
     if (m.csat != null) add(m.csat < 9, `CSAT ${fmtNota(m.csat)} (meta ≥ 9)`, 'CSAT na meta');
     if (m.nps != null) add(m.nps < 9, `NPS ${fmtNota(m.nps)} (meta ≥ 9)`, 'NPS na meta');
     if (m.respostas === 0) sin.push({ bad: true, txt: 'Nunca respondeu CSAT' });
@@ -935,11 +940,14 @@
   const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
   const concluida = (t) => !isOpen(t) && !descartada(t) && t.dateClosed && Date.now() - t.dateClosed <= JANELA_CONCL_DIAS * 864e5;
   const conclFora = (t) => concluida(t) && t.dueDate && dayKey(t.dateClosed) > dayKey(t.dueDate);
-  function prodDetalhe(ts) {
+  // tarefa sem prazo fica fora da conta (André, 26/10/26) — é erro de processo e aparece à parte pra ser corrigida
+  function prodDetalhe(tsTodas) {
+    const ts = tsTodas.filter((t) => t.dueDate);
+    const semPrazo = tsTodas.filter((t) => isOpen(t) && !t.dueDate).length;
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate).length, lateCo = concl.filter(conclFora).length;
     const total = abertas.length + concl.length;
-    return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, pct: total ? Math.round(((total - lateAb - lateCo) / total) * 1000) / 10 : 100 };
+    return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, semPrazo, pct: total ? Math.round(((total - lateAb - lateCo) / total) * 1000) / 10 : null };
   }
 
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
@@ -1120,7 +1128,7 @@
     let porPessoa = '';
     if (k === 'produtividade') {
       const agg = new Map();
-      for (const c of filtrados) for (const t of tasksOf(c.id)) { const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
+      for (const c of filtrados) for (const t of tasksOf(c.id)) { if (!t.dueDate) continue; const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
       for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
       const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.round(((total - late) / total) * 1000) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas + concluídas nos últimos ${JANELA_CONCL_DIAS} dias, de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>

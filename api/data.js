@@ -482,11 +482,14 @@ module.exports = async (req, res) => {
     const descartadaT = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
     const concluidaT = (t) => !isOpenT(t) && !descartadaT(t) && t.dateClosed && now - t.dateClosed <= JANELA_CONCL_MS;
     const conclForaT = (t) => concluidaT(t) && t.dueDate && diaDe(t.dateClosed) > diaDe(t.dueDate);
+    // tarefa SEM PRAZO fica fora da Produtividade (André, 26/10/26: "não deve existir tarefa sem prazo, é erro de
+    // processo") — antes contava como "no prazo" e inflava a nota (Rock Brewing e Verano: 64 de 107 sem prazo).
+    // Sem nenhuma tarefa com prazo, o pilar fica sem dado (fora do score).
     const prodDe = (cid) => {
-      const ts = tasks.filter((t) => t.clienteId === cid);
+      const ts = tasks.filter((t) => t.clienteId === cid && t.dueDate);
       const abertas = ts.filter(isOpenT), concl = ts.filter(concluidaT);
       const total = abertas.length + concl.length;
-      if (!total) return 100;
+      if (!total) return null;
       const late = abertas.filter(isLateT).length + concl.filter(conclForaT).length;
       return Math.round(((total - late) / total) * 1000) / 10;
     };
@@ -494,7 +497,7 @@ module.exports = async (req, res) => {
     // briefing, estratégia, kickoff) e em paralisado, campanha parada nunca conta — o tráfego fica fora (André, 26/10/26)
     const stKey = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
     const SEM_CARGA_TRAFEGO = new Set(['novocliente', 'briefing', 'estrategia', 'kickoff', 'paralisado']);
-    const tarefasDe = (cid) => { const ts = tasks.filter((t) => t.clienteId === cid); return { abertas: ts.filter(isOpenT).length, concluidas30d: ts.filter(concluidaT).length }; };
+    const tarefasDe = (cid) => { const ts = tasks.filter((t) => t.clienteId === cid); return { abertas: ts.filter(isOpenT).length, concluidas30d: ts.filter(concluidaT).length, semPrazo: ts.filter((t) => isOpenT(t) && !t.dueDate).length }; };
     // Resultado (André, 22/10/26): performance de conteúdo por área (IQC) entra no pilar junto com o tráfego.
     // Métricas por post vivem no Redis; se o Redis não responder, o pilar segue só com tráfego.
     let conteudoPorCliente = {};
