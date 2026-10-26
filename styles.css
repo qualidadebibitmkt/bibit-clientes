@@ -1530,3 +1530,6 @@ body::before {
 .iqw-total { display: grid; gap: 4px; } .iqw-total .hs-big { font-size: 44px; text-align: left; }
 .iqw-novo summary { cursor: pointer; } .iqw-novo summary b { display: inline; }
 .iqw-form label { display: inline-flex; flex-direction: column; gap: 3px; }
+
+/* v108: Resultado por área na ficha */
+.hs-frente { margin: 2px 0; } .hs-frente b.g { color: var(--flag-green); } .hs-frente b.y { color: var(--flag-yellow); } .hs-frente b.r { color: var(--flag-red); }

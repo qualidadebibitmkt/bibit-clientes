@@ -453,15 +453,46 @@
     </div>`;
   }
 
+  // Resultado na ficha: cada área que o cliente contrata, com a nota ou o motivo de ainda não ter (sem parecer "só tráfego")
+  function resultadoFrentesHTML(c, p, fmtV) {
+    const t = c.team || {}; const fr = p.frentes || {}; const det = p.detalhe || [];
+    const tem = (k) => (t[k] || []).length > 0;
+    const DIA = 864e5; const agora = Date.now();
+    const linhas = [];
+    // Tráfego Pago
+    if (tem('trafego') || det.some((f) => !f.frente)) {
+      const trs = det.filter((f) => !f.frente);
+      let txt;
+      if (trs.length) txt = trs.map((f) => `${f.rotulo} ${f.unid === 'pts' ? `${f.valor} pts` : fmtV(f.rotulo, f.valor)} → ${f.nota != null ? f.nota : '—'} <span class="hs-regua">(${f.regua})</span>`).join(' · ');
+      else if (semCampanha(c)) txt = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · ${campEfeito(c)}</span>`;
+      else txt = `<span class="hs-regua">sem dado do Reportei${c.temReportei ? '' : ' (cliente sem Reportei ID no card)'}</span>`;
+      linhas.push(`<b>Tráfego Pago</b>${fr.trafego && fr.trafego.nota != null ? ` <b class="${hsCls(fr.trafego.nota)}">${fr.trafego.nota}</b>` : ''}: ${txt}`);
+    }
+    // Social / Audiovisual / RP: desempenho dos posts (7 dias depois de publicados, últimos 30 dias)
+    const AREA = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager' };
+    for (const [k, lbl] of Object.entries(AREA)) {
+      if (!tem(k) && !fr[k]) continue;
+      if (fr[k] && fr[k].nota != null) { linhas.push(`<b>${lbl}</b> <b class="${hsCls(fr[k].nota)}">${Math.round(fr[k].nota)}</b>: <span class="hs-regua">desempenho de ${fr[k].n} post${fr[k].n === 1 ? '' : 's'} (engajamento e compartilhamento vs. meta, 7 dias após o post)</span>`); continue; }
+      const pubs = tasksOf(c.id).filter((x) => x.listKey === k && x.igId && x.dataAgendamento && x.dataAgendamento >= agora - 30 * DIA);
+      const esperando = pubs.filter((x) => x.dataAgendamento > agora - 7 * DIA).length;
+      const motivo = pubs.length ? (esperando ? `${esperando} post${esperando === 1 ? '' : 's'} publicado${esperando === 1 ? '' : 's'} esperando completar 7 dias` : 'posts publicados aguardando coleta das métricas') : 'nenhum post publicado pelo painel nos últimos 30 dias';
+      linhas.push(`<b>${lbl}</b>: <span class="hs-regua">${motivo} — ainda não pesa</span>`);
+    }
+    // Web Design
+    if (tem('webdesign') || fr.webdesign) {
+      if (fr.webdesign && fr.webdesign.nota != null) linhas.push(`<b>Web Design</b> <b class="${hsCls(fr.webdesign.nota)}">${fr.webdesign.nota}</b>: <span class="hs-regua">qualidade de ${fr.webdesign.n} página${fr.webdesign.n === 1 ? '' : 's'} entregue${fr.webdesign.n === 1 ? '' : 's'} nos últimos 90 dias</span>`);
+      else linhas.push('<b>Web Design</b>: <span class="hs-regua">avaliação da página em andamento (aba Resultado → Webdesigner) — ainda não pesa</span>');
+    }
+    return linhas.length ? linhas.map((l) => `<div class="hs-frente">${l}</div>`).join('') : '<span class="hs-regua">sem área de resultado no card do cliente</span>';
+  }
+
   function hsFichaHTML(hs, c) {
     if (!hs || hs.score == null) return `<p class="eyebrow">Health Score</p><div class="fn-empty">Sem dados suficientes pra calcular o score deste cliente (sem tráfego coletado, CSAT ou tarefas).</div>`;
     const diverge = c.flag && hs.flag && c.flag !== hs.flag;
     const fmtV = (k, v) => (v == null ? '—' : k === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
     const linhas = Object.entries(hs.pilares).map(([k, p]) => {
       let det = '';
-      if (k === 'trafego' && p.detalhe?.length) det = p.detalhe.map((f) => `${f.rotulo} ${f.unid === 'pts' ? `${f.valor} pts` : fmtV(f.rotulo, f.valor)} → ${f.nota != null ? f.nota : '—'} <span class="hs-regua">(${f.regua})</span>`).join(' · ');
-      else if (k === 'trafego' && semCampanha(c)) det = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · ${campEfeito(c)}</span>`;
-      else if (k === 'trafego') det = `<span class="hs-regua">sem coleta do Reportei pra ${esc(c.tipoRelatorio || 'este perfil')}</span>`;
+      if (k === 'trafego') det = resultadoFrentesHTML(c, p, fmtV); // Resultado: uma linha por área do cliente (André, 26/10/26)
       if (k === 'satisfacao') det = `CSAT ${fmtNota(p.detalhe?.csat)} · NPS ${fmtNota(p.detalhe?.nps)}`;
       if (k === 'produtividade') det = `${p.detalhe?.prodPct != null ? p.detalhe.prodPct.toLocaleString('pt-BR') + '%' : '—'} no prazo (30 dias)`;
       const ctAt = c.contato?.atualizadoEm ? `<span class="hs-regua"> · atualizado ${fmtCurto(c.contato.atualizadoEm)} ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>` : '';
