@@ -334,9 +334,30 @@ module.exports = async (req, res) => {
           const c = matcher(shaped.name);
           if (c) { shaped.clienteId = c.id; shaped.clienteName = c.name; }
         }
+        shaped._parent = t.parent || null;
         tasks.push(shaped);
       }
     });
+    // ---- cliente errado na tarefa (26/10/26, caso "Post 5 - Wetz Beverages" marcado como SALVA) ----
+    // Subtarefa de post cujo dropdown Cliente diverge do calendário-pai: se o NOME da tarefa confirma o cliente do pai,
+    // vale o do pai (erro de preenchimento). Toda divergência fica listada pra corrigir no ClickUp.
+    const divergenciasCliente = [];
+    {
+      const porId = new Map(tasks.map((x) => [x.id, x]));
+      const nomeCli = new Map(clients.map((c) => [c.id, c.name]));
+      for (const x of tasks) {
+        const pai = x._parent ? porId.get(x._parent) : null;
+        const peloNome = matcher(x.name);
+        if (pai && pai.clienteId && x.clienteId && pai.clienteId !== x.clienteId) {
+          const corrige = peloNome && peloNome.id === pai.clienteId;
+          divergenciasCliente.push({ taskId: x.id, nome: x.name, url: x.url, marcado: x.clienteName, doCalendario: nomeCli.get(pai.clienteId) || pai.clienteName, corrigidoNoPainel: !!corrige });
+          if (corrige) { x.clienteId = pai.clienteId; x.clienteName = pai.clienteName; }
+        } else if (!pai && x.clienteId && peloNome && peloNome.id !== x.clienteId && norm(x.name).includes(peloNome.matchName)) {
+          divergenciasCliente.push({ taskId: x.id, nome: x.name, url: x.url, marcado: x.clienteName, peloNome: peloNome.name, corrigidoNoPainel: false });
+        }
+      }
+      for (const x of tasks) delete x._parent;
+    }
 
     // ---- métricas por cliente (CSAT - Envios): mesma regra do painel da operação ----
     // CSAT: média das notas preenchidas (>0) de todas as respostas do cliente.
@@ -582,6 +603,7 @@ module.exports = async (req, res) => {
       // (req._internal, ex. /api/acoes-dia) recebem o id como waGrupo
       clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => (req._internal && _waGrupo ? { ...c, waGrupo: _waGrupo } : c)),
       tasks,
+      divergenciasCliente,
     });
   } catch (err) {
     if (err.code === 'unauthorized') {
