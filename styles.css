@@ -1676,3 +1676,15 @@ body::before {
 @keyframes rk-brilho { 0%, 62% { left: -60%; } 100% { left: 140%; } }
 .rk-pod-medalha { position: relative; z-index: 1; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 14px var(--brilho)); }
 @media (prefers-reduced-motion: reduce) { .rk-podio .rk-pod::after { animation: none; display: none; } }
+
+/* pódio: larguras médias e quantidade de pessoas (auditoria 26/10/26) */
+.rk-podio.rk-podio-1 { grid-template-columns: minmax(0, 420px); justify-content: center; }
+.rk-podio.rk-podio-2 { grid-template-columns: 1fr 1.15fr; }
+@media (max-width: 900px) and (min-width: 701px) {
+  .rk-podio .rk-pod-ouro .rk-pod-avatar { width: 68px; height: 68px; }
+  .rk-podio .rk-pod-ouro .rk-pod-score { font-size: 42px; }
+  .rk-podio .rk-pod-score { font-size: 34px; }
+  .rk-pod-nome { font-size: 15px; }
+}
+/* iniciais (sem foto) legíveis sobre o metal */
+.rk-podio .rk-pod-avatar:not(.has-foto) { color: rgba(20, 14, 4, 0.85) !important; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }

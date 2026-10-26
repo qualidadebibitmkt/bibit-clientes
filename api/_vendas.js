@@ -84,7 +84,11 @@ function porPessoa(crossTasks = [], upsellTasks = []) {
       // o que foi recebido (só o nome do card e o dia — o valor fica no servidor)
       const pai = t.parent ? byId.get(t.parent) : null;
       // nome das parcelas costuma trazer o valor ("Parcela 2 — R$ 3250") — o valor sai do texto antes de ir pro navegador
-      const semValor = (x) => String(x || '').replace(/\s*[—–-]?\s*R\$\s*[\d.,]+(\s*mil)?/gi, '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+      const semValor = (x) => String(x || '')
+        .replace(/\s*[—–-]?\s*R\$\s*[\d.,\s]*\d(\s*(mil|k)\b)?/gi, '')            // R$ 3.250 · R$ 3 250 · R$3,5k · R$ 2 mil
+        .replace(/\b\d[\d.,]*\s*(reais|mil reais|k)\b/gi, '')                        // 3250 reais · 3,5k
+        .replace(/\b(valor|upsell|up sell|downsell)\s*:?\s*\d[\d.,]*(\s*(→|->|para)\s*\d[\d.,]*)?/gi, '$1') // Upsell 1.500 → 3.000
+        .replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
       const item = { nome: semValor(pai ? `${pai.name} · ${t.name}` : t.name), tipo, dia: dia(ms), dividido: ds.length > 1 ? ds.length : null };
       for (const d of ds) somar(d, mes, valor / ds.length, item);
     }

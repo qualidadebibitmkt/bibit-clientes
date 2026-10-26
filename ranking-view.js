@@ -4,7 +4,6 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
   const LBL = { trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento' };
-  const CURTO = { trafego: 'Result.', satisfacao: 'Satisf.', produtividade: 'Produt.', contato: 'Relac.' };
   const cls = (v) => (v == null ? 'na' : v >= 90 ? 'g' : v >= 70 ? 'y' : 'r');
   const flagCls = { green: 'g', yellow: 'y', red: 'r' };
   const n1 = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
@@ -47,6 +46,7 @@
   const rkTxt = (k, x, mes) => {
     if (!x) return 'sem dado';
     if (k === 'hs') return x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2)' : `Health Score ${x.pts} de 100`;
+    if ((k === 'renovacao' || k === 'nrr') && x.semCards) return 'não deu pra ler os cards do Ranking no ClickUp agora — tente recarregar';
     if (k === 'renovacao') return x.pct == null ? `sem % de renovação no card de ${mesLbl(mes)}` : `renovação ${pct1(x.pct)} em ${mesLbl(mes)} → ${x.pts} pontos`;
     if (k === 'nrr') return x.pct == null ? `sem NRR no card de ${mesLbl(mes)}` : `NRR ${pct1(x.pct)} em ${mesLbl(mes)} → ${x.pts} pontos`;
     if (x.disponivel === false) return 'vendas indisponíveis agora (ClickUp não respondeu)';
@@ -85,7 +85,7 @@
       corpo += `<div class="rk-mini">${PILARES.map((kk) => { const y = p.pilares[kk]; return `<span>${LBL[kk]} <i>peso ${y && y.peso || ''}</i> <b class="${cls(y && y.nota)}">${y && y.nota != null ? y.nota : '—'}</b></span>`; }).join('')}</div>`;
       if (x.pts != null && x.pts < 100) falta = x.pts >= 90 ? 'faixa verde (≥ 90)' : x.pts >= 70 ? `faltam ${90 - x.pts} pra faixa verde (90)` : `faltam ${70 - x.pts} pra faixa amarela (70)`;
     } else if (k === 'renovacao') {
-      corpo = x.pct == null ? `Sem % de renovação no card de ${mesLongo(mes)}.` : `<b>${pct1(x.pct)}</b> de renovação em ${mesLongo(mes)}${x.totais ? ` — ${x.ativos} de ${x.totais} cliente${x.totais === 1 ? '' : 's'} da carteira continuaram${x.churn ? ` (${x.churn} saíram no mês)` : ''}` : ''}.`;
+      corpo = x.semCards ? 'Não deu pra ler os cards do Ranking no ClickUp agora — recarregue a página.' : x.pct == null ? `Sem % de renovação no card de ${mesLongo(mes)}.` : `<b>${pct1(x.pct)}</b> de renovação em ${mesLongo(mes)}${x.totais ? ` — ${x.ativos} de ${x.totais} cliente${x.totais === 1 ? '' : 's'} da carteira continuaram${x.churn ? ` (${x.churn} saíram no mês)` : ''}` : ''}.`;
       if (x.proxima) falta = `próxima faixa: ${x.proxima.alvo}% de renovação = ${x.proxima.pts} pontos`;
     } else if (k === 'vendas') {
       if (x.disponivel === false) corpo = 'Não deu pra ler as vendas do ClickUp agora.';
@@ -93,7 +93,7 @@
       else corpo = `<b>${esc(x.faixa)}</b> recebidos em ${mesLongo(mes)}:<ul class="rk-itens">${(x.itens || []).map((it) => `<li><i>${esc(it.dia)}</i> ${esc(it.tipo)} · ${esc(it.nome)}${it.dividido ? ` <small class="na">(dividido entre ${it.dividido})</small>` : ''}</li>`).join('')}</ul>`;
       if (x.proxima) falta = `próxima faixa: ${x.proxima.faixa} = ${x.proxima.pts} pontos`;
     } else if (k === 'nrr') {
-      corpo = x.pct == null ? `Sem NRR no card de ${mesLongo(mes)} (sem carteira com receita no início do mês).` : `<b>${pct1(x.pct)}</b> de NRR em ${mesLongo(mes)} — receita da carteira no mês comparada com a do início do mês (com cross sell, upsell, downsell e churn).`;
+      corpo = x.semCards ? 'Não deu pra ler os cards do Ranking no ClickUp agora — recarregue a página.' : x.pct == null ? `Sem NRR no card de ${mesLongo(mes)} (sem carteira com receita no início do mês).` : `<b>${pct1(x.pct)}</b> de NRR em ${mesLongo(mes)} — receita da carteira no mês comparada com a do início do mês (com cross sell, upsell, downsell e churn).`;
       if (x.proxima) falta = `próxima faixa: NRR de ${brl(x.proxima.alvo)}% = ${x.proxima.pts} pontos`;
     }
     const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
@@ -137,6 +137,7 @@
     }
 
     const pessoas = d.pessoas || [];
+    for (const p of pessoas) if (p.cardsDisponivel === false && p.rk) { p.rk.renovacao.semCards = true; p.rk.nrr.semCards = true; }
     // fotos: o mês vem das fotos diárias, que até 26/10/26 não guardavam a foto da pessoa — completa com a do "hoje"
     const fotoHoje = new Map(((st.data.hoje && st.data.hoje.pessoas) || []).map((x) => [x.id, x.pessoa]));
     for (const p of pessoas) if (!p.pessoa || !p.pessoa.foto) p.pessoa = fotoHoje.get(p.id) || p.pessoa || { name: p.nome, initials: String(p.nome || '').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase() };
@@ -155,9 +156,9 @@
     const MED = { 1: { cls: 'ouro', ico: '🥇' }, 2: { cls: 'prata', ico: '🥈' }, 3: { cls: 'bronze', ico: '🥉' } };
     const podSub = (p) => (hoje ? `Health Score ${p.base == null ? '—' : p.base} · ${p.deltaPosicao == null ? 'posição —' : p.deltaPosicao === 0 ? 'mesma posição' : p.deltaPosicao > 0 ? `subiu ${p.deltaPosicao}` : `caiu ${-p.deltaPosicao}`}` : `Health Score ${p.base == null ? '—' : p.base}`);
     const ordemPodio = [podio[1], podio[0], podio[2]].filter(Boolean);
-    const podioHTML = podio.length ? `<div class="rk-podio">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
+    const podioHTML = podio.length ? `<div class="rk-podio rk-podio-${ordemPodio.length}">${ordemPodio.map((p) => { const m = MED[p.posicao] || MED[3]; return `<button class="rk-pod rk-pod-${m.cls}${p.posicao === 1 ? ' is-1' : ''}" data-abrir="${esc(p.id)}" title="ver o detalhamento dos pontos"><span class="rk-pod-medalha">${m.ico}</span>${avatar(p.pessoa, 'avatar rk-pod-avatar')}<b class="rk-pod-nome">${esc(p.nome)}</b><span class="rk-pod-papel">${esc((p.papeis || []).join(' · ') || 'equipe')}</span><span class="rk-pod-score">${p.score}<small> pts</small></span><span class="rk-pod-sub">${podSub(p)}</span><span class="rk-pod-degrau"><span>${p.posicao}º</span></span></button>`; }).join('')}</div>` : '';
 
-    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. a foto de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : ''}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}</tr>`;
+    const th = `<tr><th class="r">#</th><th>Colaborador</th><th>Papel</th><th class="r" title="total de pontos: Health Score + Renovação + Vendas + NRR (até 600)">Pontos</th>${hoje ? `<th class="r" title="variação do Health Score e da posição vs. o placar de ${esc(dBR(d.anteriorDia))}">7 dias</th>` : ''}${RK.map((k) => `<th class="r rk-th-pil" title="${RK_LBL[k]} · até ${RK_MAX[k]} pontos">${RK_LBL[k]}</th>`).join('')}</tr>`;
     const linha = (p) => {
       const aberto = st.aberto === p.id;
       const mes = (p.vendas && p.vendas.mes) || (hoje ? ma : st.periodo);
@@ -185,9 +186,9 @@
       ${podioHTML}
 
       <p class="eyebrow">Classificação <span class="hs-hist-info">${hoje ? 'ao vivo · clique na linha pra ver os pontos de cada pilar e como o Health Score foi formado, cliente a cliente' : 'Health Score = média do placar de cada dia do mês; Renovação, Vendas e NRR = números do mês'}</span></p>
-      ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem placar registrado neste mês ainda — o placar do dia é registrado na primeira abertura do painel.'}</div>`}
+      ${pessoas.length ? `<div class="hs-table-wrap"><table class="hs-table rk-table"><thead>${th}</thead><tbody>${pessoas.map(linha).join('')}</tbody></table></div>` : `<div class="fn-empty">${hoje ? 'Ninguém com dado.' : 'Sem placar registrado neste mês ainda — o placar do dia é registrado quando o painel é aberto.'}</div>`}
 
-      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t) => (Array.isArray(t) ? `<div><b>${esc(t[0])}</b> ${esc(t[1])}</div>` : `<div>${esc(t)}</div>`)).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit e a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
+      <div class="hs-regras pl-regras rk-regras">${(R.texto || []).map((t) => (Array.isArray(t) ? `<div><b>${esc(t[0])}</b> ${esc(t[1])}</div>` : `<div>${esc(t)}</div>`)).join('')}<div><b>Fora do ranking</b> quem saiu da Bibit, a Web Designer (decisão de 23/10/26 — segue nas abas Colaborador e pilares) e o Will, Head/Estrategista (decisão de 26/10/26). Quem não está em nenhum card (campo Equipe/áreas) nem tem tarefa no ClickUp não aparece — ex.: o Audiovisual dos cards precisa apontar pro responsável atual.</div></div>`;
     bind(el);
   }
 

@@ -110,7 +110,10 @@ const foto = (lista) => lista.map((p) => ({ id: p.id, nome: p.nome, papeis: p.pa
 async function garantirFoto(dia, lista) {
   if (!wa.redisReady()) return false;
   const key = 'rk:snap:' + dia;
-  const ja = await wa.redis(['EXISTS', key]);
+  let ja = null; try { const raw = await wa.redis(['GET', key]); ja = raw ? JSON.parse(raw) : null; } catch { ja = null; }
+  // não troca um placar bom por um pior no mesmo dia: se uma fonte falhar (CSAT, WhatsApp) o cálculo sai com menos pilares
+  const cob = (ps) => (ps || []).reduce((a, x) => a + (x.cobertura || 0), 0);
+  if (ja && cob(ja.pessoas) > cob(foto(lista))) return false;
   await wa.redisPipeline([['SET', key, JSON.stringify({ dia, pessoas: foto(lista), em: Date.now() })], ['EXPIRE', key, String(SNAP_TTL)]]);
   return !ja;
 }
@@ -119,7 +122,7 @@ async function lerFotos(dias) {
   if (!wa.redisReady() || !dias.length) return [];
   const out = await wa.redisPipeline(dias.map((d) => ['GET', 'rk:snap:' + d]));
   const r = [];
-  out.forEach((x, i) => { if (x && x.result) { try { const j = JSON.parse(x.result); r.push({ dia: dias[i], pessoas: j.pessoas || [] }); } catch {} } });
+  out.forEach((x, i) => { if (x && x.result) { try { const j = JSON.parse(x.result); r.push({ dia: dias[i], pessoas: j.pessoas || [], em: j.em || null }); } catch {} } });
   return r;
 }
 
@@ -214,7 +217,8 @@ module.exports = async (req, res) => {
       // variação compara só a base (4 pilares): o bônus de vendas zera na virada do mês e fotos antigas não têm b
       const antBase = a ? (a.b !== undefined ? a.b : a.score) : null;
       p.deltaScore = antBase != null && p.base != null ? p.base - antBase : null;
-      p.deltaPosicao = a && a.posicao && p.posicao ? a.posicao - p.posicao : null; // positivo = subiu
+      // posição só compara com placar do ranking de pontos (fotos com 'em', a partir de 26/10/26); antes a posição era de outra regra
+      p.deltaPosicao = a && anterior.em && a.posicao && p.posicao ? a.posicao - p.posicao : null; // positivo = subiu
     }
     res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });
   } catch (e) {
