@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 91;
+  const VERSION = 92;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -1163,7 +1163,9 @@
       // benchmark interno: o melhor de cada métrica dentro do corte (referência Falconi — "lacuna em relação ao melhor")
       const best = {};
       for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || [])) { if (f.valor == null || f.valor <= 0) continue; const menor = f.rotulo !== 'ROAS' && f.unid !== 'pts'; if (!best[f.rotulo] || (menor ? f.valor < best[f.rotulo].v : f.valor > best[f.rotulo].v)) best[f.rotulo] = { v: f.valor, c }; }
-      const fmtM = (r, v) => (r === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
+      const unidDe = {}; for (const { c } of com) for (const f of (c.healthScore.pilares.trafego.detalhe || [])) if (f.unid) unidDe[f.rotulo] = f.unid;
+      // frentes de conteúdo e web são pontos (0–100), não R$ (auditoria 26/10/26)
+      const fmtM = (r, v) => (r === 'ROAS' ? `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x` : unidDe[r] === 'pts' ? `${Math.round(v)} pts` : `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`);
       const rows = Object.entries(best);
       if (rows.length) porPessoa = `<p class="eyebrow">Melhor da carteira <span class="hs-hist-info">referência interna por métrica${filtroLbl ? ' · ' + esc(filtroLbl) : ''} — o que um cliente fez, outro pode copiar</span></p>
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
@@ -1202,7 +1204,7 @@
       ${placar}
       ${porPessoa}
 
-      <p class="eyebrow">Cliente a cliente <span class="hs-hist-info">ordenado por quanto falta</span></p>
+      <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
       ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste corte.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (!c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
