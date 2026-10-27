@@ -56,16 +56,20 @@ function performancePost(m, metas) {
   const out = { alcance, curtidas, comentarios, compartilhamentos: shares, txEngajamento: null, txCompartilhamento: null, metaEngajamento: num(metas && metas.engajamento), metaCompartilhamento: num(metas && metas.compartilhamento), atingEngajamento: null, atingCompartilhamento: null, notaEngajamento: null, notaCompartilhamento: null, nota: null, faltando: [] };
   if (alcance == null || alcance <= 0) { out.faltando.push('alcance'); return out; } // alcance zero/ausente: não calcula taxa
   if (curtidas == null || comentarios == null) out.faltando.push('curtidas/comentários');
-  else out.txEngajamento = round2(((curtidas + comentarios) / alcance) * 100);
+  else { out._txE = ((curtidas + comentarios) / alcance) * 100; out.txEngajamento = round2(out._txE); }
   if (shares == null) out.faltando.push('compartilhamentos');
-  else out.txCompartilhamento = round2((shares / alcance) * 100);
+  else { out._txC = (shares / alcance) * 100; out.txCompartilhamento = round2(out._txC); }
   if (out.metaEngajamento == null || out.metaEngajamento <= 0) out.faltando.push('meta de engajamento');
   if (out.metaCompartilhamento == null || out.metaCompartilhamento <= 0) out.faltando.push('meta de compartilhamento');
   if (out.faltando.length) return out;
-  out.atingEngajamento = round1(atingimento(out.txEngajamento, out.metaEngajamento));
-  out.atingCompartilhamento = round1(atingimento(out.txCompartilhamento, out.metaCompartilhamento));
-  out.notaEngajamento = pontosAtingimento(atingimento(out.txEngajamento, out.metaEngajamento));
-  out.notaCompartilhamento = pontosAtingimento(atingimento(out.txCompartilhamento, out.metaCompartilhamento));
+  // atingimento com a taxa exata (auditoria 27/10: 5,6996% contra meta 5,70 é 99,99% → 80, não 100); o arredondado é só pra mostrar
+  const limpa = (x) => (x == null ? null : Math.round(x * 1e6) / 1e6); // tira só o ruído do ponto flutuante (89,9999999 → 90)
+  const aE = limpa(atingimento(out._txE, out.metaEngajamento)), aC = limpa(atingimento(out._txC, out.metaCompartilhamento));
+  delete out._txE; delete out._txC;
+  out.atingEngajamento = Math.floor(aE * 10 + 1e-9) / 10;
+  out.atingCompartilhamento = Math.floor(aC * 10 + 1e-9) / 10;
+  out.notaEngajamento = pontosAtingimento(aE);
+  out.notaCompartilhamento = pontosAtingimento(aC);
   out.nota = round1(out.notaEngajamento * PESOS_PERF.engajamento + out.notaCompartilhamento * PESOS_PERF.compartilhamento);
   return out;
 }

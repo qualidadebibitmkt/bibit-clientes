@@ -29,6 +29,7 @@ t('exemplo do documento: 100 e 80 → performance 92', () => {
   const p = E.performancePost({ alcance: 1000, curtidas: 40, comentarios: 0, compartilhamentos: 9 }, { engajamento: 4, compartilhamento: 1 });
   assert.strictEqual(p.notaEngajamento, 100); assert.strictEqual(p.notaCompartilhamento, 80); assert.strictEqual(p.nota, 92);
 });
+t('atingimento com a taxa exata: 5,6996% contra meta 5,70 fica abaixo de 100% (80)', () => { const p = E.performancePost({ alcance: 100000, curtidas: 5699.6, comentarios: 0, compartilhamentos: 1000 }, { engajamento: 5.7, compartilhamento: 1 }); assert.strictEqual(p.notaEngajamento, 80); });
 t('alcance zero não calcula taxa (sem nota fictícia)', () => { const p = E.performancePost({ alcance: 0, curtidas: 1, comentarios: 1, compartilhamentos: 1 }, { engajamento: 3, compartilhamento: 1 }); assert.strictEqual(p.nota, null); assert.ok(p.faltando.includes('alcance')); });
 t('métrica ausente não gera nota', () => { const p = E.performancePost({ alcance: 100, curtidas: null, comentarios: 2, compartilhamentos: 1 }, { engajamento: 3, compartilhamento: 1 }); assert.strictEqual(p.nota, null); });
 t('meta ausente não gera nota', () => { const p = E.performancePost({ alcance: 100, curtidas: 3, comentarios: 2, compartilhamentos: 1 }, { engajamento: null, compartilhamento: 1 }); assert.strictEqual(p.nota, null); assert.ok(p.faltando.includes('meta de engajamento')); });

@@ -411,7 +411,7 @@ module.exports = async (req, res) => {
         respostas: a.respostas,
         ultimaResposta: a.ultima || null,
         detalhe: a.det.sort((x, y) => (y.q || 0) - (x.q || 0)).slice(0, 12),
-        porPapel: Object.fromEntries(Object.entries(a.pp).map(([k, [soma, n]]) => [k, n ? round1(soma / n) : null])),
+        porPapel: Object.fromEntries(Object.entries(a.pp).map(([k, [soma, n]]) => [k, n ? Math.floor((soma / n) * 10 + 1e-9) / 10 : null])), // trunca: 8,96 fica 8,9 (60), não 9,0 (auditoria 27/10)
       } : { csat: null, nps: null, respostas: 0, ultimaResposta: null, detalhe: [], porPapel: { tr: null, so: null, rp: null, av: null } };
     }
     // ---- CSAT - WD: nota por entrega de web (LP / Website / E-Commerce) ----
@@ -525,7 +525,7 @@ module.exports = async (req, res) => {
       const total = abertas.length + concl.length;
       if (!total) return null;
       const late = abertas.filter(isLateT).length + concl.filter(conclForaT).length;
-      return Math.round(((total - late) / total) * 1000) / 10;
+      return Math.floor(((total - late) / total) * 1000 + 1e-9) / 10; // trunca: 94,96% vira 94,9% (60), nunca sobe de faixa (auditoria 27/10)
     };
     // campanha parada (André, 21/10/26): zera o tráfego depois de 7 dias em execução. Antes da execução (novo cliente,
     // briefing, estratégia, kickoff) e em paralisado, campanha parada nunca conta — o tráfego fica fora (André, 26/10/26)

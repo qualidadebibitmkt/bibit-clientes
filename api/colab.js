@@ -83,11 +83,12 @@ function medida(k, c, a, tasksOf) {
     return { valor: v, lacuna: Math.max(0, 9 - v), cls: cls(k, v), txt: `nota ${fmtNota(v)} ao ${PAP[papel]} no CSAT`, papel: PAP[papel] };
   }
   if (k === 'produtividade') {
-    const ts = tasksOf(c.id).filter((t) => (t.assignees || []).some((p) => pid(p) === a.id));
+    // tarefa sem prazo fica fora (André, 26/10/26) — mesma regra do pilar do cliente (auditoria 27/10)
+    const ts = tasksOf(c.id).filter((t) => t.dueDate && (t.assignees || []).some((p) => pid(p) === a.id));
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate), lateCo = concl.filter(conclFora);
     const total = abertas.length + concl.length; if (!total) return null;
-    const v = Math.round(((total - lateAb.length - lateCo.length) / total) * 1000) / 10;
+    const v = Math.floor(((total - lateAb.length - lateCo.length) / total) * 1000 + 1e-9) / 10; // trunca, nunca sobe de faixa
     const partes = []; if (lateAb.length) partes.push(`${lateAb.length} aberta${lateAb.length === 1 ? '' : 's'} vencida${lateAb.length === 1 ? '' : 's'}`); if (lateCo.length) partes.push(`${lateCo.length} concluída${lateCo.length === 1 ? '' : 's'} fora do prazo`);
     return { valor: v, lacuna: Math.max(0, 95 - v), cls: cls(k, v), txt: partes.join(' + ') || 'tudo no prazo', lateAb: lateAb.length, lateCo: lateCo.length, vencidas: lateAb.sort((x, y) => x.dueDate - y.dueDate) };
   }

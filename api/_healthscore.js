@@ -50,9 +50,9 @@ const flagDoScore = (s) => (s == null ? null : s >= FLAG_FAIXAS.green ? 'green' 
 // Os limites fecham os "buracos" da tabela do André (ex.: ROAS 6,95 cai em 5–6,9 → 80).
 const FAIXAS = {
   roas:          { menorMelhor: false, faixas: [[7, 100], [5, 80], [3.5, 60], [2.5, 40]] },
-  custoConversa: { menorMelhor: true,  faixas: [[3, 100], [5, 80], [7, 60], [9.99, 40]] },
-  custoLead:     { menorMelhor: true,  faixas: [[10, 100], [15, 80], [20, 60], [29.99, 40]] },
-  cpm:           { menorMelhor: true,  faixas: [[4, 100], [6, 80], [8, 60], [11.99, 40]] },
+  custoConversa: { menorMelhor: true,  faixas: [[3, 100], [5, 80], [7, 60], [9.9999, 40]] }, // abaixo de R$ 10 = 40 (auditoria 27/10: 9,995 não zera)
+  custoLead:     { menorMelhor: true,  faixas: [[10, 100], [15, 80], [20, 60], [29.9999, 40]] },
+  cpm:           { menorMelhor: true,  faixas: [[4, 100], [6, 80], [8, 60], [11.9999, 40]] },
   csat:          { menorMelhor: false, faixas: [[10, 100], [9, 80], [8, 60], [7, 40]] },
   produtividade: { menorMelhor: false, faixas: [[100, 100], [95, 80], [90, 60], [85, 40]] },
 };
