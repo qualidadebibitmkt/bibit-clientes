@@ -34,7 +34,7 @@ const stKey = (c) => norm(c.status).replace(/[^a-z]/g, '');
 const flagDe = (c) => (c.healthScore && c.healthScore.flag) ? c.healthScore.flag : c.flag;
 const BRT = 'America/Sao_Paulo';
 const dayKey = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: ms % 864e5 === 0 ? 'UTC' : BRT, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
-const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: BRT, day: '2-digit', month: '2-digit' });
+const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: ms % 864e5 === 0 ? 'UTC' : BRT, day: '2-digit', month: '2-digit' }); // data sem hora do ClickUp = 00:00 UTC
 const fmtNota = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 const pct = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
 const fmtV = (k, v) => (v == null ? '—' : k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pct(v) : `${Math.round(v)} pts`);

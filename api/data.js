@@ -404,7 +404,7 @@ module.exports = async (req, res) => {
     for (const c of clients) {
       const a = agg.get(c.id);
       c.metrics = a ? {
-        csat: a.n ? round1(a.soma / a.n) : null,
+        csat: a.n ? Math.floor((a.soma / a.n) * 10 + 1e-9) / 10 : null, // trunca: 8,96 aparece 8,9 (abaixo de 9, coerente com a faixa)
         nps: a.npsN ? round1(a.npsSoma / a.npsN) : null,
         // médias exatas pro score: a faixa vale sobre o número real (8,96 não vira 9,0 → 80 pts); arredonda só na tela
         csatExato: a.n ? a.soma / a.n : null, npsExato: a.npsN ? a.npsSoma / a.npsN : null,
@@ -431,7 +431,7 @@ module.exports = async (req, res) => {
     }
     for (const c of clients) {
       const e = (wdAgg.get(c.id) || []).sort((x, y) => (y.q || 0) - (x.q || 0));
-      const media = e.length ? round1(e.reduce((s, x) => s + x.nota, 0) / e.length) : null;
+      const media = e.length ? Math.floor((e.reduce((s, x) => s + x.nota, 0) / e.length) * 10 + 1e-9) / 10 : null; // trunca como as outras funções
       c.metrics.wd = { nota: media, respostas: e.length, ultimaResposta: e[0] ? e[0].q : null, entregas: e };
       c.metrics.porPapel.wd = media;
     }

@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 98;
+  const VERSION = 99;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -52,7 +52,7 @@
   const utcKeyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
   const dayKey = (ms) => (ms % 864e5 === 0 ? utcKeyFmt : keyFmt).format(new Date(ms));
   const todayKey = () => dayKey(Date.now());
-  const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: 'short' });
+  const fmtCurto = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: Number(ms) % 864e5 === 0 ? 'UTC' : 'America/Sao_Paulo', day: '2-digit', month: 'short' }); // data sem hora do ClickUp vem 00:00 UTC — mostrar no dia certo
   const fmtLongo = (ms) => new Date(ms).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const fmtBRL = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
@@ -528,7 +528,7 @@
       }
       if (k === 'produtividade') {
         const sp = c.tarefas30d?.semPrazo ?? tasksOf(c.id).filter((t) => isOpen(t) && !t.dueDate).length;
-        det = (p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas entregues no prazo nos últimos 30 dias` : '<span class="hs-regua">nenhuma tarefa com prazo nos últimos 30 dias — não pesa</span>')
+        det = (p.detalhe?.prodPct != null ? `${p.detalhe.prodPct.toLocaleString('pt-BR')}% das tarefas no prazo nos últimos 30 dias` : '<span class="hs-regua">nenhuma tarefa com prazo nos últimos 30 dias — não pesa</span>')
           + (sp ? ` <span class="r">· ${sp} tarefa${sp === 1 ? '' : 's'} aberta${sp === 1 ? '' : 's'} sem prazo — erro de processo, colocar prazo no ClickUp (fica${sp === 1 ? '' : 'm'} fora da conta)</span>` : '');
       }
       if (k === 'contato' && c.contato?.vencido) {
@@ -563,8 +563,11 @@
       .slice(0, 5);
 
     const item = (label, html) => (html ? `<div class="f-item"><div class="f-label">${label}</div><div class="f-value">${html}</div></div>` : '');
-    const link = (url, txt) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
-    const insta = c.instagram ? link(`https://instagram.com/${c.instagram.replace(/^@/, '')}`, c.instagram.startsWith('@') ? c.instagram : '@' + c.instagram) : '';
+    // links dos campos do card: só http(s); "www.x.com" vira https://; Instagram aceita @perfil ou o link inteiro (auditoria 27/10)
+    const urlOk = (u) => { const t = String(u || '').trim(); if (!t) return null; if (/^https?:\/\//i.test(t)) return t; if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(t)) return 'https://' + t; return null; };
+    const link = (url, txt) => { const u = urlOk(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(txt)}</a>` : `<span class="na">${esc(txt)} (link inválido no card)</span>`; };
+    const igUser = c.instagram ? String(c.instagram).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '') : '';
+    const insta = igUser ? link(`https://instagram.com/${igUser}`, '@' + igUser) : '';
     const roles = [['social', 'Social Media'], ['webdesign', 'Web Design'], ['trafego', 'Tráfego Pago'], ['rp', 'RP Manager'], ['audiovisual', 'Audiovisual']];
     const team = roles
       .filter(([k]) => c.team[k].length)
@@ -581,7 +584,7 @@
         <div class="ficha-glass">${glass(flagDe(c), 62, true)}${glassCaption(flagDe(c), streakDe(c))}</div>
         <div>
           <h2 class="ficha-title">${esc(c.name)}${(() => { const md = maduroDe(c); return md.ok ? `<span class="card-status st-expansao ficha-tag" title="Green Flag há ${md.st.dias} dias, CSAT ${fmtNota(md.csat)} e sem alerta no WhatsApp">Possibilidade de expansão</span>` : ''; })()}</h2>
-          <p class="ficha-sub">${open} tarefas abertas${late ? ` · <span class="t-red">${late} atrasadas</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
+          <p class="ficha-sub">${open} tarefa${open === 1 ? '' : 's'} aberta${open === 1 ? '' : 's'}${late ? ` · <span class="t-red">${late} atrasada${late === 1 ? '' : 's'}</span>` : ''}${posts[0] ? ` · próximo post ${fmtCurto(posts[0].calDate || posts[0].dataAgendamento)}` : ''}</p>
           <div class="ficha-grid">
             ${item('Plano', c.plano ? `${planoIcon(c.plano, 18)} ${esc(planoLabel(c.plano))}` : null)}
             ${item('Relatório', esc(c.tipoRelatorio))}
@@ -653,7 +656,7 @@
     else if (!c.hs) sin.push({ bad: true, txt: 'Reportei ligado, mas sem métrica de Meta na última semana (integração inativa, sem Meta Ads ou sem coleta ainda)' });
     return `<p class="eyebrow">Sinais do copo</p>
       <div class="sinais">${sin.map((x) => `<span class="sinal ${x.bad ? 'is-bad' : 'is-ok'}">${x.bad ? '⚠' : '✓'} ${esc(x.txt)}</span>`).join('')}</div>
-      <p class="sinais-nota">A flag do copo é definida pela operação no Growth; os sinais acima são leitura automática das tarefas e do CSAT.</p>`;
+      <p class="sinais-nota">A cor do copo segue o Health Score de hoje; os sinais acima são leitura automática das tarefas e do CSAT.</p>`;
   }
 
   function atrasadasHTML(lateTasks) {
@@ -720,7 +723,7 @@
       : `<span class="exp-valor">${brl(e.valor)}${e.situacao ? `<small class="${e.situacao === 'recebido' ? 'exp-ok' : ''}">${esc(e.situacao)}</small>` : ''}</span>`;
     const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem === 'cross' ? 'Cross sell' : e.valor < 0 ? 'Redução' : 'Upsell'}</span><span class="exp-nome">${esc(e.nome)}</span>${val(e)}<span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
     const nV = ex.filter((e) => !(e.origem === 'upsell' && e.valor < 0)).length; const nR = ex.length - nV;
-    return `<p class="eyebrow">Expansões · ${nV ? `${nV} venda${nV === 1 ? '' : 's'} (cross sell e upsell)` : 'nenhuma venda'}${nR ? ` · ${nR} redução${nR === 1 ? '' : 'ões'} de plano` : ''}</p>
+    return `<p class="eyebrow">Expansões · ${nV ? `${nV} venda${nV === 1 ? '' : 's'} (cross sell e upsell)` : 'nenhuma venda'}${nR ? ` · ${nR} ${nR === 1 ? 'redução' : 'reduções'} de plano` : ''}</p>
       ${resumo ? `<div class="exp-resumo">${resumo}</div>` : ''}
       <div class="exp-rows">${rows}</div>`;
   }
@@ -966,7 +969,7 @@
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate).length, lateCo = concl.filter(conclFora).length;
     const total = abertas.length + concl.length;
-    return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, semPrazo, pct: total ? Math.round(((total - lateAb - lateCo) / total) * 1000) / 10 : null };
+    return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, semPrazo, pct: total ? Math.floor(((total - lateAb - lateCo) / total) * 1000 + 1e-9) / 10 : null }; // trunca como o servidor: 94,96% = 94,9% (60), nunca 'na meta' por arredondamento
   }
 
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
@@ -1168,7 +1171,7 @@
       const agg = new Map();
       for (const c of filtrados) for (const t of tasksOf(c.id)) { if (!t.dueDate) continue; const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
       for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
-      const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.round(((total - late) / total) * 1000) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
+      const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.floor(((total - late) / total) * 1000 + 1e-9) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas + concluídas nos últimos ${JANELA_CONCL_DIAS} dias, de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r" title="abertas já vencidas">Abertas vencidas</th><th class="r" title="concluídas depois do vencimento, nos últimos 30 dias">Concluídas fora do prazo</th><th class="r">Abertas</th><th class="r">Concluídas em 30 dias</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.lateAb ? 'r' : 'g'}">${a.lateAb}</td><td class="hs-td ${a.lateCo ? 'r' : 'g'}">${a.lateCo}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.concl || (a.total ? '0' : '<span class="na" title="nenhuma tarefa aberta nem concluída em 30 dias no ClickUp">sem tarefa</span>')}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
     }

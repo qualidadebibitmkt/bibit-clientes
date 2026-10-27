@@ -81,7 +81,8 @@ function faixaLabel(v, regua, fmt) {
   if (i < 0) return regua.menorMelhor ? `≥ ${fmt(Math.ceil(ult))}` : `< ${fmt(ult)}`;
   const [lim] = regua.faixas[i];
   const ant = i > 0 ? regua.faixas[i - 1][0] : null;
-  if (regua.menorMelhor) return ant == null ? `≤ ${fmt(lim)}` : `${fmt(ant)}–${fmt(lim)}`;
+  const lim2 = Math.floor(lim * 100 + 1e-9) / 100; // 9,9999 aparece 9,99 (a faixa vai até antes de R$ 10)
+  if (regua.menorMelhor) return ant == null ? `≤ ${fmt(lim)}` : `${fmt(ant)}–${fmt(lim2)}`;
   return ant == null ? `≥ ${fmt(lim)}` : `${fmt(lim)}–${fmt(ant)}`;
 }
 const fmtRS = (n) => `R$ ${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`;

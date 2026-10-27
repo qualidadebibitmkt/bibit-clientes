@@ -61,7 +61,7 @@ function performancePost(m, metas) {
   else { out._txC = (shares / alcance) * 100; out.txCompartilhamento = round2(out._txC); }
   if (out.metaEngajamento == null || out.metaEngajamento <= 0) out.faltando.push('meta de engajamento');
   if (out.metaCompartilhamento == null || out.metaCompartilhamento <= 0) out.faltando.push('meta de compartilhamento');
-  if (out.faltando.length) return out;
+  if (out.faltando.length) { delete out._txE; delete out._txC; return out; }
   // atingimento com a taxa exata (auditoria 27/10: 5,6996% contra meta 5,70 é 99,99% → 80, não 100); o arredondado é só pra mostrar
   const limpa = (x) => (x == null ? null : Math.round(x * 1e6) / 1e6); // tira só o ruído do ponto flutuante (89,9999999 → 90)
   const aE = limpa(atingimento(out._txE, out.metaEngajamento)), aC = limpa(atingimento(out._txC, out.metaCompartilhamento));
