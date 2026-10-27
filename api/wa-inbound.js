@@ -51,20 +51,15 @@ module.exports = async (req, res) => {
   };
   const key = keyFor(grupo, dayKey(ts));
   try {
-    // reenvio do Z-API (timeout/5xx) chega com o mesmo messageId — grava uma vez só (auditoria 27/10)
-    const mid = String(b.messageId || b.id || '').slice(0, 120);
-    if (mid) {
-      const novo = await redisPipeline([['SET', 'wa:mid:' + mid, '1', 'NX', 'EX', String(TTL_DIAS * 86400)]]);
-      if (novo && novo[0] && novo[0].result == null && !novo[0].error) { res.status(200).json({ ok: true, ignored: 'repetida' }); return; }
-    }
     const out = await redisPipeline([
       ['RPUSH', key, JSON.stringify(msg)],
       ['EXPIRE', key, String(TTL_DIAS * 86400)],
     ]);
     const erro = (out || []).find((x) => x && x.error);
-    if (erro) { if (mid) { try { await redisPipeline([['DEL', 'wa:mid:' + mid]]); } catch {} } res.status(500).json({ error: String(erro.error) }); return; } // libera o id: o Z-API tenta de novo
+    // erro do Redis (ex.: cota do mês estourada) volta 200: devolver 500 faria o Z-API reenviar e gastar mais cota (27/10/26)
+    if (erro) { res.status(200).json({ ok: false, error: String(erro.error) }); return; }
     res.status(200).json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    res.status(200).json({ ok: false, error: String(e.message || e) }); // 200 de propósito: sem reenvio em massa do Z-API
   }
 };

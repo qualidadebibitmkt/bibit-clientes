@@ -293,7 +293,27 @@ function buildClientMatcher(clients) {
 }
 
 // ---------- handler ----------
+// Memória de 2 min por instância (27/10/26, cota do Upstash): /api/hs, /api/ranking, /api/colab, /api/iqc… chamam este
+// cálculo por dentro, e cada cálculo faz centenas de leituras no Redis. Chamadas seguidas reaproveitam o mesmo resultado
+// (inclusive as simultâneas, que esperam o mesmo cálculo). Cada chamador recebe uma cópia, pra ninguém alterar a do outro.
+const MEMO_MS = 120000;
+const _memo = {};
 module.exports = async (req, res) => {
+  const chave = req && req._internal ? 'interno' : 'publico';
+  const agora = Date.now();
+  let m = _memo[chave];
+  if (!m || agora - m.em > MEMO_MS) {
+    const cap = { status: 200, headers: {}, body: undefined };
+    const fake = { setHeader(k, v) { cap.headers[k] = v; }, status(s) { cap.status = s; return this; }, json(o) { cap.body = o; return this; } };
+    m = _memo[chave] = { em: agora, p: calcular(req, fake).then(() => cap) };
+    m.p.then((c) => { if (c.status !== 200 && _memo[chave] === m) delete _memo[chave]; }, () => { if (_memo[chave] === m) delete _memo[chave]; });
+  }
+  const cap = await m.p;
+  for (const [k, v] of Object.entries(cap.headers)) res.setHeader(k, v);
+  res.status(cap.status).json(cap.body === undefined ? null : structuredClone(cap.body));
+};
+
+async function calcular(req, res) {
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -662,7 +682,7 @@ module.exports = async (req, res) => {
     }
     res.status(500).json({ error: 'clickup_error', message: err.message });
   }
-};
+}
 
 // pilar Vendas do Ranking (André, 26/10/26): mapa por pessoa direto das listas Cross-Sell e Upsell, sem montar o painel
 // inteiro — usado pelo ranking consolidado do mês (/api/ranking?mes=). Só no servidor; o R$ não sai daqui.

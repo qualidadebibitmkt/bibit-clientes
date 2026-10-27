@@ -31,14 +31,32 @@ async function redis(cmd) {
   return j.result;
 }
 
+// Economia de cota (27/10/26: o Upstash estourou 500 mil acessos no mês): GETs seguidos viram UM MGET — o Upstash cobra
+// por comando, e um MGET de 300 chaves conta 1. A resposta volta no mesmo formato de antes ([{ result }] por comando).
 async function redisPipeline(cmds) {
+  const plano = []; const envio = [];
+  for (let i = 0; i < cmds.length;) {
+    if (String(cmds[i][0]).toUpperCase() === 'GET' && cmds[i].length === 2) {
+      const keys = [];
+      while (i < cmds.length && String(cmds[i][0]).toUpperCase() === 'GET' && cmds[i].length === 2 && keys.length < 500) { keys.push(cmds[i][1]); i++; }
+      if (keys.length === 1) { plano.push(0); envio.push(['GET', keys[0]]); } else { plano.push(keys.length); envio.push(['MGET', ...keys]); }
+    } else { plano.push(0); envio.push(cmds[i]); i++; }
+  }
   const r = await fetch(REST_URL + '/pipeline', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + REST_TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify(cmds),
+    body: JSON.stringify(envio),
   });
   if (!r.ok) throw new Error('Redis ' + r.status);
-  return r.json();
+  const out = await r.json();
+  const res = [];
+  plano.forEach((n, j) => {
+    const o = out[j] || {};
+    if (!n) { res.push(o); return; }
+    if (o.error || !Array.isArray(o.result)) { for (let k = 0; k < n; k++) res.push({ error: o.error || 'MGET sem resultado' }); return; }
+    for (let k = 0; k < n; k++) res.push({ result: o.result[k] == null ? null : o.result[k] });
+  });
+  return res;
 }
 
 const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);
