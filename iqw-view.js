@@ -17,7 +17,7 @@
     st.loading = true; st.erro = null; paint();
     try {
       const r = await fetch('/api/iqw' + (mes ? '?mes=' + mes : ''), { cache: 'no-store' });
-      const j = await r.json();
+      const j = await r.json().catch(() => ({})); // 504 da Vercel vem em HTML
       if (!r.ok || j.error) throw new Error(j.message || j.error || r.status);
       st.data = j; st.mes = j.mes;
     } catch (e) { st.erro = String(e.message || e); }
@@ -28,7 +28,7 @@
     st.busy = true; paint();
     try {
       const r = await fetch(`/api/iqw?acao=${nome}&t=${encodeURIComponent(st.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-      const j = await r.json();
+      const j = await r.json().catch(() => ({})); // 504 da Vercel vem em HTML
       if (r.status === 401) { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} throw new Error('senha recusada'); }
       if (!r.ok || j.error) throw new Error((j.erros && j.erros.join('\n')) || j.error || ('o servidor falhou (' + r.status + ') — tente de novo'));
       await load(st.mes);
@@ -72,7 +72,7 @@
           <div class="hs-termo-p"><span class="hs-termo-pn">${P.length}</span><span class="hs-termo-pl">páginas entregues</span><span class="iqc-kpi-s">da lista Web Designer</span></div>
           <div class="hs-termo-p"><span class="hs-termo-pn ${tec.length === P.filter((p) => p.url).length ? 'g' : 'y'}">${tec.length}</span><span class="hs-termo-pl">parte técnica</span><span class="iqc-kpi-s">teste do Google feito</span></div>
           <div class="hs-termo-p"><span class="hs-termo-pn ${comVis ? 'g' : 'na'}">${comVis}</span><span class="hs-termo-pl">parte visual</span><span class="iqc-kpi-s">${comVis ? 'avaliadas pelos prints' : 'começa amanhã às 6h37'}</span></div>
-          <div class="hs-termo-p"><span class="hs-termo-pn na">n/a</span><span class="hs-termo-pl">retrabalho</span><span class="iqc-kpi-s">entregas até 26/10: não se aplica (peso vai pros outros critérios) · novas: lidas do WhatsApp</span></div>
+          <div class="hs-termo-p"><span class="hs-termo-pn na">—</span><span class="hs-termo-pl">retrabalho</span><span class="iqc-kpi-s">entregas até 26/10: não se aplica (peso vai pros outros critérios) · novas: lidas do WhatsApp</span></div>
         </div>
       </div>
       <div class="chips iqc-secoes">
@@ -106,7 +106,7 @@
     return `
       ${a.melhor && a.pior && a.melhor.k !== a.pior.k ? `<div class="hs-regras"><div><b>Melhor critério</b> ${esc(a.melhor.rotulo)} · <span class="${cls(a.melhor.nota)}">${n2(a.melhor.nota)}</span></div><div><b>Pior critério</b> ${esc(a.pior.rotulo)} · <span class="${cls(a.pior.nota)}">${n2(a.pior.nota)}</span></div>${d.comparacao ? `<div><b>Vs. ${mesLbl(d.comparacao.mesAnterior)}</b> ${d.regras.criterios.map((c) => { const v = d.comparacao.porCriterio[c.k]; return v == null ? '' : `${esc(c.rotulo.split(' ')[0] === 'Qualidade' ? c.rotulo.replace('Qualidade ', '') : c.rotulo)} <span class="${v > 0 ? 'g' : v < 0 ? 'r' : 'na'}">${v > 0 ? '+' : ''}${n2(v)}</span>`; }).filter(Boolean).join(' · ')}</div>` : ''}</div>` : ''}
       <p class="eyebrow">Projetos do mês <span class="hs-hist-info">${esc(a.metodologia)}</span></p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Tipo</th><th>Web Designer</th><th class="r">Esforço (h)</th>${d.regras.criterios.map((c) => `<th class="r">${esc(c.rotulo.split(' ')[0] === 'Qualidade' ? c.rotulo.replace('Qualidade ', '').split(' ')[0] : c.rotulo.split(' ')[0])}</th>`).join('')}<th class="r">Nota</th></tr></thead><tbody>${a.projetos.map((p) => { const full = d.projetos.find((x) => x.id === p.id) || {}; const cr = (full.resultado && full.resultado.criterios) || {}; return `<tr class="hs-tr" data-iqw-proj="${esc(p.id)}"><td class="hs-td-cli"><span>${esc(p.cliente)}</span></td><td class="hs-td-txt">${esc(d.regras.tipos[p.tipo] || p.tipo)}</td><td class="hs-td-txt">${esc(p.responsavel && p.responsavel.nome || '—')}</td><td class="hs-td na">${p.esforcoHoras ?? '—'}</td>${d.regras.criterios.map((c) => `<td class="hs-td ${cls(cr[c.k] && cr[c.k].nota)}">${cr[c.k] && cr[c.k].aplicavel ? n2(cr[c.k].nota) : '<span class="na">n/a</span>'}</td>`).join('')}<td class="hs-td hs-td-score ${cls(p.nota)}">${n2(p.nota)}</td></tr>`; }).join('')}</tbody></table></div>`;
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Tipo</th><th>Web Designer</th><th class="r">Esforço (h)</th>${d.regras.criterios.map((c) => `<th class="r">${esc(c.rotulo.split(' ')[0] === 'Qualidade' ? c.rotulo.replace('Qualidade ', '').split(' ')[0] : c.rotulo.split(' ')[0])}</th>`).join('')}<th class="r">Nota</th></tr></thead><tbody>${a.projetos.map((p) => { const full = d.projetos.find((x) => x.id === p.id) || {}; const cr = (full.resultado && full.resultado.criterios) || {}; return `<tr class="hs-tr" data-iqw-proj="${esc(p.id)}"><td class="hs-td-cli"><span>${esc(p.cliente)}</span></td><td class="hs-td-txt">${esc(d.regras.tipos[p.tipo] || p.tipo)}</td><td class="hs-td-txt">${esc(p.responsavel && p.responsavel.nome || '—')}</td><td class="hs-td na">${p.esforcoHoras ?? '—'}</td>${d.regras.criterios.map((c) => `<td class="hs-td ${cls(cr[c.k] && cr[c.k].nota)}">${cr[c.k] && cr[c.k].aplicavel ? n2(cr[c.k].nota) : '<span class="na">não se aplica</span>'}</td>`).join('')}<td class="hs-td hs-td-score ${cls(p.nota)}">${n2(p.nota)}</td></tr>`; }).join('')}</tbody></table></div>`;
   }
 
   function projetosHTML(d) {
@@ -147,7 +147,7 @@
       const lc = live.criterios[c.k];
       const subs = c.sub.map((s) => {
         const v = notas[c.k] && notas[c.k][s.k]; const j = av && av.justificativas && av.justificativas[c.k] ? av.justificativas[c.k][s.k] : ''; const nj = av && av.naJustificativas && av.naJustificativas[c.k] ? av.naJustificativas[c.k][s.k] : ''; const ev = av && av.evidencias && av.evidencias[c.k] ? av.evidencias[c.k][s.k] : '';
-        const sel = st.token ? `<select name="n_${c.k}_${s.k}" data-iqw-nota="${c.k}.${s.k}"><option value="">—</option>${R.escala.map((e) => `<option value="${e}"${String(v) === String(e) ? ' selected' : ''}>${e} · ${esc(R.escalaLbl[e])}</option>`).join('')}<option value="na"${v === 'na' ? ' selected' : ''}>não aplicável</option></select>` : `<b class="${v === 'na' ? 'na' : cls(v == null ? null : Number(v))}">${v == null ? '—' : v === 'na' ? 'n/a' : v + ' · ' + esc(R.escalaLbl[v])}</b>`;
+        const sel = st.token ? `<select name="n_${c.k}_${s.k}" data-iqw-nota="${c.k}.${s.k}"><option value="">—</option>${R.escala.map((e) => `<option value="${e}"${String(v) === String(e) ? ' selected' : ''}>${e} · ${esc(R.escalaLbl[e])}</option>`).join('')}<option value="na"${v === 'na' ? ' selected' : ''}>não aplicável</option></select>` : `<b class="${v === 'na' ? 'na' : cls(v == null ? null : Number(v))}">${v == null ? '—' : v === 'na' ? 'não se aplica' : v + ' · ' + esc(R.escalaLbl[v])}</b>`;
         const campos = st.token ? `<input type="text" name="j_${c.k}_${s.k}" value="${esc(v === 'na' ? nj : j)}" placeholder="${v === 'na' ? 'por que não se aplica (obrigatório)' : 'justificativa (obrigatória)'}" style="max-width:100%;width:100%"><input type="text" name="e_${c.k}_${s.k}" value="${esc(ev)}" placeholder="evidência (print, link, o que foi visto)" style="max-width:100%;width:100%">` : `${j || nj ? `<div class="na">${esc(v === 'na' ? nj : j)}</div>` : ''}${ev ? `<div class="na">evidência: ${esc(ev)}</div>` : ''}`;
         return `<div class="iqw-sub"><div class="iqw-sub-h"><span>${esc(s.rotulo)} <small class="na">20%</small></span>${sel}</div><div class="iqw-sub-d na">${esc(s.desc)}</div>${campos}</div>`;
       }).join('');

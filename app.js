@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 97;
+  const VERSION = 98;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -435,7 +435,7 @@
     if (!hs || hs.score == null) return `<div class="hs-mini">${tag}<span class="hs-score na">—</span><span class="hs-nota">sem dados</span></div>`;
     const pil = Object.entries(hs.pilares)
       .map(([k, p]) => `<span class="hs-pil ${hsCls(p.nota)}" title="${PILAR_LBL[k]}">${PILAR_SIGLA[k]} ${p.nota != null ? p.nota : '—'}</span>`).join('');
-    if (hs.insuficiente) return `<div class="hs-mini" title="menos de 2 pilares com dado — flag manual mantida">${tag}<span class="hs-score na">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
+    if (hs.insuficiente) return `<div class="hs-mini" title="menos de 2 pilares com dado — vale a flag marcada no Growth">${tag}<span class="hs-score na">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
     return `<div class="hs-mini">${tag}<span class="hs-score ${hsCls(hs.score)}">${hs.score}</span><span class="hs-pils">${pil}</span></div>`;
   }
 
@@ -493,7 +493,7 @@
       let txt;
       if (trs.length) txt = trs.map((f) => f.valor == null ? `<span class="hs-regua">${esc(f.regua)}</span>` : `${f.rotulo} da última semana ${f.unid === 'pts' ? `${f.valor} pts` : fmtV(f.rotulo, f.valor)} → vale ${f.nota != null ? f.nota : '—'} pts <span class="hs-regua">(${String(f.regua).replace(/^faixa fixa /, 'faixa ')})</span>`).join(' · ');
       else if (semCampanha(c)) txt = `<span class="hs-regua">sem campanha rodando${c.campanha.desde ? ` — último investimento na semana de ${fmtCurto(c.campanha.desde)}` : ''} · ${campEfeito(c)}</span>`;
-      else txt = `<span class="hs-regua">sem dado do Reportei${c.temReportei ? '' : ' (cliente sem Reportei ID no card)'}</span>`;
+      else txt = `<span class="hs-regua">sem dado do Reportei${c.temReportei ? '' : ' (Reportei não ligado no card)'}</span>`;
       linhas.push(`<b>Tráfego Pago</b>${fr.trafego && fr.trafego.nota != null ? ` <b class="${hsCls(fr.trafego.nota)}">${fr.trafego.nota}</b>` : ''}: ${txt}`);
     }
     // Social / Audiovisual / RP: desempenho dos posts (7 dias depois de publicados, últimos 30 dias)
@@ -545,12 +545,12 @@
         <div class="hs-pilar-det">${det}</div>
       </section>`;
     }).join('');
-    return `<p class="eyebrow">Health Score · ${hs.cobertura} pilares${hs.insuficiente ? ' <span class="csat-alert">insuficiente — flag manual mantida</span>' : ''}</p>
+    return `<p class="eyebrow">Health Score · ${String(hs.cobertura).replace('/', ' de ')} pilares com dado${hs.insuficiente ? ' <span class="csat-alert">dados insuficientes — vale a flag marcada no Growth</span>' : ''}</p>
       <div class="hs-box">
         <div class="hs-big ${hs.insuficiente ? 'na' : hsCls(hs.score)}">${hs.score}<small>/100</small></div>
         <div class="hs-rows">${linhas}</div>
       </div>
-      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag manual do Growth até haver tráfego coletado ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${FLAG[c.flag] ? FLAG[c.flag].word : c.flag}</b>, score sugere <b>${FLAG[hs.flag] ? FLAG[hs.flag].word : hs.flag}</b> — o copo já mostra a do score; o Make sincroniza o ClickUp na próxima segunda.</p>` : `<p class="sinais-nota">Flag automática: o Make grava a cor do score no Growth toda segunda, junto da coleta do Reportei.</p>`}`;
+      ${hs.insuficiente ? `<p class="sinais-nota">Menos de 2 pilares com dado — o score não emite flag; a cor do copo segue a flag marcada no Growth até haver dado de tráfego ou CSAT.</p>` : diverge ? `<p class="sinais-nota hs-div">⚠ Flag no Growth está <b>${FLAG[c.flag] ? FLAG[c.flag].word : c.flag}</b>, score sugere <b>${FLAG[hs.flag] ? FLAG[hs.flag].word : hs.flag}</b> — o copo já mostra a do score; o card é atualizado sozinho na próxima segunda.</p>` : `<p class="sinais-nota">Flag automática: a cor do score é gravada no card do Growth toda segunda.</p>`}`;
   }
 
   function renderFicha(el, c) {
@@ -565,7 +565,7 @@
     const item = (label, html) => (html ? `<div class="f-item"><div class="f-label">${label}</div><div class="f-value">${html}</div></div>` : '');
     const link = (url, txt) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`;
     const insta = c.instagram ? link(`https://instagram.com/${c.instagram.replace(/^@/, '')}`, c.instagram.startsWith('@') ? c.instagram : '@' + c.instagram) : '';
-    const roles = [['social', 'Social'], ['webdesign', 'Web'], ['trafego', 'Tráfego'], ['rp', 'RP'], ['audiovisual', 'AV']];
+    const roles = [['social', 'Social Media'], ['webdesign', 'Web Design'], ['trafego', 'Tráfego Pago'], ['rp', 'RP Manager'], ['audiovisual', 'Audiovisual']];
     const team = roles
       .filter(([k]) => c.team[k].length)
       .map(([k, r]) => `<span class="team-cell"><span class="role">${r}</span>${c.team[k].map((p) => avatarHTML(p)).join('')}<span>${esc(c.team[k].map((p) => p.name.split(' ')[0]).join(', '))}</span></span>`)
@@ -649,7 +649,7 @@
     else if (diasSemResposta != null && diasSemResposta > 20) sin.push({ bad: true, txt: `Sem resposta de CSAT há ${diasSemResposta} dias` });
     if (temCalendario(c)) add(!posts.length, 'Nenhum post agendado daqui pra frente', 'Calendário com posts agendados');
     if (!c.temReportei) sin.push({ bad: true, txt: 'Sem Reportei Project ID no card — tráfego não é coletado' });
-    else if (semCampanha(c)) sin.push({ bad: true, txt: `Sem campanha rodando: ${c.campanha.nuncaColetado ? 'Reportei ID preenchido, mas nenhuma métrica de anúncios coletada até hoje (conferir a integração Meta no Reportei)' : 'nenhum investimento em anúncios na última semana'}${c.campanha.desde ? ` — último gasto na semana de ${fmtCurto(c.campanha.desde)}` : ''}. ${campCarencia(c) ? 'Cliente nos 7 primeiros dias de execução: o tráfego ainda não pesa no score.' : 'Passada a carência de 7 dias, o pilar de tráfego fica zerado até a campanha voltar.'}` });
+    else if (semCampanha(c)) sin.push({ bad: true, txt: `Sem campanha rodando: ${c.campanha.nuncaColetado ? 'Reportei ligado, mas nenhum dado de anúncios chegou até hoje (conferir no Reportei se a conta de anúncios está conectada)' : 'nenhum investimento em anúncios na última semana'}${c.campanha.desde ? ` — último gasto na semana de ${fmtCurto(c.campanha.desde)}` : ''}. ${campCarencia(c) ? 'Cliente nos 7 primeiros dias de execução: o tráfego ainda não pesa no score.' : 'Passada a carência de 7 dias, o pilar de tráfego fica zerado até a campanha voltar.'}` });
     else if (!c.hs) sin.push({ bad: true, txt: 'Reportei ligado, mas sem métrica de Meta na última semana (integração inativa, sem Meta Ads ou sem coleta ainda)' });
     return `<p class="eyebrow">Sinais do copo</p>
       <div class="sinais">${sin.map((x) => `<span class="sinal ${x.bad ? 'is-bad' : 'is-ok'}">${x.bad ? '⚠' : '✓'} ${esc(x.txt)}</span>`).join('')}</div>
@@ -680,7 +680,7 @@
   function csatWdHTML(m) {
     const w = m.wd; if (!w || !w.respostas) return '';
     const nf = (n) => `<span class="csat-n${n >= 9 ? ' hit' : n < 7 ? ' low' : ''}">${fmtNota(n)}</span>`;
-    return `<p class="eyebrow">Satisfação com o web design <span class="hs-hist-info">CSAT - WD, enviado após cada entrega · média ${fmtNota(w.nota)}</span></p>
+    return `<p class="eyebrow">Satisfação com o web design <span class="hs-hist-info">CSAT de Web Design, enviado após cada entrega · média ${fmtNota(w.nota)}</span></p>
       <div class="hs-pilar-list" style="margin-bottom:24px">${w.entregas.map((x) => `<span class="hs-chip">${esc(x.tipo || 'entrega')} ${nf(x.nota)}<i>${x.q ? fmtCurto(x.q) : ''}</i></span>`).join('')}</div>`;
   }
   function csatDetalheHTML(m, diasSemResposta) {
@@ -694,7 +694,7 @@
     const pp = m.porPapel || {};
     return `<p class="eyebrow">Respostas de satisfação · ${m.respostas} no total ${alerta}</p>
       <div class="csat-wrap"><table class="csat-table">
-        <thead><tr><th>Quando</th><th>Tráfego</th><th>Social</th><th>RP</th><th>AV</th><th>NPS</th></tr></thead>
+        <thead><tr><th>Quando</th><th>Tráfego Pago</th><th>Social Media</th><th>RP Manager</th><th>Audiovisual</th><th>NPS</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><td>Média da função</td><td>${nf(pp.tr)}</td><td>${nf(pp.so)}</td><td>${nf(pp.rp)}</td><td>${nf(pp.av)}</td><td>${nf(m.nps)}</td></tr></tfoot>
       </table></div>${csatWdHTML(m)}`;
@@ -719,8 +719,8 @@
       : e.origem === 'upsell' ? `<span class="exp-valor">${e.valor < 0 ? '−' + brl(-e.valor) : '+' + brl(e.valor)}<small>/mês${e.valor < 0 ? ' (redução)' : ''}</small></span>`
       : `<span class="exp-valor">${brl(e.valor)}${e.situacao ? `<small class="${e.situacao === 'recebido' ? 'exp-ok' : ''}">${esc(e.situacao)}</small>` : ''}</span>`;
     const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem === 'cross' ? 'Cross sell' : e.valor < 0 ? 'Redução' : 'Upsell'}</span><span class="exp-nome">${esc(e.nome)}</span>${val(e)}<span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
-    const nV = ex.filter((e) => !(e.origem === 'upsell' && e.valor < 0)).length;
-    return `<p class="eyebrow">Expansões · ${nV} venda${nV === 1 ? '' : 's'} (cross sell e upsell)</p>
+    const nV = ex.filter((e) => !(e.origem === 'upsell' && e.valor < 0)).length; const nR = ex.length - nV;
+    return `<p class="eyebrow">Expansões · ${nV ? `${nV} venda${nV === 1 ? '' : 's'} (cross sell e upsell)` : 'nenhuma venda'}${nR ? ` · ${nR} redução${nR === 1 ? '' : 'ões'} de plano` : ''}</p>
       ${resumo ? `<div class="exp-resumo">${resumo}</div>` : ''}
       <div class="exp-rows">${rows}</div>`;
   }
@@ -888,7 +888,7 @@
         ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Verde há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
         : `<div class="fn-empty">Ninguém cruzou os ${MADURO_DIAS} dias ainda${inicioHist ? ` — as fotos diárias começaram em ${inicioHist}, então a primeira turma madura aparece por volta de ${fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime() + (MADURO_DIAS - 1) * 864e5)}` : ''}.</div>`}
       ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
-    const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ID'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem métrica Meta'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
+    const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ligado'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem dado de anúncios'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
 
     el.innerHTML = `
       <p class="eyebrow">Health Score · termômetro da carteira</p>
@@ -917,12 +917,12 @@
 
       <p class="eyebrow">Como é calculado</p>
       <div class="hs-regras">
-        <div><b>Pesos</b> Tráfego 30 · Satisfação 25 · Contato 25 · Produtividade 20 (matriz de 21/10/26) — pilar sem dado não zera o cliente: os pesos redistribuem entre os disponíveis (mínimo 2 pilares pra emitir flag).</div>
-        <div><b>Resultado</b> todas as áreas da operação, em média simples das frentes com dado: <u>tráfego</u> + <u>conteúdo por área</u> (Social Media, Audiovisual e RP: performance média dos posts do cliente com janela de 7 dias fechada nos últimos 30 dias — engajamento 60 · compartilhamento 40 vs. meta do cliente × formato, régua da nota de conteúdo). A frente de tráfego é a última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Cada métrica vira pontos por faixa fixa (100 · 80 · 60 · 40 · 0): ROAS ≥ 7x · 5–6,9 · 3,5–4,9 · 2,5–3,49 · &lt; 2,5 — CPM ≤ R$ 4 · 4,1–6 · 6,1–8 · 8,1–11,9 · ≥ 12 — custo por conversa ≤ R$ 3 · 3,1–5 · 5,1–7 · 7,1–9,99 · ≥ 10 — custo por lead ≤ R$ 10 · 10–15 · 15–20 · 20–30 · ≥ 30. Objetivo com investimento e sem resultado = 0.</div>
+        <div><b>Pesos</b> Resultado 30 · Satisfação 25 · Relacionamento 25 · Produtividade 20 (matriz de 21/10/26) — pilar sem dado não zera o cliente: os pesos redistribuem entre os disponíveis (mínimo 2 pilares pra emitir flag).</div>
+        <div><b>Resultado</b> todas as áreas da operação, em média simples das frentes com dado: <u>tráfego</u> + <u>conteúdo por área</u> (Social Media, Audiovisual e RP Manager: desempenho médio dos posts dos últimos 30 dias, medido 7 dias após publicar — engajamento 60 · compartilhamento 40, comparado à meta do cliente por formato). A frente de tráfego é a última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Cada métrica vira pontos por faixa fixa (100 · 80 · 60 · 40 · 0): ROAS ≥ 7x · 5–6,9 · 3,5–4,9 · 2,5–3,49 · &lt; 2,5 — CPM ≤ R$ 4 · 4,1–6 · 6,1–8 · 8,1–11,9 · ≥ 12 — custo por conversa ≤ R$ 3 · 3,1–5 · 5,1–7 · 7,1–9,99 · ≥ 10 — custo por lead ≤ R$ 10 · 10–15 · 15–20 · 20–30 · ≥ 30. Objetivo com investimento e sem resultado = 0.</div>
         <div><b>Satisfação</b> CSAT (e NPS, quando houver) na escala 0–10, por faixa fixa: 10 → 100 pontos · 9–9,9 → 80 · 8–8,9 → 60 · 7–7,9 → 40 · abaixo de 7 → 0.</div>
         <div><b>Produtividade</b> tarefas no prazo ÷ tarefas (abertas + concluídas nos últimos 30 dias); conta abertas vencidas e concluídas fora do prazo. Por faixa fixa: 100% → 100 pontos · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · abaixo de 85 → 0.</div>
-        <div><b>Relacionamento</b> nota de engajamento do cliente, calculada todo dia (22h) sobre os últimos 7 dias do grupo de WhatsApp: a IA só extrai os fatos (pedidos da Bibit e se foram respondidos, iniciativas, tom, alertas) e a nota sai por fórmula — Presença 20 (dias com mensagem do cliente: 4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Responsividade 20 (% de pedidos vencidos respondidos: 100% → 20 · ≥90 → 15 · ≥80 → 10 · ≥70 → 5; sem pedido = N/A) · Iniciativa 20 (4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Tom 40 (elogio 40 · cordial 30 · neutro 20 · insatisfação 10 · grave 0). Critério N/A redistribui. Tetos: 7 dias sem mensagem do cliente → máx. 40 · reclamação grave não resolvida → máx. 30 · ameaça de cancelamento → máx. 20. Classificação: ≥90 excelente · 80–89 engajado · 60–79 morno · 40–59 baixo · &lt;40 crítico.</div>
-        <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow · &lt; ${FLAG_FAIXAS.yellow} Red (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
+        <div><b>Relacionamento</b> nota de engajamento do cliente, calculada todo dia (22h) sobre os últimos 7 dias do grupo de WhatsApp: a IA só extrai os fatos (pedidos da Bibit e se foram respondidos, iniciativas, tom, alertas) e a nota sai por fórmula — Presença 20 (dias com mensagem do cliente: 4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Responsividade 20 (% de pedidos vencidos respondidos: 100% → 20 · ≥90 → 15 · ≥80 → 10 · ≥70 → 5; sem pedido = não conta) · Iniciativa 20 (4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Tom 40 (elogio 40 · cordial 30 · neutro 20 · insatisfação 10 · grave 0). Critério que não se aplica tem o peso dividido entre os outros. Limites: 7 dias sem mensagem do cliente → máx. 40 · reclamação grave não resolvida → máx. 30 · ameaça de cancelamento → máx. 20. Classificação: ≥90 excelente · 80–89 engajado · 60–79 morno · 40–59 baixo · &lt;40 crítico.</div>
+        <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow Flag · &lt; ${FLAG_FAIXAS.yellow} Red Flag (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
         <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
         <div><b>Sem campanha</b> Reportei ligado mas sem investimento em anúncios na última semana (ou métrica com mais de 10 dias): o pilar de tráfego sai da conta e o peso redistribui; o card e o balcão sinalizam.</div>
         <div><b>Flag há</b> dias seguidos na flag atual, pelas fotos diárias do score (desde 14/09/26; "≥" quando a sequência encosta no início do histórico). Dia sem foto não quebra a sequência.</div>
@@ -946,7 +946,7 @@
   // meta do pilar + média da carteira, Pareto de quem concentra a lacuna, tabela cliente × valor × meta × falta,
   // corte por tipo de campanha (tráfego) ou por colaborador (satisfação, produtividade, contato).
   const METAS_PILAR = {
-    trafego:       { lbl: 'Resultado',     meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — média das frentes com dado: tráfego (faixa fixa da métrica do objetivo: ROAS, CPM, custo por conversa ou por lead) e conteúdo por área (Social, Audiovisual, RP: performance dos posts vs. meta do cliente, régua da nota de conteúdo)' },
+    trafego:       { lbl: 'Resultado',     meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — média das frentes com dado: tráfego (faixa fixa da métrica do objetivo: ROAS, CPM, custo por conversa ou por lead) e conteúdo por área (Social Media, Audiovisual e RP Manager: desempenho dos posts comparado à meta do cliente)' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 (escala 0–10 do Typeform) — 10 vale 100 pontos, 9–9,9 vale 80; 8–8,9 amarelo (60); 7–7,9 vermelho (40); abaixo de 7 zera' },
     produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score); 100% vale 100 pontos, 95–99,9 vale 80' },
     contato:       { lbl: 'Relacionamento', meta: 70, unid: 'pts', desc: 'nota de engajamento do cliente ≥ 70 — calculada todo dia sobre os últimos 7 dias do grupo de WhatsApp (presença 20 · responsividade 20 · iniciativa 20 · tom 40); 50–69 amarelo; abaixo de 50 vermelho' },
@@ -989,7 +989,7 @@
       const papel = em(t.trafego) ? 'tr' : em(t.social) ? 'so' : em(t.rp) ? 'rp' : em(t.audiovisual) ? 'av' : em(t.webdesign) ? 'wd' : null;
       const v = papel && pp[papel] != null && pp[papel] > 0 ? pp[papel] : null;
       if (v == null) return null;
-      const PAP = { tr: 'tráfego', so: 'social', rp: 'RP', av: 'audiovisual', wd: 'web' };
+      const PAP = { tr: 'Tráfego Pago', so: 'Social Media', rp: 'RP Manager', av: 'Audiovisual', wd: 'Web Design' };
       const cls = v >= 9 ? 'g' : v >= 8 ? 'y' : 'r';
       const wd = papel === 'wd' && c.metrics.wd ? ` (${c.metrics.wd.entregas.map((x) => `${x.tipo || 'entrega'} ${fmtNota(x.nota)}`).join(', ')})` : '';
       return { valor: v, txt: `nota ao ${PAP[papel]}: ${fmtNota(v)}${wd}`, lacuna: Math.max(0, 9 - v), nota: null, cls, pessoa: true };
@@ -1174,7 +1174,7 @@
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
-      const PAP = { tr: 'Tráfego', so: 'Social', rp: 'RP', av: 'Audiovisual', wd: 'Web Designer (CSAT - WD, por entrega)' };
+      const PAP = { tr: 'Gestor de Tráfego', so: 'Social Media', rp: 'RP Manager', av: 'Audiovisual', wd: 'Web Designer (CSAT por entrega)' };
       const acc = { tr: [], so: [], rp: [], av: [], wd: [] };
       for (const c of filtrados) { const pp = (c.metrics && c.metrics.porPapel) || {}; for (const p of Object.keys(acc)) if (pp[p] != null && pp[p] > 0) acc[p].push(pp[p]); }
       const rows = Object.keys(acc).filter((p) => acc[p].length).map((p) => { const v = acc[p].reduce((a, b) => a + b, 0) / acc[p].length; return { p, v, n: acc[p].length }; }).sort((a, b) => a.v - b.v);
@@ -1233,7 +1233,7 @@
 
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
       ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
-      ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
+      ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
       <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
 
@@ -1278,7 +1278,8 @@
       const frente = em(t.trafego) ? 'trafego' : em(t.social) ? 'social' : em(t.audiovisual) ? 'audiovisual' : em(t.rp) ? 'rp' : em(t.webdesign) ? 'webdesign' : null; // webdesign = IQW (23/10/26)
       if (!frente || !fr[frente] || fr[frente].nota == null) return null;
       const n = fr[frente]; const LBLF = { trafego: 'tráfego', social: 'posts de social', audiovisual: 'reels/vídeos', rp: 'posts de RP', webdesign: 'projetos de web' };
-      return { valor: n.nota, txt: `${Math.round(n.nota)} pts · área: ${LBLF[frente]}${n.n ? ` (${n.n} ${frente === 'webdesign' ? 'projeto' : 'post'}${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n.nota), nota: n.nota, cls: hsCls(n.nota), frente };
+      const v = Math.round(n.nota); // arredonda antes da conta (69,6 não vira 'falta 0') — auditoria 27/10
+      return { valor: v, txt: `${v} pts · área: ${LBLF[frente]}${n.n ? ` (${n.n} ${frente === 'webdesign' ? 'projeto' : 'post'}${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - v), nota: v, cls: clsPilar('trafego', v), frente };
     }
     return medidaPilar(k, c, a.id);
   }
@@ -1409,7 +1410,7 @@
         const g = c.contato && c.contato.equipe && c.contato.equipe.grupo;
         return `${esc(m.txt)}${g ? ` · <span class="na">${g.msgsCliente} do cliente · ${g.msgsBibit} da Bibit${g.semResposta ? ` · <b class="r">${g.semResposta} sem resposta >24h</b>` : ''}</span>` : ''}`;
       };
-      const motivo = (c) => (k === 'trafego' ? (!((c.team && c.team.trafego) || []).some((p) => pid(p) === a.id) ? 'não é o gestor' : !c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? (nuncaCSAT(c) ? 'nunca respondeu CSAT' : 'sem nota ao papel') : k === 'produtividade' ? 'sem tarefa em 30 dias' : (contatoOpcional(c, a.id) ? 'presença opcional (web)' : 'sem grupo analisado'));
+      const motivo = (c) => (k === 'trafego' ? (!((c.team && c.team.trafego) || []).some((p) => pid(p) === a.id) ? 'não é o Gestor de Tráfego' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? (nuncaCSAT(c) ? 'nunca respondeu CSAT' : 'sem nota ao papel') : k === 'produtividade' ? 'sem tarefa em 30 dias' : (contatoOpcional(c, a.id) ? 'presença opcional (web)' : 'sem grupo analisado'));
       const linha = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td ${m.cls}">${fmtPilar(k, m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLacP(k, m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${detalhe(c, m)}</td></tr>`;
       const media = por[k].media;
       focoHTML = `<div class="cb-foco">

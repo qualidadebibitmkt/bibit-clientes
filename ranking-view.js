@@ -110,7 +110,7 @@
     if (hoje) {
       hsCli = `<p class="eyebrow rk-det-eyebrow">Como o Health Score de ${esc(primeiro(p.nome))} foi formado, cliente a cliente</p><div class="rk-det-grid">` + PILARES.map((k) => {
         const x = p.pilares[k];
-        if (!x || !x.porCliente || !x.porCliente.length) return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="na">sem dado</span></div><div class="fn-empty">${k === 'trafego' ? 'a pessoa não é gestor de tráfego nem responsável pelos posts de Social, Audiovisual ou RP em nenhum cliente com dado' : 'nenhum cliente com dado neste pilar'}</div></div>`;
+        if (!x || !x.porCliente || !x.porCliente.length) return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="na">sem dado</span></div><div class="fn-empty">${k === 'trafego' ? 'a pessoa não é gestor de tráfego nem responsável pelos posts de Social Media, Audiovisual ou RP Manager em nenhum cliente com dado' : 'nenhum cliente com dado neste pilar'}</div></div>`;
         return `<div class="rk-det-p"><div class="rk-det-h"><b>${LBL[k]}</b><span class="${cls(x.nota)}">nota ${x.nota}</span><small class="na">peso ${x.peso} · ${x.n} cliente${x.n === 1 ? '' : 's'}${x.abaixo ? ` · ${x.abaixo} abaixo da meta` : ''}</small></div>
           <div class="hs-pilar-list">${x.porCliente.map((c) => `<button class="hs-chip" data-id="${esc(c.clienteId)}" title="${esc(c.txt || '')}">${esc(c.cliente)} <b class="${cls(c.nota)}">${c.nota}</b>${k === 'satisfacao' || k === 'produtividade' ? `<i>${esc(bruto(k, c.valor))}</i>` : c.frente ? `<i>${esc(c.frente)}</i>` : ''}</button>`).join('')}</div></div>`;
       }).join('') + '</div>';
