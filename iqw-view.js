@@ -24,13 +24,13 @@
     st.loading = false; paint();
   }
   async function acao(nome, body) {
-        if (!st.token) { const t = prompt('Token de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
+        if (!st.token) { const t = prompt('Senha de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
     st.busy = true; paint();
     try {
       const r = await fetch(`/api/iqw?acao=${nome}&t=${encodeURIComponent(st.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
       const j = await r.json();
-      if (r.status === 401) { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} throw new Error('token recusado'); }
-      if (!r.ok || j.error) throw new Error((j.erros && j.erros.join('\n')) || j.error || ('HTTP ' + r.status));
+      if (r.status === 401) { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} throw new Error('senha recusada'); }
+      if (!r.ok || j.error) throw new Error((j.erros && j.erros.join('\n')) || j.error || ('o servidor falhou (' + r.status + ') — tente de novo'));
       await load(st.mes);
       return j;
     } catch (e) { alert('Não deu: ' + String(e.message || e)); return null; } finally { st.busy = false; paint(); }
@@ -51,7 +51,7 @@
 
   function paint() {
     if (!rootEl) return; const el = rootEl;
-    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">Resultado do Webdesigner indisponível: ${esc(st.erro)}</div>`; return; }
+    if (st.erro && !st.data) { el.innerHTML = `<div class="fn-empty">Resultado do Web Design indisponível: ${esc(st.erro)}</div>`; return; }
     if (!st.data) { el.innerHTML = '<div class="fn-empty">Lendo as páginas… (leva uns 20–30 s na primeira abertura)</div>'; return; }
     const d = st.data; if (!d) { el.innerHTML = '<div class="fn-empty">Sem dados.</div>'; return; }
     const a = d.atual || {};
@@ -188,7 +188,7 @@
     el.querySelectorAll('[data-iqw-proj]').forEach((n) => n.addEventListener('click', (e) => { if (e.target.closest('form,a,[data-iqw-editar],[data-iqw-excluir]')) return; st.projeto = n.dataset.iqwProj || null; st.form = null; st.editando = null; st.secao = 'projetos'; paint(); }));
     el.querySelectorAll('[data-iqw-editar]').forEach((n) => n.addEventListener('click', () => { st.editando = st.editando === n.dataset.iqwEditar ? null : n.dataset.iqwEditar; paint(); }));
     el.querySelectorAll('[data-iqw-excluir]').forEach((n) => n.addEventListener('click', async () => { if (!confirm('Excluir este projeto e a avaliação dele?')) return; const r = await acao('excluir', { projetoId: n.dataset.iqwExcluir }); if (r) { st.projeto = null; paint(); } }));
-    const entrar = el.querySelector('[data-iqw-entrar]'); if (entrar) entrar.addEventListener('click', () => { const t = prompt('Token de gestor do painel:'); if (t) { st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} paint(); } });
+    const entrar = el.querySelector('[data-iqw-entrar]'); if (entrar) entrar.addEventListener('click', () => { const t = prompt('Senha de gestor do painel:'); if (t) { st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} paint(); } });
     const sair = el.querySelector('[data-iqw-sair]'); if (sair) sair.addEventListener('click', () => { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} paint(); });
     // nota muda → recalcula ao vivo sem perder o que foi digitado
     el.querySelectorAll('[data-iqw-nota]').forEach((n) => n.addEventListener('change', () => { const f = n.closest('form'); st.form = { id: f.dataset.id, notas: lerNotasDoForm(f, R) }; const vals = {}; for (const e of f.elements) if (e.name) vals[e.name] = e.value; paint(); const f2 = el.querySelector(`form[data-iqw-form="avaliar"][data-id="${f.dataset.id}"]`); if (f2) for (const e of f2.elements) if (e.name && vals[e.name] != null && !e.name.startsWith('n_')) e.value = vals[e.name]; }));

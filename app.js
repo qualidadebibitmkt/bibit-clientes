@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 96;
+  const VERSION = 97;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -509,7 +509,7 @@
     // Web Design
     if (tem('webdesign') || fr.webdesign) {
       if (fr.webdesign && fr.webdesign.nota != null) linhas.push(`<b>Web Design</b> <b class="${hsCls(fr.webdesign.nota)}">${fr.webdesign.nota}</b>: <span class="hs-regua">qualidade de ${fr.webdesign.n} página${fr.webdesign.n === 1 ? '' : 's'} entregue${fr.webdesign.n === 1 ? '' : 's'} nos últimos 90 dias</span>`);
-      else linhas.push('<b>Web Design</b>: <span class="hs-regua">avaliação da página em andamento (aba Resultado → Webdesigner) — ainda não pesa</span>');
+      else linhas.push('<b>Web Design</b>: <span class="hs-regua">avaliação da página em andamento (aba Resultado → Web Design) — ainda não pesa</span>');
     }
     return linhas.length ? linhas.map((l) => `<div class="hs-frente">${l}</div>`).join('') : '<span class="hs-regua">sem área de resultado no card do cliente</span>';
   }
@@ -708,16 +708,19 @@
     const cross = ex.filter((e) => e.origem === 'cross');
     const totCross = cross.reduce((a, e) => a + (e.valor || 0), 0);
     const recCross = cross.reduce((a, e) => a + (e.recebido || 0), 0);
-    const totUp = ex.filter((e) => e.origem === 'upsell').reduce((a, e) => a + (e.valor || 0), 0);
+    const totUp = ex.filter((e) => e.origem === 'upsell' && e.valor > 0).reduce((a, e) => a + e.valor, 0);
+    const totRed = ex.filter((e) => e.origem === 'upsell' && e.valor < 0).reduce((a, e) => a - e.valor, 0);
     const resumo = [
       cross.length ? `<span><b>${brl(totCross)}</b> em cross sell${totCross ? ` · ${brl(recCross)} recebido` : ''}</span>` : '',
-      totUp ? `<span><b>${totUp < 0 ? '−' + brl(-totUp) : '+' + brl(totUp)}/mês</b> em upsell</span>` : '',
+      totUp ? `<span><b>+${brl(totUp)}/mês</b> em upsell</span>` : '',
+      totRed ? `<span><b>−${brl(totRed)}/mês</b> em reduções de plano</span>` : '',
     ].filter(Boolean).join('');
     const val = (e) => e.valor == null ? '<span class="exp-valor na">sem valor no card</span>'
       : e.origem === 'upsell' ? `<span class="exp-valor">${e.valor < 0 ? '−' + brl(-e.valor) : '+' + brl(e.valor)}<small>/mês${e.valor < 0 ? ' (redução)' : ''}</small></span>`
       : `<span class="exp-valor">${brl(e.valor)}${e.situacao ? `<small class="${e.situacao === 'recebido' ? 'exp-ok' : ''}">${esc(e.situacao)}</small>` : ''}</span>`;
-    const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem}</span><span class="exp-nome">${esc(e.nome)}</span>${val(e)}<span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
-    return `<p class="eyebrow">Expansões · ${ex.length} venda${ex.length === 1 ? '' : 's'} (cross/upsell)</p>
+    const rows = ex.map((e) => `<div class="exp-row"><span class="chip exp-${e.origem}">${e.origem === 'cross' ? 'Cross sell' : e.valor < 0 ? 'Redução' : 'Upsell'}</span><span class="exp-nome">${esc(e.nome)}</span>${val(e)}<span class="exp-quando">${e.quando ? fmtCurto(e.quando) : ''}</span></div>`).join('');
+    const nV = ex.filter((e) => !(e.origem === 'upsell' && e.valor < 0)).length;
+    return `<p class="eyebrow">Expansões · ${nV} venda${nV === 1 ? '' : 's'} (cross sell e upsell)</p>
       ${resumo ? `<div class="exp-resumo">${resumo}</div>` : ''}
       <div class="exp-rows">${rows}</div>`;
   }
@@ -849,7 +852,7 @@
       return cmp * dir || x.healthScore.score - y.healthScore.score;
     });
     const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
-    const ORDEM_LBL = { nome: 'nome A–Z', score: 'score', delta: 'variação 7d', streak: 'dias na flag', trafego: 'tráfego', satisfacao: 'satisfação', produtividade: 'produtividade', contato: 'contato', ltv: 'LTV' };
+    const ORDEM_LBL = { nome: 'nome A–Z', score: 'Health Score', delta: 'variação em 7 dias', streak: 'dias na flag', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', ltv: 'LTV' };
     const ltvRank = somaLTV(com);
     const linha = (c) => {
       const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
@@ -882,7 +885,7 @@
     const expandir = `
       <p class="eyebrow">Prontos pra expandir · cross-sell / upsell ${prontos.length ? `<span class="hs-ok-n">${prontos.length}</span>` : ''}<span class="hs-hist-info">Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp</span></p>
       ${prontos.length
-        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Green há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
+        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Verde há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
         : `<div class="fn-empty">Ninguém cruzou os ${MADURO_DIAS} dias ainda${inicioHist ? ` — as fotos diárias começaram em ${inicioHist}, então a primeira turma madura aparece por volta de ${fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime() + (MADURO_DIAS - 1) * 864e5)}` : ''}.</div>`}
       ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
     const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ID'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem métrica Meta'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
@@ -895,11 +898,11 @@
         <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
       </div>
 
-      <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% Green · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red · sobre os ${com.length} clientes com score</span></p>
+      <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% verde · ${META_FLAGS.yellow}% amarelo · ${META_FLAGS.red}% vermelho · sobre os ${com.length} clientes com score</span></p>
       <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, p)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
 
-      <p class="eyebrow">Ranking · por ${ORDEM_LBL[state.hsOrdem] || 'score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7d')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Contato')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7 dias')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Relacion.')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
       ${expandir}
 
@@ -975,8 +978,8 @@
       const fk = frenteAtual();
       const fr = hs && hs.pilares.trafego.frentes && hs.pilares.trafego.frentes[fk];
       if (!fr || fr.nota == null) return null;
-      const n = fr.nota; const un = fk === 'webdesign' ? 'projeto' : fk === 'audiovisual' ? 'vídeo' : 'post';
-      return { valor: n, txt: `${Math.round(n)} pts${fk !== 'trafego' && fr.n ? ` · ${fr.n} ${un}${fr.n === 1 ? '' : 's'}` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n), nota: n, cls: hsCls(n), frente: fk };
+      const n = Math.round(fr.nota); const un = fk === 'webdesign' ? 'projeto' : fk === 'audiovisual' ? 'vídeo' : 'post';
+      return { valor: n, txt: `${Math.round(n)} pts${fk !== 'trafego' && fr.n ? ` · ${fr.n} ${un}${fr.n === 1 ? '' : 's'}` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n), nota: n, cls: n >= 70 ? 'g' : n >= 50 ? 'y' : 'r', frente: fk }; // 70 = meta: na meta é verde
     }
     if (k === 'satisfacao' && pessoa) {
       // com colaborador selecionado a medida é a nota que o cliente dá ao PAPEL dele no CSAT (tráfego/social/RP/AV)
@@ -1006,7 +1009,7 @@
       const v = d.pct;
       const cls = v >= 95 ? 'g' : v >= 85 ? 'y' : 'r';
       const partes = []; if (d.lateAb) partes.push(`${d.lateAb} aberta${d.lateAb === 1 ? '' : 's'} vencida${d.lateAb === 1 ? '' : 's'}`); if (d.lateCo) partes.push(`${d.lateCo} concluída${d.lateCo === 1 ? '' : 's'} fora do prazo`);
-      return { valor: v, txt: `${partes.length ? partes.join(' + ') : 'tudo no prazo'} · ${d.abertas} aberta${d.abertas === 1 ? '' : 's'}, ${d.concl} concluída${d.concl === 1 ? '' : 's'} em 30d`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late: d.late, abertas: d.abertas };
+      return { valor: v, txt: `${partes.length ? partes.join(' + ') : 'tudo no prazo'} · ${d.abertas} aberta${d.abertas === 1 ? '' : 's'}, ${d.concl} concluída${d.concl === 1 ? '' : 's'} em 30 dias`, lacuna: Math.max(0, 95 - v), nota: hs ? hs.pilares.produtividade.nota : null, cls, late: d.late, abertas: d.abertas };
     }
     if (k === 'contato') {
       if (pessoa) {
@@ -1069,10 +1072,10 @@
       audiovisual: 'nota de Audiovisual ≥ 70 — performance média dos vídeos publicados nos últimos 30 dias (engajamento 60% + compartilhamento 40%, contra a meta do cliente)',
       webdesign: 'nota de Web Design ≥ 70 — qualidade média dos projetos de web (LP, site, e-commerce) avaliados nos últimos 90 dias: técnica, experiência, visual e retrabalho',
     };
-    const M = k === 'trafego' ? { ...METAS_PILAR.trafego, desc: DESC_FR[FR] + '. Cada área tem sua sub-aba; o pilar Resultado do Health Score é a média das frentes com dado' } : METAS_PILAR[k];
+    const M = k === 'trafego' ? { ...METAS_PILAR.trafego, desc: DESC_FR[FR] + '. Cada área tem sua sub-aba; o pilar Resultado do Health Score é a média das áreas com dado' } : METAS_PILAR[k];
     const { clients } = state.data;
     // sub-abas de conteúdo e web: só os clientes que têm alguém da área no card (quem não contrata a área não é "sem dado")
-    const base = clients.filter((c) => stKeyOf(c) !== 'briefing' && (k !== 'trafego' || FR === 'trafego' || ((c.team || {})[FR] || []).length));
+    const base = clients.filter((c) => stKeyOf(c) !== 'briefing' && (k !== 'trafego' || FR === 'trafego' || ((c.team || {})[FR] || []).length || (c.healthScore && c.healthScore.pilares.trafego.frentes && c.healthScore.pilares.trafego.frentes[FR] && c.healthScore.pilares.trafego.frentes[FR].nota != null)));
     if (!state.pilarFiltro) state.pilarFiltro = {};
     const fKey = k === 'trafego' ? 'trafego:' + FR : k; // filtro guardado por sub-aba
     const filtro = state.pilarFiltro[fKey] || null;
@@ -1108,7 +1111,7 @@
     const naMeta = com.length - abaixo.length;
     const totalLac = abaixo.reduce((s, x) => s + x.m.lacuna, 0);
     const fmtV = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pctFmt(v) : `${Math.round(v)} pts`);
-    const fmtLac = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' p.p.' : `${Math.round(v)} pts`);
+    const fmtLac = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' pontos percentuais' : `${Math.round(v)} pts`);
     const mediaCls = media == null ? 'na' : k === 'satisfacao' ? (media >= 9 ? 'g' : media >= 8 ? 'y' : 'r') : k === 'produtividade' ? (media >= 95 ? 'g' : media >= 85 ? 'y' : 'r') : (media >= 70 ? 'g' : media >= 50 ? 'y' : 'r');
 
     // ---- Pareto: quem concentra 80% da lacuna ----
@@ -1167,7 +1170,7 @@
       for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
       const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.round(((total - late) / total) * 1000) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas + concluídas nos últimos ${JANELA_CONCL_DIAS} dias, de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
-        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r" title="abertas já vencidas">Abertas vencidas</th><th class="r" title="concluídas depois do vencimento, nos últimos 30 dias">Concluídas fora do prazo</th><th class="r">Abertas</th><th class="r">Concluídas 30d</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.lateAb ? 'r' : 'g'}">${a.lateAb}</td><td class="hs-td ${a.lateCo ? 'r' : 'g'}">${a.lateCo}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.concl || (a.total ? '0' : '<span class="na" title="nenhuma tarefa aberta nem concluída em 30 dias no ClickUp">sem tarefa</span>')}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
+        <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">No prazo</th><th class="r" title="abertas já vencidas">Abertas vencidas</th><th class="r" title="concluídas depois do vencimento, nos últimos 30 dias">Concluídas fora do prazo</th><th class="r">Abertas</th><th class="r">Concluídas em 30 dias</th><th class="r">Clientes</th><th class="r">Falta</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td ${a.pct == null ? 'na' : a.pct >= 95 ? 'g' : a.pct >= 85 ? 'y' : 'r'}">${a.pct == null ? '—' : pctFmt(a.pct)}</td><td class="hs-td ${a.lateAb ? 'r' : 'g'}">${a.lateAb}</td><td class="hs-td ${a.lateCo ? 'r' : 'g'}">${a.lateCo}</td><td class="hs-td">${a.abertas}</td><td class="hs-td">${a.concl || (a.total ? '0' : '<span class="na" title="nenhuma tarefa aberta nem concluída em 30 dias no ClickUp">sem tarefa</span>')}</td><td class="hs-td">${a.clientes.size}</td><td class="hs-td">${a.pct == null ? '<span class="na">—</span>' : a.pct >= 95 ? '<span class="g">na meta</span>' : fmtLac(95 - a.pct)}</td></tr>`).join('')}</tbody></table></div>`;
     }
     if (k === 'satisfacao') {
       // média do CSAT por função (o Typeform pergunta por papel: tráfego, social, RP, AV)
@@ -1195,7 +1198,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">calados: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       ${k === 'trafego' ? subResultadoHTML() : ''}
@@ -1223,16 +1226,16 @@
         const cab = `<div class="pl-bar pl-bar-cab" aria-hidden="true"><span></span><span class="pl-bar-track"><b style="left:${metaPos}%">META</b></span><span></span><span></span></div>`;
         const dir = (x) => x.m.lacuna > 0 ? `falta ${fmtLac(x.m.lacuna)}` : x.m.valor > metaNum ? `<span class="g">+${fmtLac(x.m.valor - metaNum)} acima</span>` : '<span class="g">na meta</span>';
         return `<div class="pl-pareto">${cab}${todos.map((x) => { const w = Math.max(2, Math.min(100, Math.round((x.m.valor / esc100) * 100))); return `<button class="pl-bar ${x.m.cls}${x.m.lacuna > 0 ? '' : ' pl-bar-ok'}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">${dir(x)}</span></button>`; }).join('')}</div>`;
-      })() : `<div class="fn-empty">Nenhum cliente com dado${filtroLbl ? ' neste corte' : ''}.</div>`}
+      })() : `<div class="fn-empty">Nenhum cliente com dado${filtroLbl ? ' neste filtro' : ''}.</div>`}
 
       ${placar}
       ${porPessoa}
 
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
-      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste corte.</div>'}
+      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ID' : semCampanha(c) ? 'sem campanha rodando' : 'sem métrica Meta') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'prévia sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
-      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das frentes que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das frentes que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
+      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
 
     el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[fKey] = n.dataset.plF || null; navAtualizar(); renderPilar(el, k); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
@@ -1248,7 +1251,7 @@
   const ESC_V = { trafego: 100, satisfacao: 10, produtividade: 100, contato: 100 };
   const clsPilar = (k, v) => (v == null ? 'na' : k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : k === 'produtividade' ? (v >= 95 ? 'g' : v >= 85 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
   const fmtPilar = (k, v) => (v == null ? '—' : k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pctFmt(v) : `${Math.round(v)} pts`);
-  const fmtLacP = (k, v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' p.p.' : `${Math.round(v)} pts`);
+  const fmtLacP = (k, v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' pontos percentuais' : `${Math.round(v)} pts`);
   const chaveNome = (n) => { const f = normNome(String(n || '').split(' ')[0]); return f === 'will' ? 'willian' : f; };
 
   // todo mundo da operação: Equipe dos cards + responsáveis de tarefa + Gestor de Tráfego; com os papéis e os clientes de cada um
@@ -1275,7 +1278,7 @@
       const frente = em(t.trafego) ? 'trafego' : em(t.social) ? 'social' : em(t.audiovisual) ? 'audiovisual' : em(t.rp) ? 'rp' : em(t.webdesign) ? 'webdesign' : null; // webdesign = IQW (23/10/26)
       if (!frente || !fr[frente] || fr[frente].nota == null) return null;
       const n = fr[frente]; const LBLF = { trafego: 'tráfego', social: 'posts de social', audiovisual: 'reels/vídeos', rp: 'posts de RP', webdesign: 'projetos de web' };
-      return { valor: n.nota, txt: `${n.nota} pts · frente ${LBLF[frente]}${n.n ? ` (${n.n} ${frente === 'webdesign' ? 'projeto' : 'post'}${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n.nota), nota: n.nota, cls: hsCls(n.nota), frente };
+      return { valor: n.nota, txt: `${Math.round(n.nota)} pts · área: ${LBLF[frente]}${n.n ? ` (${n.n} ${frente === 'webdesign' ? 'projeto' : 'post'}${n.n === 1 ? '' : 's'})` : ''}`, lacuna: Math.max(0, METAS_PILAR.trafego.meta - n.nota), nota: n.nota, cls: hsCls(n.nota), frente };
     }
     return medidaPilar(k, c, a.id);
   }
@@ -1318,15 +1321,17 @@
     const doMes = (a) => (d.pessoas || []).find((p) => p.id != null && String(p.id) === String(a.id)) || (d.pessoas || []).find((p) => chaveNome(p.nome) === chaveNome(a.p.name)) || null;
     const PTS = (v) => (v == null ? '<span class="na">—</span>' : `${Math.round(v)}`);
     const clsP = (v) => (v == null ? 'na' : v >= 90 ? 'g' : v >= 70 ? 'y' : 'r'); // Health Score: faixas da flag
-    const clsPil = (v) => (v == null ? 'na' : v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'); // pilar em pontos: 70 = meta (mesma cor do 'hoje')
+    // pilar em pontos, cor igual à do 'hoje': Resultado e Relacionamento meta 70 · Satisfação (CSAT 9) e Produtividade (95%) meta 80
+    const META_PTS = { trafego: [70, 50], contato: [70, 50], satisfacao: [80, 60], produtividade: [80, 40] };
+    const clsPil = (k, v) => (v == null ? 'na' : v >= META_PTS[k][0] ? 'g' : v >= META_PTS[k][1] ? 'y' : 'r');
     const sub = `${mesCurto(per)}${per === mesAtualBR() ? ' · parcial, até hoje' : ''} · ${d.dias || 0} dia${d.dias === 1 ? '' : 's'} com placar registrado`;
     const quem = sel ? [sel] : todos;
     const linhas = quem.map((a) => { const p = doMes(a); const pil = (k) => (p && p.pilares && p.pilares[k] ? p.pilares[k].nota : null);
-      return `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="${sel ? '' : 'ver ' + esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td>${p ? `<td class="hs-td hs-td-score ${clsP(p.base)}">${PTS(p.base)}</td>${PILARES.map((k) => `<td class="hs-td ${clsPil(pil(k))}">${PTS(pil(k))}</td>`).join('')}<td class="hs-td">${p.posicao ? p.posicao + 'º' : '<span class="na">sem posição</span>'}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}</td>` : `<td class="hs-td-txt na" colspan="7">fora do Ranking ou sem placar neste mês</td>`}</tr>`; }).join('');
+      return `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="${sel ? '' : 'ver ' + esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td>${p ? `<td class="hs-td hs-td-score ${clsP(p.base)}">${PTS(p.base)}</td>${PILARES.map((k) => `<td class="hs-td ${clsPil(k, pil(k))}">${PTS(pil(k))}</td>`).join('')}<td class="hs-td">${p.posicao ? p.posicao + 'º' : '<span class="na">sem posição</span>'}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}</td>` : `<td class="hs-td-txt na" colspan="7">fora do Ranking ou sem placar neste mês</td>`}</tr>`; }).join('');
     const p1 = sel ? doMes(sel) : null;
     const extra = p1 && p1.rk ? `<div class="hs-termo-pilares cb-mes-rk">${[['renovacao', 'Renovação', p1.rk.renovacao && p1.rk.renovacao.pct != null ? `${String(p1.rk.renovacao.pct).replace('.', ',')}%` : '—'], ['vendas', 'Vendas', p1.rk.vendas && p1.rk.vendas.faixa ? p1.rk.vendas.faixa : '—'], ['nrr', 'NRR', p1.rk.nrr && p1.rk.nrr.pct != null ? `${String(p1.rk.nrr.pct).replace('.', ',')}%` : '—']].map(([k, l, v]) => `<div class="hs-termo-p"><span class="hs-termo-pn">${p1.rk[k] && p1.rk[k].pts != null ? p1.rk[k].pts : 0}</span><span class="hs-termo-pl">${l} · pontos</span><span class="iqc-kpi-s">${esc(v)}</span></div>`).join('')}</div>` : '';
     return head(`
-      <p class="eyebrow">Placar do mês <span class="hs-hist-info">${esc(sub)} · pilares em pontos de 0 a 100 (a média do mês de cada pilar; 70 pontos = meta) · Health Score: verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70</span></p>
+      <p class="eyebrow">Placar do mês <span class="hs-hist-info">${esc(sub)} · pilares em pontos de 0 a 100 (a média do mês de cada pilar; meta: Resultado e Relacionamento 70 · Satisfação e Produtividade 80, que equivalem a CSAT 9 e 95% no prazo) · Health Score: verde ≥ 90 · amarelo 70–89 · vermelho &lt; 70</span></p>
       <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Health Score</th><th class="r">Resultado</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Relacionamento</th><th class="r">Posição</th><th class="r">Pontos no Ranking</th></tr></thead><tbody>${linhas}</tbody></table></div>
       ${extra}
       <div class="hs-regras pl-regras"><div><b>Mês</b> cada pilar é a média do placar registrado em cada dia do mês (o mesmo do Ranking). O mês em andamento é parcial.</div><div><b>Hoje</b> volte para "hoje" pra ver cliente a cliente, o que está abaixo da meta, atrasadas e pareceres — esses detalhes são da situação atual.</div></div>`);
@@ -1358,7 +1363,7 @@
         <div class="pl-head">
           <div class="hs-termo pl-termo cb-termo cb-termo--2">
             <div class="hs-termo-media"><span class="hs-big na">${todos.length}</span><span class="hs-termo-l">colaboradores<br><span>${base.length} clientes na carteira · escolha uma pessoa pra ver tudo dela</span></span></div>
-            <div class="pl-meta-box"><span class="pl-meta-n">4</span><span class="hs-termo-l">pilares<br><span>resultado ≥ 70 pts (a frente da pessoa: tráfego ou performance dos posts da área) · satisfação ≥ 9 (nota ao papel da pessoa no CSAT) · produtividade ≥ 95% (só as tarefas da pessoa) · relacionamento ≥ 70 pts (atuação da pessoa no grupo)</span></span></div>
+            <div class="pl-meta-box"><span class="pl-meta-n">4</span><span class="hs-termo-l">pilares<br><span>resultado ≥ 70 pts (a área da pessoa: tráfego ou performance dos posts) · satisfação ≥ 9 (nota ao papel da pessoa no CSAT) · produtividade ≥ 95% (só as tarefas da pessoa) · relacionamento ≥ 70 pts (atuação da pessoa no grupo)</span></span></div>
           </div>
           ${filtros}${periodoColabHTML()}
         </div>
@@ -1377,7 +1382,7 @@
     if (state.colabFoco && (!PILARES.includes(state.colabFoco) || (state.colabFoco === 'trafego' && !gestor))) state.colabFoco = null;
     const foco = state.colabFoco;
     const kpi = (k) => { const p = por[k]; const M = METAS_PILAR[k]; const na = k === 'trafego' && !gestor;
-      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''}><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go" aria-hidden="true">›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'sem frente de resultado' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
+      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''}><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go" aria-hidden="true">›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'sem resultado da área dela' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
 
     // silêncio: grupos em que ela está na Equipe e não escreveu na semana
     const calados = a.clientes.filter((c) => { const m = medidaColab('contato', c, a); return m && /^calado/.test(m.txt); });

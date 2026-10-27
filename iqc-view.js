@@ -38,13 +38,13 @@
     st.loading = false;
   }
   async function acao(acaoNome, body, qs = '') {
-    if (!st.token) { const t = prompt('Token de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
+    if (!st.token) { const t = prompt('Senha de gestor do painel (fica salvo só neste navegador):'); if (!t) return null; st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} }
     st.busy = true; paint();
     try {
       const r = await fetch(`/api/iqc?acao=${acaoNome}&t=${encodeURIComponent(st.token)}${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
       const j = await r.json();
-      if (r.status === 401) { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} throw new Error('token recusado'); }
-      if (!r.ok || j.error || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+      if (r.status === 401) { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} throw new Error('senha recusada'); }
+      if (!r.ok || j.error || j.ok === false) throw new Error(j.error || ('o servidor falhou (' + r.status + ') — tente de novo'));
       await load(st.mes);
       return j;
     } catch (e) { alert('Não deu: ' + String(e.message || e)); return null; } finally { st.busy = false; paint(); }
@@ -175,7 +175,7 @@
   }
 
   function postsTabela(posts, d) {
-    if (!posts.length) return '<div class="fn-empty">Sem posts neste corte.</div>';
+    if (!posts.length) return '<div class="fn-empty">Sem posts neste filtro.</div>';
     const ordenados = [...posts].sort((a, b) => b.publicadoEm - a.publicadoEm);
     const lin = (x) => {
       const pf = x.performance;
@@ -276,7 +276,7 @@
     el.querySelectorAll('[data-iqc-colab]').forEach((n) => n.addEventListener('click', () => { const v = n.dataset.iqcColab || null; st.colab = st.colab === v ? null : v; paint(); }));
     el.querySelectorAll('[data-iqc-cliente]:not([data-iqc-secao])').forEach((n) => n.addEventListener('click', () => { const v = n.dataset.iqcCliente || null; st.cliente = st.cliente === v ? null : v; paint(); }));
     el.querySelectorAll('[data-iqc-post]:not([data-iqc-secao])').forEach((n) => n.addEventListener('click', (e) => { if (e.target.closest('a, form, button:not([data-iqc-post])')) return; const v = n.dataset.iqcPost || null; st.post = st.post === v && !n.classList.contains('iqc-post') ? null : v; if (n.classList.contains('pl-limpar')) st.post = null; paint(); }));
-    el.querySelectorAll('[data-iqc-entrar]').forEach((n) => n.addEventListener('click', () => { const t = prompt('Token de gestor do painel:'); if (t) { st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} paint(); } }));
+    el.querySelectorAll('[data-iqc-entrar]').forEach((n) => n.addEventListener('click', () => { const t = prompt('Senha de gestor do painel:'); if (t) { st.token = t.trim(); try { localStorage.setItem('iqc:token', st.token); } catch {} paint(); } }));
     el.querySelectorAll('[data-iqc-sair]').forEach((n) => n.addEventListener('click', () => { st.token = null; try { localStorage.removeItem('iqc:token'); } catch {} paint(); }));
     el.querySelectorAll('[data-iqc-auditar]').forEach((n) => n.addEventListener('click', async () => { n.disabled = true; n.textContent = 'auditando…'; await acao('auditoria', {}, '&taskId=' + encodeURIComponent(n.dataset.iqcAuditar)); }));
     el.querySelectorAll('[data-iqc-auditar-todos]').forEach((n) => n.addEventListener('click', async () => {
