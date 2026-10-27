@@ -607,7 +607,12 @@ module.exports = async (req, res) => {
             const ult = hist[0] || null;
             // registros gravados antes da correção de 26/10/26 podem trazer "pergunta do cliente sem resposta" que na
             // verdade era mensagem da Bibit: sem nenhum dia com mensagem do cliente, esse alerta é impossível — sai
-            if (ult && ult.criterios && ult.criterios.presenca && !ult.criterios.presenca.dias) ult.alertas = (ult.alertas || []).filter((a) => !/^pergunta do cliente sem resposta/i.test(a.tipo || ''));
+            if (ult && ult.criterios && ult.criterios.presenca && !ult.criterios.presenca.dias) {
+              ult.alertas = (ult.alertas || []).filter((a) => !/^pergunta do cliente sem resposta/i.test(a.tipo || ''));
+              // o nível do alerta acompanha o que sobrou (antes ficava ALTO sem alerta visível e travava a expansão — auditoria 27/10)
+              const ORD = ['CRÍTICO', 'ALTO', 'MODERADO', 'BAIXO'];
+              ult.nivelAlerta = ORD.find((n) => ult.alertas.some((a) => a.nivel === n)) || null;
+            }
             // só números, rótulos e os textos já curados (resumo/alertas) saem ao navegador — nunca a transcrição
             c.contato.iec = ult ? {
               dia: ult.dia, em: ult.em, iec: ult.iec, classificacao: ult.classificacao, delta: ult.delta, evolucao: ult.evolucao, anterior: ult.anterior,

@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 99;
+  const VERSION = 100;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -70,7 +70,9 @@
   const MADURO_DIAS = 28;
   // Meta de distribuição das flags na carteira (Bruno, 25/09/26): 70% Green · 20% Yellow · 10% Red
   const META_FLAGS = { green: 70, yellow: 20, red: 10 };
-  const pct = (n, t) => (t ? Math.round((n / t) * 100) : 0);
+  // % da carteira com 1 casa, arredondado pro lado da meta (auditoria 27/10): verde pra baixo (69,6% não vira "70%" ao lado de "falta 1"),
+  // amarelo/vermelho pra cima (20,4% não vira "20%" ao lado de "1 a mais")
+  const pct = (n, t, f) => { if (!t) return '0'; const v = (n / t) * 1000; const r = (f === 'green' ? Math.floor(v + 1e-9) : f ? Math.ceil(v - 1e-9) : Math.round(v)) / 10; return r.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); };
   // lacuna em clientes: verde = quantos faltam pra chegar na meta; amarelo/vermelho = quantos a mais que a meta permite
   function lacunaFlag(f, n, t) {
     if (!t) return null;
@@ -374,9 +376,9 @@
     el.innerHTML = `
       <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
       <div class="hero">
-        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('green', count('green'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('green'), byPlano.length)}% · meta ${META_FLAGS.green}%${(() => { const t = metaTxt('green', count('green'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
-        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('yellow', count('yellow'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('yellow'), byPlano.length)}% · meta ${META_FLAGS.yellow}%${(() => { const t = metaTxt('yellow', count('yellow'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
-        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('red', count('red'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('red'), byPlano.length)}% · meta ${META_FLAGS.red}%${(() => { const t = metaTxt('red', count('red'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
+        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('green', count('green'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('green'), byPlano.length, 'green')}% · meta ${META_FLAGS.green}%${(() => { const t = metaTxt('green', count('green'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
+        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('yellow', count('yellow'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('yellow'), byPlano.length, 'yellow')}% · meta ${META_FLAGS.yellow}%${(() => { const t = metaTxt('yellow', count('yellow'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
+        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('red', count('red'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('red'), byPlano.length, 'red')}% · meta ${META_FLAGS.red}%${(() => { const t = metaTxt('red', count('red'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
         <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
       </div>
       <section class="balcao">
@@ -452,7 +454,7 @@
   }
   function iecDetalheHTML(iec, c) {
     const resumo = narrativaDoResumo(c?.contato?.resumo);
-    const quando = c?.contato?.atualizadoEm ? `atualizado ${fmtCurto(c.contato.atualizadoEm)} às ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '';
+    const quando = c?.contato?.atualizadoEm ? `atualizado ${fmtCurto(c.contato.atualizadoEm)} às ${new Date(c.contato.atualizadoEm).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}` : '';
     if (!iec) return `${resumo ? `<p class="rel-resumo">${esc(resumo)}</p>` : ''}${quando ? `<p class="hs-regua">${quando}</p>` : ''}`;
     const cr = iec.criterios || {};
     const dt = (d) => fmtCurto(new Date(d + 'T12:00:00Z').getTime());
@@ -564,9 +566,10 @@
 
     const item = (label, html) => (html ? `<div class="f-item"><div class="f-label">${label}</div><div class="f-value">${html}</div></div>` : '');
     // links dos campos do card: só http(s); "www.x.com" vira https://; Instagram aceita @perfil ou o link inteiro (auditoria 27/10)
-    const urlOk = (u) => { const t = String(u || '').trim(); if (!t) return null; if (/^https?:\/\//i.test(t)) return t; if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(t)) return 'https://' + t; return null; };
+    const urlOk = (u) => { const t = String(u || '').trim(); if (!t) return null; if (/^https?:\/\/[^\s/]+/i.test(t)) return t; if (/^[\w.-]+\.[a-z]{2,}(:\d+)?([/?#]|$)/i.test(t)) return 'https://' + t; return null; };
     const link = (url, txt) => { const u = urlOk(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(txt)}</a>` : `<span class="na">${esc(txt)} (link inválido no card)</span>`; };
-    const igUser = c.instagram ? String(c.instagram).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '') : '';
+    const igRaw = c.instagram ? String(c.instagram).trim().replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '') : '';
+    const igUser = /^(p|reel|reels|stories|tv)$/i.test(igRaw) ? '' : igRaw; // link de post não é perfil
     const insta = igUser ? link(`https://instagram.com/${igUser}`, '@' + igUser) : '';
     const roles = [['social', 'Social Media'], ['webdesign', 'Web Design'], ['trafego', 'Tráfego Pago'], ['rp', 'RP Manager'], ['audiovisual', 'Audiovisual']];
     const team = roles
@@ -743,6 +746,7 @@
 
     const byDay = new Map();
     for (const t of filteredTasks()) {
+      if (descartada(t)) continue; // post descartado/cancelado não aparece no calendário (auditoria 27/10)
       const cd = t.calDate || t.dataAgendamento;
       if (!cd) continue;
       const k = dayKey(cd);
@@ -854,7 +858,7 @@
       const cmp = typeof a === 'string' ? a.localeCompare(b, 'pt-BR') : a - b;
       return cmp * dir || x.healthScore.score - y.healthScore.score;
     });
-    const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
+    const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl === '7 dias' ? 'variação em 7 dias' : lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
     const ORDEM_LBL = { nome: 'nome A–Z', score: 'Health Score', delta: 'variação em 7 dias', streak: 'dias na flag', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', ltv: 'LTV' };
     const ltvRank = somaLTV(com);
     const linha = (c) => {
@@ -889,7 +893,7 @@
       <p class="eyebrow">Prontos pra expandir · cross-sell / upsell ${prontos.length ? `<span class="hs-ok-n">${prontos.length}</span>` : ''}<span class="hs-hist-info">Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp</span></p>
       ${prontos.length
         ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Verde há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
-        : `<div class="fn-empty">Ninguém cruzou os ${MADURO_DIAS} dias ainda${inicioHist ? ` — as fotos diárias começaram em ${inicioHist}, então a primeira turma madura aparece por volta de ${fmtCurto(new Date(hsHist.dias[0].dia + 'T12:00:00Z').getTime() + (MADURO_DIAS - 1) * 864e5)}` : ''}.</div>`}
+        : `<div class="fn-empty">Ninguém pronto pra expandir agora — precisa de Green Flag há ${MADURO_DIAS} dias ou mais, CSAT 9 ou mais e nenhum alerta no WhatsApp.${quase.length ? ' Quem está perto aparece logo abaixo, com o que ainda falta.' : ''}</div>`}
       ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
     const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ligado'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem dado de anúncios'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
 
@@ -902,9 +906,9 @@
       </div>
 
       <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% verde · ${META_FLAGS.yellow}% amarelo · ${META_FLAGS.red}% vermelho · sobre os ${com.length} clientes com score</span></p>
-      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, p)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
+      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length, f), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, p)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
 
-      <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV com score ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV dos clientes com Health Score: ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
       <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7 dias')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Relacion.')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
       ${expandir}
