@@ -18,6 +18,12 @@ const TTL_DIAS = 25;
 
 function redisReady() { return !!(REST_URL && REST_TOKEN); }
 
+// erro do Redis em português claro (27/10/26): "Redis 400" não dizia nada pra quem olha o painel
+async function erroRedis(r) {
+  let txt = ''; try { txt = await r.text(); } catch {}
+  if (/max requests limit/i.test(txt)) return new Error('o banco de dados do painel (Upstash) atingiu o limite de acessos do mês — os dados voltam assim que o plano for ampliado');
+  return new Error('Redis ' + r.status + (txt ? ' · ' + txt.slice(0, 120) : ''));
+}
 async function redis(cmd) {
   // cmd = ['RPUSH', key, value] etc.
   const r = await fetch(REST_URL, {
@@ -25,7 +31,7 @@ async function redis(cmd) {
     headers: { Authorization: 'Bearer ' + REST_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd),
   });
-  if (!r.ok) throw new Error('Redis ' + r.status);
+  if (!r.ok) throw await erroRedis(r);
   const j = await r.json();
   if (j.error) throw new Error('Redis: ' + j.error);
   return j.result;
@@ -47,7 +53,7 @@ async function redisPipeline(cmds) {
     headers: { Authorization: 'Bearer ' + REST_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify(envio),
   });
-  if (!r.ok) throw new Error('Redis ' + r.status);
+  if (!r.ok) throw await erroRedis(r);
   const out = await r.json();
   const res = [];
   plano.forEach((n, j) => {
