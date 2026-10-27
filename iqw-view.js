@@ -76,9 +76,9 @@
         </div>
       </div>
       <div class="chips iqc-secoes">
-        ${[['paginas', 'Páginas'], ['mes', 'Nota do mês'], ['projetos', 'Avaliar à mão'], ['historico', 'Histórico'], ['regras', 'Como é calculado']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqw-secao="${k}">${l}</button>`).join('')}
+        ${[['paginas', 'Páginas'], ['evoluir', 'Como evoluir'], ['mes', 'Nota do mês'], ['projetos', 'Avaliar à mão'], ['historico', 'Histórico'], ['regras', 'Como é calculado']].map(([k, l]) => `<button class="hs-chip${st.secao === k ? ' is-on' : ''}" data-iqw-secao="${k}">${l}</button>`).join('')}
       </div>
-      <div>${st.secao === 'paginas' ? paginasHTML(d) : st.secao === 'mes' ? mesHTML(d) : st.secao === 'projetos' ? projetosHTML(d) : st.secao === 'historico' ? historicoHTML(d) : regrasHTML(d)}</div>`;
+      <div>${st.secao === 'paginas' ? paginasHTML(d) : st.secao === 'evoluir' ? evoluirHTML(d) : st.secao === 'mes' ? mesHTML(d) : st.secao === 'projetos' ? projetosHTML(d) : st.secao === 'historico' ? historicoHTML(d) : regrasHTML(d)}</div>`;
     bind(el, d);
   }
 
@@ -158,6 +158,76 @@
     const hist = p.historico && p.historico.length ? `<details class="iqc-box"><summary><b>Histórico de alterações</b></summary><ul class="iqc-ul">${p.historico.slice().reverse().map((h) => `<li>${dt(h.em)} · ${esc(h.por)} · ${esc(h.o)}${h.nota != null ? ` · nota ${n2(h.nota)}${h.notaAnterior != null ? ` (antes ${n2(h.notaAnterior)})` : ''}` : ''}</li>`).join('')}</ul></details>` : '';
     const form = st.token ? `<form data-iqw-form="avaliar" data-id="${esc(p.id)}" class="iqw-aval">${critHTML}<div class="iqc-box iqw-total"><b>Nota final (ao vivo)</b><span class="hs-big ${cls(live.nota)}">${live.nota == null ? (live.semAvaliacao ? 'sem avaliação' : '—') : n2(live.nota)}</span><div class="na">média dos critérios aplicáveis · ${live.incompleto ? 'faltam notas' : live.semAvaliacao ? 'nenhum critério aplicável' : 'completa'}</div><label style="display:block;margin-top:8px">Observações gerais <input type="text" name="obs" value="${esc(av && av.obs || '')}" style="max-width:100%;width:100%"></label><div class="chips" style="margin-top:10px"><button class="hs-chip" type="submit" ${st.busy ? 'disabled' : ''}>salvar avaliação</button></div></div></form>` : `<div class="iqw-aval">${critHTML}</div>`;
     return `<div class="iqc-detalhe">${cab}${form}${ocorr}${ocorrForm}${hist}</div>`;
+  }
+
+  // ---------- Como evoluir (André, 27/10/26) ----------
+  // Lê as notas de cada ponto avaliado nas páginas entregues (últimos 90 dias) e mostra onde a nota mais perde,
+  // com um checklist fixo do que fazer e exemplos reais tirados das avaliações. Só orientação: não mexe em nota nenhuma.
+  const DICAS = {
+    responsividade: ['Testar no celular de verdade e no modo responsivo do navegador (larguras 360, 768 e 1440): nada cortado, sobreposto ou com rolagem para o lado.', 'Imagens, menus e grades se reorganizam no celular — nada de texto espremido em coluna fina.', 'Botões e links com área de toque confortável (pelo menos uns 44px de altura).'],
+    desempenho: ['Imagens em WebP (ou AVIF) e no tamanho em que aparecem na tela — nada de foto de 3000px numa caixa de 600px.', 'Comprimir tudo antes de subir (Squoosh ou TinyPNG); a imagem do topo idealmente abaixo de 200 KB.', 'Carregamento tardio ("lazy load") nas imagens que ficam abaixo da primeira tela.', 'Tirar plugins, scripts e fontes que a página não usa; no máximo 2 famílias de fonte.', 'Vídeo de fundo pesado: trocar por imagem no celular ou usar versão leve.', 'Antes de entregar, rodar a página em pagespeed.web.dev e mirar 80+ no celular.'],
+    interativos: ['Clicar em todos os botões e links antes de entregar.', 'Enviar o formulário de teste e confirmar que chegou onde devia.', 'Conferir o link do WhatsApp: número certo e mensagem pronta.', 'Abrir e fechar os menus no celular.'],
+    integracoes: ['Testar formulário → CRM, checkout com pedido de teste, frete e meios de pagamento.', 'Guardar o print do teste no card do ClickUp.'],
+    estabilidade: ['Rodar em pagespeed.web.dev e deixar a nota de "Boas práticas" acima de 90: tudo em HTTPS, imagens na proporção certa, sem bibliotecas desatualizadas e sem pedir permissão (localização, notificação) ao abrir.', 'Abrir o console do navegador (F12) e zerar os erros em vermelho.', 'Sem texto provisório (lorem ipsum), imagem quebrada ou link que dá 404.', 'Recarregar a página algumas vezes, no celular e no computador, e ver se tudo continua no lugar.'],
+    clareza: ['Quem chega precisa entender em 5 segundos: o que é, para quem é e por que escolher.', 'Título com o benefício principal e subtítulo com o diferencial.', 'Botão de ação visível já na primeira tela, sem precisar rolar.'],
+    hierarquia: ['Seguir a ordem proposta → benefícios → prova (depoimentos, números, clientes) → oferta → chamada final.', 'Só lendo os títulos das seções a pessoa já entende a história da página.', 'O que mais importa para vender vem primeiro.'],
+    navegabilidade: ['Menu curto e links que levam direto para as seções.', 'Em página longa, botão para voltar ao topo.', 'Em site, qualquer página a no máximo 3 cliques.'],
+    ctas: ['Um botão principal por tela, com verbo de ação ("Quero ser parceiro", "Comprar agora").', 'Cor de destaque exclusiva dos botões — não usar a mesma cor em outros elementos.', 'Repetir o botão depois de cada bloco que convence.', 'No celular, botão largo (ou fixo no rodapé).'],
+    obstaculos: ['Formulário só com o essencial (nome, WhatsApp e o mínimo necessário).', 'Nada de pop-up tampando a tela no celular.', 'Preço, condições e frete fáceis de achar.', 'WhatsApp com mensagem pronta; checkout sem etapas extras.'],
+    identidade: ['Cores, fontes e elementos do manual da marca e do briefing aprovado.', 'Logo em boa resolução e com respiro em volta.', 'Conferir lado a lado com o briefing antes de entregar.'],
+    estetica: ['Espaçamento igual entre as seções e tudo alinhado ao mesmo grid.', 'Nada sobrepondo (logo em cima de texto, texto em cima de rosto).', 'Evitar áreas vazias grandes, principalmente no topo.', 'Fotos de qualidade, com recorte e tratamento cuidadosos.'],
+    consistencia: ['Mesmo estilo de botão, título e card em todas as seções.', 'Uma única família de ícones.', 'Mesmos cantos arredondados, sombras e espaçamentos do começo ao fim.'],
+    legibilidade: ['Contraste forte entre texto e fundo — testar em webaim.org/resources/contrastchecker (mínimo 4,5 para 1).', 'Texto corrido com pelo menos 16px no celular.', 'Evitar fonte fina e clara sobre foto ou fundo escuro; se precisar, pôr uma camada escura ou uma caixa por trás do texto.', 'Linhas de texto curtas (até uns 70 caracteres).'],
+    publico: ['Linguagem visual do posicionamento: premium pede mais respiro e foto de alto nível; popular pede algo direto e vibrante.', 'Fotos com o público real do cliente.', 'Revisar com o briefing: "quem vai abrir essa página se reconhece nela?".'],
+    falhas: ['Passar este checklist inteiro antes de mandar a primeira versão.', 'Revisar no celular e no computador.', 'Pedir um segundo olhar de alguém do time.'],
+    gravidade: ['Testar primeiro o que trava a venda: formulário, checkout, WhatsApp e botões principais.'],
+    briefing: ['Abrir o briefing e marcar item a item (seções, informações, funcionalidades) antes de entregar.'],
+    resolucao: ['Anotar cada pedido de ajuste do cliente numa lista e conferir todos antes de devolver.', 'Responder no grupo com o print do que foi ajustado.'],
+    reincidencia: ['Depois de corrigir, testar a página inteira de novo — uma correção pode quebrar outra parte.', 'Guardar como modelo as soluções que já deram certo.'],
+  };
+  function evoluirHTML(d) {
+    const R = d.regras; const P = d.projetos || [];
+    const agora = Date.now(), JAN = 90 * 864e5;
+    const avaliados = P.filter((p) => p.avaliacao && p.avaliacao.notas && p.resultado && p.resultado.criterios);
+    let base = avaliados.filter((p) => p.conclusao && agora - Number(p.conclusao) <= JAN); let janela = 'últimos 90 dias';
+    if (base.length < 3) { base = avaliados; janela = 'todas as entregas avaliadas'; }
+    if (!base.length) return '<div class="fn-empty">Ainda não há páginas avaliadas para gerar sugestões.</div>';
+    const subs = []; for (const c of R.criterios) for (const s of c.sub) subs.push({ c, s });
+    const valor = (p, c, s) => { const v = p.avaliacao.notas[c.k] && p.avaliacao.notas[c.k][s.k]; return v === 'na' || v == null || v === '' ? null : Number(v); };
+    const nCritAplic = (p) => Object.values(p.resultado.criterios).filter((x) => x && x.aplicavel).length || 1;
+    const linhas = subs.map(({ c, s }) => {
+      const com = base.map((p) => ({ p, v: valor(p, c, s) })).filter((x) => x.v != null && Number.isFinite(x.v));
+      if (!com.length) return null;
+      const media = com.reduce((a, x) => a + x.v, 0) / com.length;
+      const fracos = com.filter((x) => x.v <= 60);
+      // quanto a nota média das páginas subiria se este ponto estivesse em 100 em todas
+      const ganho = base.reduce((a, p) => { const v = valor(p, c, s); if (v == null || !Number.isFinite(v)) return a; const cr = p.resultado.criterios[c.k]; const nSub = (cr && cr.n) || c.sub.length; return a + (100 - v) / nSub / nCritAplic(p); }, 0) / base.length;
+      const porMes = {}; for (const x of com) { const m = x.p.mes || ''; (porMes[m] = porMes[m] || []).push(x.v); }
+      return { c, s, n: com.length, media, fracos, ganho, porMes };
+    }).filter(Boolean);
+    const foco = linhas.filter((l) => l.fracos.length).sort((a, b) => b.ganho - a.ganho).slice(0, 3);
+    const fortes = linhas.filter((l) => l.media >= 85 && l.n >= 3).sort((a, b) => b.media - a.media).slice(0, 4);
+    const meses = [...new Set(avaliados.map((p) => p.mes).filter(Boolean))].sort().slice(-4);
+    const media1 = (arr) => (arr && arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+    const evolMes = (l) => { const pm = {}; for (const p of avaliados) { const v = valor(p, l.c, l.s); if (v != null && Number.isFinite(v)) (pm[p.mes] = pm[p.mes] || []).push(v); } return meses.map((m) => { const v = media1(pm[m]); return `<span class="iqw-ev-mes"><b>${mesLbl(m)}</b> <span class="${cls(v)}">${v == null ? '—' : v}</span></span>`; }).join(''); };
+    const fmt1 = (x) => x.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const cartao = (l, i) => {
+      const ex = l.fracos.slice().sort((a, b) => a.v - b.v).slice(0, 3);
+      const jus = (p) => { const j = p.avaliacao.justificativas && p.avaliacao.justificativas[l.c.k] && p.avaliacao.justificativas[l.c.k][l.s.k]; return j ? String(j) : ''; };
+      return `<div class="iqw-ev-card">
+        <div class="iqw-ev-top"><span class="iqw-ev-n">${i + 1}</span><div><p class="iqw-ev-t">${esc(l.s.rotulo)}</p><p class="iqw-ev-sub">${esc(l.c.rotulo)} · ${esc(l.s.desc)}</p></div></div>
+        <div class="iqw-ev-nums"><span><b class="${l.fracos.length / l.n > 0.5 ? 'r' : 'y'}">${l.fracos.length} de ${l.n}</b> páginas com nota 60 ou menos</span><span>média <b class="${cls(l.media)}">${Math.round(l.media)}</b></span><span>resolvendo, a nota média das páginas sobe até <b class="g">+${fmt1(l.ganho)}</b> pontos</span></div>
+        <p class="iqw-ev-h">O que fazer</p>
+        <ul class="iqw-ev-list">${(DICAS[l.s.k] || ['Revisar este ponto com o gestor antes da próxima entrega.']).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+        ${ex.length ? `<p class="iqw-ev-h">Onde apareceu</p><div class="iqw-ev-ex">${ex.map(({ p, v }) => `<div class="iqw-ev-exi"><div class="iqw-ev-exc"><b>${esc(p.cliente)}</b> · ${esc(R.tipos[p.tipo] || p.tipo)} · nota <span class="${cls(v)}">${v}</span>${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">abrir página</a>` : ''}</div>${jus(p) ? `<div class="iqw-ev-jus">"${esc(jus(p))}"</div>` : ''}</div>`).join('')}</div>` : ''}
+        ${meses.length > 1 ? `<p class="iqw-ev-h">Mês a mês</p><div class="iqw-ev-meses">${evolMes(l)}</div>` : ''}
+      </div>`;
+    };
+    return `<p class="eyebrow pl-sec">Como evoluir <span class="hs-hist-info">os pontos que mais puxam a nota das páginas para baixo (${esc(janela)} · ${base.length} página${base.length === 1 ? '' : 's'} avaliada${base.length === 1 ? '' : 's'}) e o que fazer em cada um · só orientação, não muda nenhuma nota</span></p>
+      ${foco.length ? `<div class="iqw-ev-grid">${foco.map(cartao).join('')}</div>` : '<div class="fn-empty">Nenhum ponto com nota 60 ou menos no período. Ótimo trabalho — é manter o padrão.</div>'}
+      ${fortes.length ? `<p class="eyebrow pl-sec">O que já está bom — manter o padrão</p><div class="iqw-ev-fortes">${fortes.map((l) => `<span class="iqw-ev-forte"><b class="${cls(l.media)}">${Math.round(l.media)}</b> ${esc(l.s.rotulo)}</span>`).join('')}</div>` : ''}
+      <p class="eyebrow pl-sec">Todos os pontos <span class="hs-hist-info">média de cada ponto no período · ordenado por quanto a nota sobe resolvendo</span></p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Ponto</th><th>Grupo</th><th class="r">Páginas avaliadas</th><th class="r">Com nota ≤ 60</th><th class="r">Média</th><th class="r">Ganho possível</th></tr></thead><tbody>${linhas.slice().sort((a, b) => b.ganho - a.ganho).map((l) => `<tr class="hs-tr"><td class="hs-td-txt">${esc(l.s.rotulo)}</td><td class="hs-td-txt">${esc(l.c.rotulo)}</td><td class="hs-td">${l.n}</td><td class="hs-td">${l.fracos.length}</td><td class="hs-td"><span class="${cls(l.media)}">${Math.round(l.media)}</span></td><td class="hs-td">+${fmt1(l.ganho)}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   function historicoHTML(d) {

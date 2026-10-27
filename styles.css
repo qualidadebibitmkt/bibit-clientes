@@ -1736,3 +1736,28 @@ body::before {
 .cb-periodo { margin-top: 0; }
 .cb-mes-rk { grid-template-columns: repeat(3, minmax(120px, 1fr)); margin: 14px 0 6px; }
 @media (max-width: 640px) { .cb-mes-rk { grid-template-columns: 1fr; } }
+
+/* IQW · Como evoluir (27/10/26) */
+.iqw-ev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 26px; }
+.iqw-ev-card { background: var(--garrafa-2); border: 1px solid var(--linha); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.iqw-ev-top { display: flex; gap: 12px; align-items: flex-start; }
+.iqw-ev-n { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--fn-webdesign); color: var(--garrafa-0); font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+.iqw-ev-t { margin: 0; font-family: var(--display); font-size: 18px; line-height: 1.2; }
+.iqw-ev-sub { margin: 4px 0 0; font-size: 12px; color: var(--creme-45); line-height: 1.4; }
+.iqw-ev-nums { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--creme-70); }
+.iqw-ev-nums b { font-weight: 700; }
+.iqw-ev-h { margin: 6px 0 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ambar); }
+.iqw-ev-list { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; color: var(--creme); line-height: 1.45; }
+.iqw-ev-ex { display: grid; gap: 8px; }
+.iqw-ev-exi { border-left: 2px solid var(--linha); padding-left: 10px; }
+.iqw-ev-exc { font-size: 12.5px; color: var(--creme-70); }
+.iqw-ev-exc a { color: var(--fn-webdesign); }
+.iqw-ev-jus { font-size: 12.5px; color: var(--creme-45); font-style: italic; margin-top: 3px; line-height: 1.45; overflow-wrap: anywhere; }
+.iqw-ev-meses { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--creme-70); }
+.iqw-ev-mes b { font-weight: 500; color: var(--creme-45); margin-right: 2px; }
+.iqw-ev-fortes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+.iqw-ev-forte { background: var(--garrafa-2); border: 1px solid var(--linha); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+.iqw-ev-forte b { margin-right: 6px; }
+.iqw-ev-card .g, .iqw-ev-forte .g, .iqw-ev-meses .g { color: var(--flag-green); }
+.iqw-ev-card .y, .iqw-ev-forte .y, .iqw-ev-meses .y { color: var(--flag-yellow); }
+.iqw-ev-card .r, .iqw-ev-forte .r, .iqw-ev-meses .r { color: var(--flag-red); }
