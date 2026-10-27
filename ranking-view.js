@@ -81,9 +81,9 @@
     const pts = x.pts == null ? 0 : x.pts;
     let corpo = '', falta = '';
     if (k === 'hs') {
-      corpo = x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2 com dado) — fica sem posição.' : `Média ponderada dos pilares com dado:`;
+      corpo = x.pts == null ? 'Health Score sem pilares suficientes (mínimo 2 com dado) — fica sem posição.' : st.periodo === 'hoje' ? `Média ponderada dos pilares com dado:` : `No mês, o Health Score é a média do placar de cada dia; os pilares abaixo são a média de cada um no mês (por isso a conta pode não fechar exata):`;
       corpo += `<div class="rk-mini">${PILARES.map((kk) => { const y = p.pilares[kk]; return `<span>${LBL[kk]} <i>peso ${y && y.peso || ''}</i> <b class="${cls(y && y.nota)}">${y && y.nota != null ? y.nota : '—'}</b></span>`; }).join('')}</div>`;
-      if (x.pts != null && x.pts < 100) falta = x.pts >= 90 ? 'faixa verde (≥ 90)' : x.pts >= 70 ? `faltam ${90 - x.pts} pra faixa verde (90)` : `faltam ${70 - x.pts} pra faixa amarela (70)`;
+      if (x.pts != null && x.pts < 100) falta = x.pts >= 90 ? `já está na faixa verde · faltam ${100 - x.pts} pontos pro máximo` : x.pts >= 70 ? `faltam ${90 - x.pts} pontos pra faixa verde (90)` : `faltam ${70 - x.pts} pontos pra faixa amarela (70)`;
     } else if (k === 'renovacao') {
       corpo = x.semCards ? 'Não deu pra ler os cards do Ranking no ClickUp agora — recarregue a página.' : x.pct == null ? `Sem % de renovação no card de ${mesLongo(mes)}.` : `<b>${pct1(x.pct)}</b> de renovação em ${mesLongo(mes)}${x.totais ? ` — ${x.ativos} de ${x.totais} cliente${x.totais === 1 ? '' : 's'} da carteira continuaram${x.churn ? ` (${x.churn} saíram no mês)` : ''}` : ''}.`;
       if (x.proxima) falta = `próxima faixa: ${x.proxima.alvo}% de renovação = ${x.proxima.pts} pontos`;
@@ -149,7 +149,7 @@
     const R = d.regras || {};
     const sub = hoje
       ? `ranking de hoje · ${dBR(d.dia)}${d.anteriorDia ? ` · variação vs. ${dBR(d.anteriorDia)}` : ' · sem placar anterior pra comparar'}`
-      : `${mesLongo(d.mes)}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'}`;
+      : `${mesLongo(d.mes)}${d.mes === ma ? ' · mês em andamento' : ' · mês fechado'} · ${d.dias || 0} dia${d.dias === 1 ? '' : 's'} com placar registrado`;
 
     const podio = rank.slice(0, 3);
     // pódio de verdade (André, 26/10/26): 2º · 1º · 3º lado a lado, degraus de alturas diferentes, ouro/prata/bronze

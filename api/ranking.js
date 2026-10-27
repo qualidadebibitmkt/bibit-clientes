@@ -68,7 +68,7 @@ function ordenar(lista) {
   const sat = (p) => (p.pilares && p.pilares.satisfacao && p.pilares.satisfacao.nota != null ? p.pilares.satisfacao.nota : -1);
   // desempate da matriz: maior Satisfação (CSAT); depois maior Health Score
   const rank = lista.filter((p) => !p.insuficiente && p.score != null).sort((a, b) => b.score - a.score || (sat(b) - sat(a)) || ((b.base || 0) - (a.base || 0)) || a.nome.localeCompare(b.nome, 'pt-BR'));
-  rank.forEach((p, i) => { p.posicao = i + 1; p.empate = i > 0 && rank[i - 1].score === p.score; });
+  rank.forEach((p, i) => { p.posicao = i + 1; p.empate = i > 0 && rank[i - 1].score === p.score; if (p.empate) rank[i - 1].empate = true; }); // marca os dois lados do empate
   const resto = lista.filter((p) => p.insuficiente || p.score == null).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   resto.forEach((p) => { p.posicao = null; });
   return [...rank, ...resto];

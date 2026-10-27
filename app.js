@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 100;
+  const VERSION = 101;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -568,7 +568,7 @@
     // links dos campos do card: só http(s); "www.x.com" vira https://; Instagram aceita @perfil ou o link inteiro (auditoria 27/10)
     const urlOk = (u) => { const t = String(u || '').trim(); if (!t) return null; if (/^https?:\/\/[^\s/]+/i.test(t)) return t; if (/^[\w.-]+\.[a-z]{2,}(:\d+)?([/?#]|$)/i.test(t)) return 'https://' + t; return null; };
     const link = (url, txt) => { const u = urlOk(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(txt)}</a>` : `<span class="na">${esc(txt)} (link inválido no card)</span>`; };
-    const igRaw = c.instagram ? String(c.instagram).trim().replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '') : '';
+    const igRaw = c.instagram ? String(c.instagram).trim().replace(/^(https?:\/\/)?(www\.)?instagram\.com\/?/i, '').replace(/^@/, '').replace(/[/?#].*$/, '') : '';
     const igUser = /^(p|reel|reels|stories|tv)$/i.test(igRaw) ? '' : igRaw; // link de post não é perfil
     const insta = igUser ? link(`https://instagram.com/${igUser}`, '@' + igUser) : '';
     const roles = [['social', 'Social Media'], ['webdesign', 'Web Design'], ['trafego', 'Tráfego Pago'], ['rp', 'RP Manager'], ['audiovisual', 'Audiovisual']];
@@ -906,7 +906,7 @@
       </div>
 
       <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% verde · ${META_FLAGS.yellow}% amarelo · ${META_FLAGS.red}% vermelho · sobre os ${com.length} clientes com score</span></p>
-      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length, f), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, p)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
+      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length, f), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, com.length ? (n / com.length) * 100 : 0)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
 
       <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV dos clientes com Health Score: ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
       <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7 dias')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Relacion.')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
@@ -1159,8 +1159,9 @@
     } else if (k !== 'produtividade') {
       const agg = new Map();
       // Resultado: cada pessoa entra com a FRENTE dela no cliente (Will → social, Daniel → tráfego, Rômulo → AV, Gabi → RP), não com a nota mista do pilar
-      const medidaDe = (c, p, m) => (k === 'trafego' ? medidaPilar('trafego', c) : m);
-      for (const { c, m } of [...com, ...sem]) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); const mm = m || k === 'trafego' ? medidaDe(c, p, m) : null; if (!mm) { a.semDado++; continue; } a.vals.push(mm.valor); a.lac += mm.lacuna; if (mm.lacuna > 0) a.abaixo++; a.clientes++; }
+      // Satisfação: cada pessoa entra com a nota que o cliente dá ao PAPEL dela (igual Colaborador e Ranking — auditoria 27/10)
+      const medidaDe = (c, p, m) => (k === 'trafego' ? medidaPilar('trafego', c) : k === 'satisfacao' ? medidaPilar('satisfacao', c, String(p.id || p.name)) : m);
+      for (const { c, m } of [...com, ...sem]) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); const mm = k === 'trafego' || k === 'satisfacao' ? medidaDe(c, p, m) : m; if (!mm) { a.semDado++; continue; } a.vals.push(mm.valor); a.lac += mm.lacuna; if (mm.lacuna > 0) a.abaixo++; a.clientes++; }
       for (const [id, a] of [...agg.entries()]) if (!a.vals.length) agg.delete(id);
       const rows = [...agg.values()].map((a) => ({ ...a, media: a.vals.reduce((x, y) => x + y, 0) / a.vals.length })).sort((a, b) => a.media - b.media);
       const clsDe = (v) => (k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
@@ -1240,7 +1241,7 @@
 
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
       ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
-      ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? 'nunca respondeu CSAT' : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
+      ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? (filtro ? 'sem nota do cliente pra função desta pessoa' : 'nunca respondeu CSAT') : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
       <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
 
