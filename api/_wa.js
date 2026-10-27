@@ -109,7 +109,11 @@ function ehBibit(msg, nomeCliente) {
   const doGrupo = nomeCliente ? ehNomeDoGrupoFn(nomeCliente)(msg) : false;
   // nome do grupo no lugar do remetente: com telefone de fora do time é um contato do cliente sem nome salvo
   if (doGrupo) return !(EQUIPE && fone);
-  if (EQUIPE_RX.test(s)) return true; // a pessoa se identificou ("| Bibit Mkt", cargo)
+  if (/bibit/i.test(s)) return true; // a pessoa se identificou ("| Bibit Mkt")
+  // reservas por cargo/nome só valem SEM o cadastro do time (auditoria 27/10: "Michelle Andrade" ou "Carla - Head Marketing"
+  // do cliente viravam Bibit e a pergunta dela não contava como do cliente)
+  if (EQUIPE) return false;
+  if (EQUIPE_RX.test(s)) return true;
   const n = normNome(s);
   return NOMES_CASA.some((x) => n === x.trim() || n.startsWith(x.endsWith(' ') ? x : x + ' '));
 }
@@ -124,13 +128,16 @@ const ehReacao = (m) => /^\[reação/.test(String(m.m || ''));
 const NOMES_AUTOMACAO = ['andre guedes', 'andré guedes', 'bibit'];
 const semPessoa = (m) => !!m.me || ehAutomacao(m) || NOMES_AUTOMACAO.includes(pessoaDe(m.s).toLowerCase().trim());
 
-// horas úteis entre dois instantes (seg–sex 8h–19h, Brasília) — resposta pedida sexta à noite não conta o fim de semana
+// feriados nacionais (Brasília) — não contam como hora útil (auditoria 27/10: 02/11 Finados, 15/11, 20/11, 25/12…)
+const FERIADOS = new Set(['2026-01-01', '2026-04-03', '2026-04-21', '2026-05-01', '2026-09-07', '2026-10-12', '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25',
+  '2027-01-01', '2027-03-26', '2027-04-21', '2027-05-01', '2027-09-07', '2027-10-12', '2027-11-02', '2027-11-15', '2027-11-20', '2027-12-25']);
+// horas úteis entre dois instantes (seg–sex 8h–19h, Brasília, fora feriados) — resposta pedida sexta à noite não conta o fim de semana
 function horasUteis(a, b) {
   if (b <= a) return 0;
   let h = 0; const passo = 15 * 60 * 1000;
   for (let t = a; t < b; t += passo) {
     const d = new Date(t - 3 * 3600 * 1000); const dow = d.getUTCDay(); const hr = d.getUTCHours() + d.getUTCMinutes() / 60;
-    if (dow >= 1 && dow <= 5 && hr >= 8 && hr < 19) h += passo / 3600000;
+    if (dow >= 1 && dow <= 5 && hr >= 8 && hr < 19 && !FERIADOS.has(d.toISOString().slice(0, 10))) h += passo / 3600000;
   }
   return Math.round(h * 10) / 10;
 }

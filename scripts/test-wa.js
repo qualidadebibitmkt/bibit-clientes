@@ -50,5 +50,9 @@ t('sem cadastro carregado, cai na regra por nome sem quebrar', () => {
   assert.strictEqual(W.ehBibit({ s: 'Gabriela Lima', p: '…9876' }, CLI), false);
 });
 
+t('horas úteis não contam feriado nacional (02/11 Finados)', () => {
+  const W = require('../api/_wa.js');
+  assert.strictEqual(W.horasUteis(Date.parse('2026-10-30T18:00:00-03:00'), Date.parse('2026-11-03T08:30:00-03:00')), 1.5);
+});
 console.log(`\n${ok} ok${falhas ? `, ${falhas} falha(s)` : ''}`);
 if (falhas) process.exitCode = 1;

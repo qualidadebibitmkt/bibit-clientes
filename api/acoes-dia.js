@@ -60,7 +60,7 @@ function equipeDe(c) {
 // dias úteis (BRT) entre dois instantes
 function diasUteis(a, b) {
   let n = 0;
-  for (let t = a; t < b; t += 86400000) { const dow = new Date(t - 3 * 3600 * 1000).getUTCDay(); if (dow >= 1 && dow <= 5) n++; }
+  for (let t = a + 86400000; t <= b; t += 86400000) { const dow = new Date(t - 3 * 3600 * 1000).getUTCDay(); if (dow >= 1 && dow <= 5) n++; } // não conta o próprio dia (auditoria 27/10)
   return n;
 }
 

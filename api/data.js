@@ -587,12 +587,13 @@ module.exports = async (req, res) => {
         const cmds = [];
         // + IEC diário (André, 21/10/26): últimos 14 registros wa:iec:<grupo>:<dia> gravados pelo /api/iec
         const IEC_DIAS = 14;
-        for (const c of comGrupo) { const g = wa.normGrupo(c._waGrupo); for (let i = 0; i < DIAS; i++) cmds.push(['LRANGE', wa.keyFor(g, wa.dayKey(hoje - i * 86400000)), '0', '-1']); cmds.push(['GET', 'wa:parecer:' + g]); for (let i = 0; i < IEC_DIAS; i++) cmds.push(['GET', `wa:iec:${g}:${wa.dayKeyBR(hoje - i * 86400000)}`]); }
+        for (const c of comGrupo) { const g = wa.normGrupo(c._waGrupo); for (let i = 0; i <= DIAS; i++) cmds.push(['LRANGE', wa.keyFor(g, wa.dayKey(hoje - i * 86400000)), '0', '-1']); cmds.push(['GET', 'wa:parecer:' + g]); for (let i = 0; i < IEC_DIAS; i++) cmds.push(['GET', `wa:iec:${g}:${wa.dayKeyBR(hoje - i * 86400000)}`]); }
         const r2 = await wa.redisPipeline(cmds);
         let k = 0;
         for (const c of comGrupo) {
           const msgs = [];
-          for (let i = 0; i < DIAS; i++) { const r = r2[k++]; for (const raw of ((r && r.result) || [])) { try { msgs.push(JSON.parse(raw)); } catch {} } }
+          // janela de 7 × 24h exatas (as chaves são por dia UTC: lê 8 dias e corta pelo horário — auditoria 27/10)
+          for (let i = 0; i <= DIAS; i++) { const r = r2[k++]; for (const raw of ((r && r.result) || [])) { try { const m = JSON.parse(raw); if (!(m.t >= hoje - DIAS * 86400000)) continue; msgs.push(m); } catch {} } }
           const par = r2[k++]; let pareceres = null; try { pareceres = par && par.result ? JSON.parse(par.result) : null; } catch {}
           if (pareceres && !(pareceres.pessoas || []).length && pareceres.raw) pareceres.pessoas = wa.parsePareceres(pareceres.raw); // docs gravados antes do parser aceitar "|" no nome
           if (pareceres) delete pareceres.raw; // texto da IA não vai ao navegador além do parecer por pessoa
