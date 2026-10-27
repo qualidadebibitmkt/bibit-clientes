@@ -112,10 +112,12 @@ function ehBibit(msg, nomeCliente) {
   if (/bibit/i.test(s)) return true; // a pessoa se identificou ("| Bibit Mkt")
   // reservas por cargo/nome só valem SEM o cadastro do time (auditoria 27/10: "Michelle Andrade" ou "Carla - Head Marketing"
   // do cliente viravam Bibit e a pergunta dela não contava como do cliente)
-  if (EQUIPE) return false;
-  if (EQUIPE_RX.test(s)) return true;
   const n = normNome(s);
-  return NOMES_CASA.some((x) => n === x.trim() || n.startsWith(x.endsWith(' ') ? x : x + ' '));
+  // com o cadastro carregado, só vale nome COMPLETO da casa (Bruno, André… que não estão no cadastro da operação);
+  // primeiro nome sozinho e cargo genérico só valem sem o cadastro
+  const casa = EQUIPE ? NOMES_CASA.filter((x) => /\s\S/.test(x.trim()) || x.endsWith(' - ')) : NOMES_CASA;
+  if (!EQUIPE && EQUIPE_RX.test(s)) return true;
+  return casa.some((x) => n === x.trim() || n.startsWith(x.endsWith(' ') ? x : x + ' '));
 }
 // nome curto da pessoa (sem o cargo): "Daniel Bomtempo - Gestor De Tráfego | Bibit Mkt" → "Daniel Bomtempo"
 const pessoaDe = (s) => String(s || '').split(/\s[|\-–]\s/)[0].trim().slice(0, 40) || 'alguém';
