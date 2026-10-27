@@ -26,8 +26,9 @@ function ptsIniciativa(n) { return n >= 4 ? 20 : n === 3 ? 15 : n === 2 ? 10 : n
 const TOM_PTS = { elogio: 40, cordial: 30, neutro: 20, insatisfacao: 10, grave: 0 };
 const TOM_LBL = { elogio: 'elogios e satisfação explícita', cordial: 'aprovações e cordialidade', neutro: 'neutro', insatisfacao: 'insatisfação ou cobranças recorrentes', grave: 'reclamação grave / ameaça de cancelamento / ruptura' };
 function normTom(s) {
-  const t = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  if (/\b(sem|nenhuma?)\s+(reclamac\w*\s+)?(grave|cancel|ruptura)/.test(t)) return null; // "sem reclamação grave" não é grave
+  let t = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // negação ("sem reclamação grave", "nenhuma ameaça de cancelamento") sai do texto e o resto segue valendo (auditoria final 27/10)
+  t = t.replace(/\b(sem|nenhuma?|nao (ha|houve))\s+(\w+\s+){0,3}?(grave|cancel\w*|ruptura)\w*/g, ' ');
   if (/grave|cancel|ruptura/.test(t)) return 'grave';
   if (/insatisf|cobran|negativ/.test(t)) return 'insatisfacao';
   if (/elogi|satisfa|entusias/.test(t)) return 'elogio';

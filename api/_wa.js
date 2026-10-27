@@ -269,4 +269,4 @@ function parsePareceres(txt) {
   return out;
 }
 
-module.exports = { carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };
+module.exports = { FERIADOS, carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };

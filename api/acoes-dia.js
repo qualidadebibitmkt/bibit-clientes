@@ -58,9 +58,18 @@ function equipeDe(c) {
 }
 
 // dias úteis (BRT) entre dois instantes
+// conta por DIA do calendário (não por blocos de 24h): do dia seguinte ao de a até o dia de b, seg–sex fora feriado nacional
 function diasUteis(a, b) {
+  const dia = (t) => new Date(t - 3 * 3600 * 1000).toISOString().slice(0, 10);
   let n = 0;
-  for (let t = a + 86400000; t <= b; t += 86400000) { const dow = new Date(t - 3 * 3600 * 1000).getUTCDay(); if (dow >= 1 && dow <= 5) n++; } // não conta o próprio dia (auditoria 27/10)
+  const fim = dia(b);
+  for (let d = new Date(dia(a) + 'T12:00:00Z'); ;) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const iso = d.toISOString().slice(0, 10);
+    if (iso > fim) break;
+    const dow = d.getUTCDay();
+    if (dow >= 1 && dow <= 5 && !(wa.FERIADOS && wa.FERIADOS.has(iso))) n++;
+  }
   return n;
 }
 
