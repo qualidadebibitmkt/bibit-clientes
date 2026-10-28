@@ -237,7 +237,12 @@ function porqueConteudo(posts) {
   const med = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)); return v.length ? Math.round((v.reduce((s, x) => s + x, 0) / v.length) * 100) / 100 : null; };
   const formatos = {};
   for (const x of posts) { const f = x.formato || 'outro'; (formatos[f] = formatos[f] || []).push(x); }
+  const mediana = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return Math.round((v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2) * 100) / 100; };
+  const unica = (xs) => { const v = [...new Set(xs.filter((x) => x != null))]; return v.length === 1 ? v[0] : null; };
   return {
+    // pontos médios de cada parte (o que de fato pesa na nota; post acima da meta não compensa outro abaixo) e o post típico (mediana)
+    nE: med(posts.map((x) => x.nE)), nC: med(posts.map((x) => x.nC)), medAtE: mediana(posts.map((x) => x.atE)), medAtC: mediana(posts.map((x) => x.atC)),
+    medTxE: mediana(posts.map((x) => x.txE)), medTxC: mediana(posts.map((x) => x.txC)), metaE: unica(posts.map((x) => x.mE)), metaC: unica(posts.map((x) => x.mC)),
     atE: med(posts.map((x) => x.atE)), atC: med(posts.map((x) => x.atC)),
     txE: med(posts.map((x) => x.txE)), txC: med(posts.map((x) => x.txC)), mE: med(posts.map((x) => x.mE)), mC: med(posts.map((x) => x.mC)),
     abaixoE: posts.filter((x) => x.atE != null && x.atE < 90).length, abaixoC: posts.filter((x) => x.atC != null && x.atC < 90).length,

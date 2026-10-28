@@ -1056,13 +1056,17 @@
     const nota = Math.round(fr.nota);
     if (!P) return [{ causa: 'info', titulo: nota >= 70 ? 'Na meta' : 'Abaixo da meta', cls: nota >= 70 ? 'g' : 'r', txt: `Média de ${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias (7 dias depois de publicar): ${nota} pts.` }];
     const out = [];
-    const resumoE = P.atE != null ? `engajamento chegou, em média, a ${pctN(P.atE)} da meta${P.txE != null && P.mE != null ? ` (${taxa(P.txE)} contra meta de ${taxa(P.mE)})` : ''}` : null;
-    const resumoC = P.atC != null ? `compartilhamento a ${pctN(P.atC)} da meta${P.txC != null && P.mC != null ? ` (${taxa(P.txC)} contra ${taxa(P.mC)})` : ''}` : null;
-    if (nota >= 70) out.push({ causa: 'ok', titulo: 'Na meta', cls: 'g', txt: `${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias, média de ${nota} pts: ${[resumoE, resumoC].filter(Boolean).join(' e ')}.` });
+    // o que pesa na nota é a média dos PONTOS de cada parte (100/80/60/40/0 por post); a % da meta é a do post típico (mediana)
+    const metaE = P.metaE != null ? `; meta do cliente ${taxa(P.metaE)}` : '';
+    const metaC = P.metaC != null ? `; meta do cliente ${taxa(P.metaC)}` : '';
+    const tipE = P.medAtE != null ? ` No post típico, o engajamento chegou a ${pctN(P.medAtE)} da meta${P.medTxE != null ? ` (${taxa(P.medTxE)} de quem viu curtiu ou comentou${metaE})` : ''}.` : '';
+    const tipC = P.medAtC != null ? ` No post típico, o compartilhamento chegou a ${pctN(P.medAtC)} da meta${P.medTxC != null ? ` (${taxa(P.medTxC)} de quem viu compartilhou${metaC})` : ''}.` : '';
+    const nE = P.nE != null ? Math.round(P.nE) : null, nC = P.nC != null ? Math.round(P.nC) : null;
+    if (nota >= 70) out.push({ causa: 'ok', titulo: 'Na meta', cls: 'g', txt: `${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias, média de ${nota} pts${nE != null && nC != null ? ` — engajamento valeu ${nE} e compartilhamento ${nC} de 100` : ''}.` });
     else {
-      if (P.atE != null && P.atE < 90) out.push({ causa: 'engajamento', titulo: 'Engajamento abaixo da meta', cls: 'r', chip: `${pctN(P.atE)} da meta`, txt: `Curtidas e comentários (em relação a quem viu) ficaram, em média, em ${pctN(P.atE)} da meta do cliente${P.txE != null && P.mE != null ? ` — ${taxa(P.txE)} contra meta de ${taxa(P.mE)}` : ''}. ${P.abaixoE} de ${pl(n)} abaixo de 90% da meta. Vale 60% da nota de cada ${un}; pra valer 80 precisa chegar a 90% da meta.` });
-      if (P.atC != null && P.atC < 90) out.push({ causa: 'compartilhamento', titulo: 'Pouco compartilhamento', cls: 'r', chip: `${pctN(P.atC)} da meta`, txt: `Compartilhamentos (em relação a quem viu) ficaram, em média, em ${pctN(P.atC)} da meta${P.txC != null && P.mC != null ? ` — ${taxa(P.txC)} contra meta de ${taxa(P.mC)}` : ''}. ${P.abaixoC} de ${pl(n)} abaixo de 90% da meta. Vale 40% da nota de cada ${un}.` });
-      if (!out.length) out.push({ causa: 'irregular', titulo: 'Resultado irregular entre os posts', cls: 'y', chip: `${P.zerados} zerado${P.zerados === 1 ? '' : 's'}`, txt: `Na média as taxas chegam perto da meta (${[resumoE, resumoC].filter(Boolean).join(' e ')}), mas ${P.zerados} de ${pl(n)} zeraram e puxaram a nota pra ${nota}.` });
+      if (nE != null && nE < 80) out.push({ causa: 'engajamento', titulo: 'Engajamento abaixo da meta', cls: nE >= 60 ? 'y' : 'r', chip: `${nE} pts`, txt: `Curtidas e comentários (em relação a quem viu) valeram, em média, ${nE} de 100 pts — ${P.abaixoE} de ${pl(n)} ficaram abaixo de 90% da meta.${tipE} É 60% da nota de cada ${un}; ${un} com 90% da meta ou mais vale 80.` });
+      if (nC != null && nC < 80) out.push({ causa: 'compartilhamento', titulo: 'Pouco compartilhamento', cls: nC >= 60 ? 'y' : 'r', chip: `${nC} pts`, txt: `Compartilhamentos (em relação a quem viu) valeram, em média, ${nC} de 100 pts — ${P.abaixoC} de ${pl(n)} ficaram abaixo de 90% da meta.${tipC} É 40% da nota de cada ${un}.` });
+      if (!out.length) out.push({ causa: 'irregular', titulo: 'Resultado irregular entre os posts', cls: 'y', chip: `${P.zerados} zerado${P.zerados === 1 ? '' : 's'}`, txt: `Engajamento e compartilhamento vão bem na média, mas ${P.zerados} de ${pl(n)} zeraram e puxaram a nota pra ${nota}.` });
     }
     // onde olhar: formato mais fraco, pior post, meta provisória, poucos posts
     const extra = [];
