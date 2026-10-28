@@ -1768,3 +1768,38 @@ body::before {
 .tr-porque b { display: block; font-weight: 600; font-size: 12px; margin-bottom: 1px; }
 .tr-porque-info { color: var(--creme-45); font-size: 12px; }
 .tr-porque-info b { color: var(--creme-45); font-weight: 600; }
+
+/* ===== carteira por RECEITA (André, 28/10/26) ===== */
+.t-na { color: var(--creme-45); }
+.stat-flag .stat-num .stat-unit { font-size: 22px; margin-left: 2px; color: inherit; opacity: 0.8; }
+.stat-flag .stat-label { white-space: nowrap; }
+.stat-flag .stat-meta { color: var(--creme-70); }
+.stat-flag .stat-meta2 { margin-top: 2px; color: var(--creme-45); }
+.stat-flag .stat-meta2.off { color: var(--flag-yellow); }
+.stat-flag.f-green .stat-meta2:not(.off) { color: var(--flag-green); }
+@media (max-width: 1240px) { .stat-flag .stat-meta { white-space: normal; } }
+.donut-seg.dn { stroke: rgba(243,236,218,0.22); }
+.card-mensal { font-size: 11px; font-weight: 500; color: var(--creme-70); margin-left: 2px; }
+.card-ltv.na .card-mensal { color: var(--creme-70); }
+.hs-meta.hs-meta-4 { grid-template-columns: repeat(4, 1fr); }
+.hs-meta-box.semScore { border-color: rgba(243,236,218,0.18); background: rgba(0,0,0,0.14); }
+.hs-meta-box.semScore .hs-meta-bar i { background: rgba(243,236,218,0.3); }
+.hs-meta-dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(243,236,218,0.25); border: 1px solid rgba(243,236,218,0.35); flex-shrink: 0; }
+.hs-meta-sub { margin: -4px 0 10px; font-size: 12px; color: var(--creme-70); font-variant-numeric: tabular-nums; }
+.hs-meta-sub small { color: var(--creme-45); }
+.hs-meta-box.semScore .hs-meta-lac { color: var(--creme-45); }
+.hs-meta-box.semScore .hs-meta-lac.off { color: var(--flag-yellow); }
+@media (max-width: 1100px) { .hs-meta.hs-meta-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .hs-meta.hs-meta-4 { grid-template-columns: 1fr; } }
+.pl-kpis { grid-template-columns: repeat(5, 1fr); }
+.pl-kpi-rec .hs-termo-pl small { display: block; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--creme-70); margin-top: 2px; }
+.pl-ordem { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }
+.pl-ordem .pl-chip { font-size: 11px; padding: 2px 9px; }
+.pl-bar { grid-template-columns: 200px 1fr 70px 110px 130px; }
+.pl-bar-r { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--creme-70); white-space: nowrap; }
+.pl-bar-r small { color: var(--creme-45); font-size: 11px; }
+.pl-pareto-corte { display: flex; align-items: center; gap: 10px; margin: 6px 6px 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--flag-red); }
+.pl-pareto-corte::before, .pl-pareto-corte::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--flag-red) 45%, transparent); }
+.pl-pareto-corte.pl-pareto-ok { color: var(--creme-45); }
+.pl-pareto-corte.pl-pareto-ok::before, .pl-pareto-corte.pl-pareto-ok::after { background: rgba(243,236,218,0.18); }
+@media (max-width: 900px) { .pl-bar { grid-template-columns: 110px 1fr 60px 90px 90px; } .pl-kpis { grid-template-columns: repeat(2, 1fr); } }

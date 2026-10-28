@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 103;
+  const VERSION = 104;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -57,6 +57,39 @@
 
   const fmtBRL = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
   const somaLTV = (arr) => arr.reduce((a, c) => a + (c.ltv || 0), 0);
+  // ---------- carteira por RECEITA (André, 28/10/26) ----------
+  // A leitura da carteira é proporcional à mensalidade (Valor Recorrente) de cada cliente: 1 cliente em Red Flag que paga
+  // 30% da receita = 30% da carteira em Red, não 1/34. A nota de cada cliente não muda — muda o agregado.
+  // Base = execução + atrasado + encerramento; quem não tem flag entra como fatia "sem score" e as flags são calculadas
+  // sobre o total (receita sem medição aparece como lacuna). % da receita = leitura principal; R$ e nº de clientes = complemento.
+  // Mesma regra do servidor (api/_healthscore.js carteiraPorFlag) — aqui refeita pra valer sobre os filtros da adega.
+  const CARTEIRA_ST = new Set(['execucao', 'atrasado', 'encerramento']);
+  const emCarteira = (c) => CARTEIRA_ST.has(stKeyOf(c));
+  const somaMensal = (arr) => arr.reduce((a, c) => a + (c.mensalidade || 0), 0);
+  const fmtPct1 = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+  // média ponderada pela mensalidade: itens [{ v, w }]; sem nenhum peso, cai na média simples
+  const mediaPond = (itens) => { const ok = itens.filter((x) => x && x.v != null); if (!ok.length) return null; const sw = ok.reduce((a, x) => a + (x.w > 0 ? x.w : 0), 0); if (!(sw > 0)) return ok.reduce((a, x) => a + x.v, 0) / ok.length; return ok.reduce((a, x) => a + x.v * (x.w > 0 ? x.w : 0), 0) / sw; };
+  function carteiraDe(arr) {
+    const tot = { clientes: arr.length, receita: somaMensal(arr), semValor: arr.filter((c) => !(c.mensalidade > 0)).length };
+    const sl = {}; for (const f of ['green', 'yellow', 'red', 'semScore']) sl[f] = { clientes: 0, receita: 0 };
+    for (const c of arr) { const f = flagDe(c) || 'semScore'; sl[f].clientes++; sl[f].receita += c.mensalidade || 0; }
+    for (const f of Object.keys(sl)) {
+      const x = sl[f];
+      x.pctReceita = pctNum(x.receita, tot.receita, f); x.pctClientes = pctNum(x.clientes, tot.clientes, f);
+      if (META_FLAGS[f] != null) {
+        const alvo = (tot.receita * META_FLAGS[f]) / 100;
+        const dif = f === 'green' ? alvo - x.receita : x.receita - alvo; // verde: R$ que faltam; amarelo/vermelho: R$ a mais
+        const l = lacunaFlag(f, x.clientes, tot.clientes);
+        x.meta = { pct: META_FLAGS[f], ok: dif <= 0.005, difReceita: Math.max(0, Math.round(dif)), difClientes: l && !l.ok ? l.dif : 0 };
+      }
+    }
+    const comScore = arr.filter((c) => c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente);
+    const pond = mediaPond(comScore.map((c) => ({ v: c.healthScore.score, w: c.mensalidade })));
+    return { base: tot, flags: sl, score: { ponderado: pond == null ? null : Math.round(pond), simples: comScore.length ? Math.round(comScore.reduce((a, c) => a + c.healthScore.score, 0) / comScore.length) : null, clientes: comScore.length } };
+  }
+  // texto da lacuna da meta em R$ (verde: faltam; amarelo/vermelho: a mais); '' sem meta
+  const metaTxtR = (f, x) => (!x || !x.meta ? '' : x.meta.ok ? 'na meta' : f === 'green' ? `faltam ${fmtBRL(x.meta.difReceita)}` : `${fmtBRL(x.meta.difReceita)} a mais`);
+  const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
   const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
   const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < todayKey();
@@ -72,7 +105,8 @@
   const META_FLAGS = { green: 70, yellow: 20, red: 10 };
   // % da carteira com 1 casa, arredondado pro lado da meta (auditoria 27/10): verde pra baixo (69,6% não vira "70%" ao lado de "falta 1"),
   // amarelo/vermelho pra cima (20,4% não vira "20%" ao lado de "1 a mais")
-  const pct = (n, t, f) => { if (!t) return '0'; const v = (n / t) * 1000; const r = (f === 'green' ? Math.floor(v + 1e-9) : f ? Math.ceil(v - 1e-9) : Math.round(v)) / 10; return r.toLocaleString('pt-BR', { maximumFractionDigits: 1 }); };
+  const pctNum = (n, t, f) => { if (!t) return 0; const v = (n / t) * 1000; return (f === 'green' ? Math.floor(v + 1e-9) : f === 'yellow' || f === 'red' ? Math.ceil(v - 1e-9) : Math.round(v)) / 10; };
+  const pct = (n, t, f) => pctNum(n, t, f).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   // lacuna em clientes: verde = quantos faltam pra chegar na meta; amarelo/vermelho = quantos a mais que a meta permite
   function lacunaFlag(f, n, t) {
     if (!t) return null;
@@ -140,11 +174,13 @@
   const stKeyOf = (c) => String(c.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
 
   // rosca verde/amarelo/vermelho da adega (reage a status e plano)
-  function donutSVG(g, y, r) {
-    const tot = g + y + r, R = 44, C = 2 * Math.PI * R;
-    if (!tot) return `<svg viewBox="0 0 110 110" class="donut"><circle cx="55" cy="55" r="${R}" fill="none" stroke="rgba(243,236,218,0.12)" stroke-width="14"/><text x="55" y="60" text-anchor="middle" class="donut-t">0</text></svg>`;
-    let off = 0; const seg = (n, cls) => { if (!n) return ''; const len = (n / tot) * C; const s = `<circle cx="55" cy="55" r="${R}" fill="none" class="donut-seg ${cls}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return s; };
-    return `<svg viewBox="0 0 110 110" class="donut"><g transform="rotate(-90 55 55)">${seg(g, 'dg')}${seg(y, 'dy')}${seg(r, 'dr')}</g><text x="55" y="52" text-anchor="middle" class="donut-t">${tot}</text><text x="55" y="68" text-anchor="middle" class="donut-s">copos</text></svg>`;
+  // rosca: fatias por RECEITA (verde/amarelo/vermelho + cinza = sem score); no centro, o nº de copos (André, 28/10/26)
+  function donutSVG(g, y, r, n = 0, centro = null, legenda = 'copos') {
+    const tot = g + y + r + n, R = 44, C = 2 * Math.PI * R;
+    const meio = centro == null ? tot : centro;
+    if (!tot) return `<svg viewBox="0 0 110 110" class="donut"><circle cx="55" cy="55" r="${R}" fill="none" stroke="rgba(243,236,218,0.12)" stroke-width="14"/><text x="55" y="60" text-anchor="middle" class="donut-t">${meio}</text></svg>`;
+    let off = 0; const seg = (v, cls) => { if (!v) return ''; const len = (v / tot) * C; const s = `<circle cx="55" cy="55" r="${R}" fill="none" class="donut-seg ${cls}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return s; };
+    return `<svg viewBox="0 0 110 110" class="donut"><g transform="rotate(-90 55 55)">${seg(g, 'dg')}${seg(y, 'dy')}${seg(r, 'dr')}${seg(n, 'dn')}</g><text x="55" y="52" text-anchor="middle" class="donut-t">${meio}</text><text x="55" y="68" text-anchor="middle" class="donut-s">${legenda}</text></svg>`;
   }
 
   // equipe no card: campo "Equipe" do Growth; reserva = união dos papéis (sem repetir pessoa)
@@ -327,7 +363,6 @@
     const stKey = stKeyOf;
     const STATUS = [['briefing', 'Briefing'], ['execucao', 'Em execução'], ['atrasado', 'Atrasado'], ['encerramento', 'Encerramento']];
     const byStatus = state.statusFilter ? clients.filter((c) => stKey(c) === state.statusFilter) : clients;
-    const count = (f) => byPlano.filter((c) => flagDe(c) === f).length;
     const countSt = (k) => clients.filter((c) => stKey(c) === k).length;
 
     const squadsAll = computeSquads(clients);
@@ -373,13 +408,19 @@
     const ssel = (k) => (state.statusFilter === k ? ' is-selected' : '');
     const statusRow = STATUS.filter(([k]) => countSt(k) > 0 || k !== 'briefing')
       .map(([k, l]) => `<button class="stat-status st-${k}${ssel(k)}" data-status="${k}"><strong>${countSt(k)}</strong> ${l}</button>`).join('');
+    // cartões do topo por RECEITA (André, 28/10/26): % da receita recorrente em cada flag é o número grande; R$ e nº de
+    // clientes embaixo; meta 70/20/10 em R$. Base = clientes do corte em execução/atrasado/encerramento (briefing fica fora).
+    const K = carteiraDe(byPlano.filter(emCarteira));
+    const KS = K.flags.semScore;
+    const statFlag = (f) => { const x = K.flags[f]; const mt = metaTxtR(f, x); const off = x.meta && !x.meta.ok;
+      return `<button class="stat-flag f-${f}${fsel(f)}" data-flag="${f}" title="${esc(FLAG[f].word)}: ${fmtPct1(x.pctReceita)}% da receita recorrente da seleção · ${fmtBRL(x.receita)}/mês · ${plural(x.clientes, 'cliente', 'clientes')} (${fmtPct1(x.pctClientes)}% dos clientes) · meta ${META_FLAGS[f]}% da receita${x.meta && !x.meta.ok && x.meta.difClientes ? ` · em clientes: ${f === 'green' ? 'faltam' : ''} ${x.meta.difClientes}${f === 'green' ? '' : ' a mais'}` : ''}">${glass(f, 34)}<div><div class="stat-num t-${f}">${fmtPct1(x.pctReceita)}<span class="stat-unit">%</span></div><div class="stat-label">${FLAG[f].word} · da receita</div><div class="stat-meta">${fmtBRL(x.receita)} · ${plural(x.clientes, 'cliente', 'clientes')}</div><div class="stat-meta stat-meta2${off ? ' off' : ''}">meta ${META_FLAGS[f]}%${mt && mt !== 'na meta' ? ` · ${mt}` : mt ? ' · na meta' : ''}</div></div></button>`; };
     el.innerHTML = `
-      <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
+      <p class="eyebrow">A adega · ${clients.length} clientes <span class="hs-hist-info">receita recorrente ${fmtBRL(somaMensal(clients.filter(emCarteira)))}/mês${K.base.clientes !== clients.filter(emCarteira).length ? ` · seleção ${fmtBRL(K.base.receita)}` : ''}${KS.clientes ? ` · <span class="t-na" title="score insuficiente e sem flag no Growth — receita que ainda não está sendo medida">sem score ${fmtPct1(KS.pctReceita)}% da receita (${plural(KS.clientes, 'cliente', 'clientes')})</span>` : ''}${K.base.semValor ? ` · <span class="t-yellow" title="sem Valor Recorrente no card da Growth — pesa zero na carteira">${plural(K.base.semValor, 'cliente', 'clientes')} sem valor recorrente</span>` : ''}</span> <span class="hs-hist-info">LTV da carteira ${fmtBRL(somaLTV(clients))}${shown.length !== clients.length ? ` · seleção ${fmtBRL(ltvShown)}` : ''}</span></p>
       <div class="hero">
-        <button class="stat-flag f-green${fsel('green')}" data-flag="green">${glass('green', 34)}<div><div class="stat-num t-green">${count('green')}</div><div class="stat-label">Green Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('green', count('green'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('green'), byPlano.length, 'green')}% · meta ${META_FLAGS.green}%${(() => { const t = metaTxt('green', count('green'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
-        <button class="stat-flag f-yellow${fsel('yellow')}" data-flag="yellow">${glass('yellow', 34)}<div><div class="stat-num t-yellow">${count('yellow')}</div><div class="stat-label">Yellow Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('yellow', count('yellow'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('yellow'), byPlano.length, 'yellow')}% · meta ${META_FLAGS.yellow}%${(() => { const t = metaTxt('yellow', count('yellow'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
-        <button class="stat-flag f-red${fsel('red')}" data-flag="red">${glass('red', 34)}<div><div class="stat-num t-red">${count('red')}</div><div class="stat-label">Red Flag</div><div class="stat-meta${(() => { const l = lacunaFlag('red', count('red'), byPlano.length); return l && !l.ok ? ' off' : ''; })()}">${pct(count('red'), byPlano.length, 'red')}% · meta ${META_FLAGS.red}%${(() => { const t = metaTxt('red', count('red'), byPlano.length); return t && t !== 'na meta' ? ` · ${t}` : ''; })()}</div></div></button>
-        <div class="stats-donut">${donutSVG(count('green'), count('yellow'), count('red'))}</div>
+        ${statFlag('green')}
+        ${statFlag('yellow')}
+        ${statFlag('red')}
+        <div class="stats-donut" title="fatias pela receita recorrente${KS.receita ? ' · cinza = sem score' : ''}">${donutSVG(K.flags.green.receita, K.flags.yellow.receita, K.flags.red.receita, KS.receita, K.base.clientes)}</div>
       </div>
       <section class="balcao">
         <div class="balcao-rail"></div>
@@ -412,7 +453,7 @@
         <div class="card-titles">
           <div class="card-name" title="${esc(c.name)}">${esc(c.name)}</div>
           <div class="card-sub">${c.plano ? `<span class="card-plan">${planoIcon(c.plano, 16)}${esc(planoLabel(c.plano))}</span>` : '<span class="card-plan card-plan-empty">sem plano</span>'}${nuncaCSAT(c) ? '<span class="card-nocsat" title="nenhuma resposta de CSAT até hoje">sem CSAT</span>' : ''}${semCampanha(c) ? `<span class="card-nocamp" title="sem investimento em anúncios na última semana${c.campanha.desde ? ' (último gasto na semana de ' + fmtCurto(c.campanha.desde) + ')' : ''} — ${campEfeito(c)}">sem campanha</span>` : ''}</div>
-          <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}</div>
+          <div class="card-ltv${c.ltv ? '' : ' na'}" title="LTV (campo da Growth)"><span class="card-ltv-l">LTV</span>${fmtBRL(c.ltv)}${c.mensalidade ? `<span class="card-mensal" title="mensalidade (Valor Recorrente da Growth) — peso do cliente na carteira">· ${fmtBRL(c.mensalidade)}/mês</span>` : ''}</div>
           ${maduro}
         </div>
         ${statusBadge || expBadge}
@@ -632,6 +673,10 @@
           <div class="metric-num metric-num-ltv">${c.ltv != null ? fmtBRL(c.ltv) : '—'}</div>
           <div class="metric-label">LTV${c.ltv != null ? ' · campo da Growth' : ' · sem LTV na Growth'}</div>
         </div>
+        <div class="metric metric-ltv" title="Valor Recorrente da Growth — peso do cliente na leitura da carteira por receita">
+          <div class="metric-num metric-num-ltv">${c.mensalidade != null ? fmtBRL(c.mensalidade) : '—'}</div>
+          <div class="metric-label">Mensalidade${c.mensalidade != null ? (() => { const tot = somaMensal(state.data.clients.filter(emCarteira)); return tot ? ` · ${fmtPct1(pctNum(c.mensalidade, tot))}% da receita da carteira` : ''; })() : ' · sem Valor Recorrente na Growth'}</div>
+        </div>
       </div>
       ${hsFichaHTML(c.healthScore, c)}
       ${sinaisHTML(c, ts, m, prod, lateTasks, posts, diasSemResposta)}
@@ -834,9 +879,11 @@
     const { clients } = state.data;
     const com = clients.filter((c) => c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente);
     const sem = clients.filter((c) => !c.healthScore || c.healthScore.score == null || c.healthScore.insuficiente);
-    const media = com.length ? Math.round(com.reduce((s, c) => s + c.healthScore.score, 0) / com.length) : null;
-    const cnt = (f) => com.filter((c) => c.healthScore.flag === f).length;
-    const mediaPilar = (k) => { const v = com.map((c) => c.healthScore.pilares[k].nota).filter((x) => x != null); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
+    // carteira por receita (André, 28/10/26): base = adega em execução/atrasado/encerramento, quem não tem flag vira fatia "sem score"
+    const K = carteiraDe(clients.filter(emCarteira));
+    const KS = K.flags.semScore;
+    const media = K.score.ponderado; // média da carteira PONDERADA pela mensalidade (a simples fica ao lado)
+    const mediaPilar = (k) => { const v = com.filter((c) => c.healthScore.pilares[k].nota != null).map((c) => ({ v: c.healthScore.pilares[k].nota, w: c.mensalidade })); const m = mediaPond(v); return m == null ? null : Math.round(m); };
 
     // ordenação por qualquer coluna, asc/desc; sem dado vai pro fim nos dois sentidos
     const valorDe = (c) => {
@@ -847,6 +894,7 @@
         case 'streak': { const st = streakDe(c); return st ? st.dias : null; }
         case 'trafego': case 'satisfacao': case 'produtividade': case 'contato': return hs.pilares[state.hsOrdem].nota;
         case 'ltv': return c.ltv ?? null;
+        case 'mensalidade': return c.mensalidade ?? null;
         default: return hs.score;
       }
     };
@@ -859,8 +907,10 @@
       return cmp * dir || x.healthScore.score - y.healthScore.score;
     });
     const th = (k, lbl, cls = 'r') => `<th class="${cls} hs-th-sort${state.hsOrdem === k ? ' is-on' : ''}" data-hs-ordem="${k}" title="ordenar por ${lbl === '7 dias' ? 'variação em 7 dias' : lbl}">${lbl}${state.hsOrdem === k ? (state.hsDir === 'desc' ? ' ▼' : ' ▲') : ''}</th>`;
-    const ORDEM_LBL = { nome: 'nome A–Z', score: 'Health Score', delta: 'variação em 7 dias', streak: 'dias na flag', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', ltv: 'LTV' };
+    const ORDEM_LBL = { nome: 'nome A–Z', score: 'Health Score', delta: 'variação em 7 dias', streak: 'dias na flag', trafego: 'Resultado', satisfacao: 'Satisfação', produtividade: 'Produtividade', contato: 'Relacionamento', ltv: 'LTV', mensalidade: 'mensalidade' };
     const ltvRank = somaLTV(com);
+    const mensalRank = somaMensal(com);
+    const pesoDe = (c) => (K.base.receita && c.mensalidade ? fmtPct1(pctNum(c.mensalidade, K.base.receita)) + '% da receita da carteira' : 'sem Valor Recorrente na Growth');
     const linha = (c) => {
       const hs = c.healthScore; const prev = scoreHa(hsHist, c.id, 7);
       const d = prev ? hs.score - prev.s : null;
@@ -868,7 +918,7 @@
       const pil = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const n = hs.pilares[k].nota; return `<td class="hs-td ${hsCls(n)}">${n != null ? n : '—'}</td>`; }).join('');
       const st = streakDe(c);
       const streak = !st ? '<span class="hs-streak na">—</span>' : st.dias === 0 ? '<span class="hs-streak na" title="a flag mudou hoje">hoje</span>' : `<span class="hs-streak ${flagCls(st.flag)}${st.flag === 'green' && st.dias >= MADURO_DIAS ? ' maduro' : ''}" title="${FLAG[st.flag].word} ${streakLabel(st)}${st.piso ? ' (pelo menos — histórico começou em ' + fmtCurto(new Date(st.desde + 'T12:00:00Z').getTime()) + ')' : ''}">${st.piso ? '≥' : ''}${st.dias}d</span>`;
-      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td><td class="hs-td">${streak}</td>${pil}<td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
+      return `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(hs.flag, 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td hs-td-score ${hsCls(hs.score)}">${hs.score}</td><td class="hs-td">${delta}</td><td class="hs-td">${streak}</td>${pil}<td class="hs-td hs-td-ltv${c.mensalidade ? '' : ' na'}" title="${esc(pesoDe(c))}">${fmtBRL(c.mensalidade)}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     };
 
     const sangra = ['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => {
@@ -888,28 +938,29 @@
     const nomes = (c) => equipeDe(c).map((p) => p.name.split(' ')[0]).join(', ');
     // cross sells já vendidos (André, 26/10/26): total e quanto já foi recebido
     const expCross = (c) => { const x = (c.expansoes || []).filter((e) => e.origem === 'cross'); return { n: x.length, tot: x.reduce((a, e) => a + (e.valor || 0), 0), rec: x.reduce((a, e) => a + (e.recebido || 0), 0) }; };
-    const linhaMaduro = ({ c, md }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass('green', 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td"><span class="hs-streak g maduro">${md.st.piso ? '≥' : ''}${md.st.dias}d</span></td><td class="hs-td g">${fmtNota(md.csat)}</td><td class="hs-td-txt">${c.produtos && c.produtos.length ? esc(c.produtos.join(', ')) : '<span class="na">—</span>'}</td><td class="hs-td-txt">${esc(nomes(c) || '—')}</td><td class="hs-td hs-td-ltv${expCross(c).n ? '' : ' na'}" title="${expCross(c).n ? `${expCross(c).n} cross sell${expCross(c).n === 1 ? '' : 's'} · ${fmtBRL(expCross(c).rec)} recebido` : 'nenhum cross sell registrado'}">${expCross(c).n ? fmtBRL(expCross(c).tot) : '—'}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
+    const linhaMaduro = ({ c, md }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass('green', 18)}<span>${esc(c.name)}</span>${c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td"><span class="hs-streak g maduro">${md.st.piso ? '≥' : ''}${md.st.dias}d</span></td><td class="hs-td g">${fmtNota(md.csat)}</td><td class="hs-td-txt">${c.produtos && c.produtos.length ? esc(c.produtos.join(', ')) : '<span class="na">—</span>'}</td><td class="hs-td-txt">${esc(nomes(c) || '—')}</td><td class="hs-td hs-td-ltv${c.mensalidade ? '' : ' na'}" title="${esc(pesoDe(c))}">${fmtBRL(c.mensalidade)}</td><td class="hs-td hs-td-ltv${expCross(c).n ? '' : ' na'}" title="${expCross(c).n ? `${expCross(c).n} cross sell${expCross(c).n === 1 ? '' : 's'} · ${fmtBRL(expCross(c).rec)} recebido` : 'nenhum cross sell registrado'}">${expCross(c).n ? fmtBRL(expCross(c).tot) : '—'}</td><td class="hs-td hs-td-ltv${c.ltv ? '' : ' na'}">${fmtBRL(c.ltv)}</td></tr>`;
     const expandir = `
       <p class="eyebrow">Prontos pra expandir · cross-sell / upsell ${prontos.length ? `<span class="hs-ok-n">${prontos.length}</span>` : ''}<span class="hs-hist-info">Green Flag há ≥ ${MADURO_DIAS} dias · CSAT ≥ 9 · sem alerta no WhatsApp</span></p>
       ${prontos.length
-        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Verde há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
+        ? `<div class="hs-table-wrap hs-maduro-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th class="r">Verde há</th><th class="r">CSAT</th><th>Produtos hoje</th><th>Equipe</th><th class="r" title="mensalidade atual (Valor Recorrente)">Mensal.</th><th class="r" title="valor total dos cross sells já vendidos para o cliente">Cross sell</th><th class="r">LTV</th></tr></thead><tbody>${prontos.map(linhaMaduro).join('')}</tbody></table></div>`
         : `<div class="fn-empty">Ninguém pronto pra expandir agora — precisa de Green Flag há ${MADURO_DIAS} dias ou mais, CSAT 9 ou mais e nenhum alerta no WhatsApp.${quase.length ? ' Quem está perto aparece logo abaixo, com o que ainda falta.' : ''}</div>`}
       ${quase.length ? `<p class="hs-quase-l">Na fila · Green Flag ainda não madura</p><div class="hs-pilar-list hs-quase">${quase.slice(0, 12).map(({ c, md }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<b class="g">${md.st.piso ? '≥' : ''}${md.st.dias}d</b><i>${esc(md.trava.join(' · '))}</i></button>`).join('')}${quase.length > 12 ? `<span class="hs-mais">+${quase.length - 12}</span>` : ''}</div>` : ''}`;
     const semDado = sem.map((c) => { const hs = c.healthScore; const falta = []; if (!c.temReportei) falta.push('sem Reportei ligado'); else if (semCampanha(c)) falta.push('sem campanha rodando'); else if (!c.hs) falta.push('sem dado de anúncios'); if (!c.metrics || !c.metrics.respostas) falta.push('sem CSAT'); return `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${esc(falta.join(' · ') || 'dados insuficientes')}</i></button>`; }).join('');
 
     el.innerHTML = `
-      <p class="eyebrow">Health Score · termômetro da carteira</p>
+      <p class="eyebrow">Health Score · termômetro da carteira <span class="hs-hist-info">receita recorrente ${fmtBRL(K.base.receita)}/mês · ${plural(K.base.clientes, 'cliente', 'clientes')} em execução, atrasado ou encerramento${K.base.semValor ? ` · <span class="t-yellow">${plural(K.base.semValor, 'cliente', 'clientes')} sem valor recorrente no card</span>` : ''}</span></p>
       <div class="hs-termo">
-        <div class="hs-termo-media"><div class="hs-big ${hsCls(media)}">${media != null ? media : '—'}<small>/100</small></div><div class="hs-termo-l">média da carteira<br><span>${com.length} clientes com score</span></div></div>
-        <div class="stats-donut">${donutSVG(cnt('green'), cnt('yellow'), cnt('red'))}</div>
+        <div class="hs-termo-media"><div class="hs-big ${hsCls(media)}" title="média dos scores ponderada pela mensalidade de cada cliente">${media != null ? media : '—'}<small>/100</small></div><div class="hs-termo-l">média da carteira<br><span>ponderada pela receita · ${K.score.simples != null ? `média simples ${K.score.simples} · ` : ''}${com.length} clientes com score</span></div></div>
+        <div class="stats-donut" title="fatias pela receita recorrente${KS.receita ? ' · cinza = sem score' : ''}">${donutSVG(K.flags.green.receita, K.flags.yellow.receita, K.flags.red.receita, KS.receita, K.base.clientes)}</div>
         <div class="hs-termo-pilares">${['trafego', 'satisfacao', 'produtividade', 'contato'].map((k) => { const m = mediaPilar(k); return `<div class="hs-termo-p"><span class="hs-termo-pn ${hsCls(m)}">${m != null ? m : '—'}</span><span class="hs-termo-pl">${PILAR_META[k]}</span></div>`; }).join('')}</div>
       </div>
 
-      <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% verde · ${META_FLAGS.yellow}% amarelo · ${META_FLAGS.red}% vermelho · sobre os ${com.length} clientes com score</span></p>
-      <div class="hs-meta">${['green', 'yellow', 'red'].map((f) => { const n = cnt(f), p = pct(n, com.length, f), l = lacunaFlag(f, n, com.length); return `<div class="hs-meta-box ${f}${l && !l.ok ? ' off' : ''}"><div class="hs-meta-head">${glass(f, 20)}<span>${FLAG[f].word}</span><b class="t-${f}">${p}%</b><small>${n}/${com.length}</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, com.length ? (n / com.length) * 100 : 0)}%"></i><u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}%"></u></div><div class="hs-meta-foot"><span>meta ${META_FLAGS[f]}%</span><span class="hs-meta-lac">${metaTxt(f, n, com.length)}</span></div></div>`; }).join('')}</div>
+      <p class="eyebrow">Meta da carteira <span class="hs-hist-info">${META_FLAGS.green}% verde · ${META_FLAGS.yellow}% amarelo · ${META_FLAGS.red}% vermelho da <b>receita recorrente</b> (${fmtBRL(K.base.receita)}/mês, ${K.base.clientes} clientes) — cliente que paga mais pesa mais; quem não tem score entra como fatia própria</span></p>
+      <div class="hs-meta hs-meta-4">${['green', 'yellow', 'red', 'semScore'].map((f) => { const x = K.flags[f]; const off = x.meta && !x.meta.ok; const semF = f === 'semScore';
+        return `<div class="hs-meta-box ${f}${off ? ' off' : ''}"><div class="hs-meta-head">${semF ? '<span class="hs-meta-dot"></span>' : glass(f, 20)}<span>${semF ? 'Sem score' : FLAG[f].word}</span><b class="${semF ? 't-na' : 't-' + f}">${fmtPct1(x.pctReceita)}%</b></div><div class="hs-meta-sub">${fmtBRL(x.receita)}/mês · ${plural(x.clientes, 'cliente', 'clientes')} <small>(${fmtPct1(x.pctClientes)}% dos clientes)</small></div><div class="hs-meta-bar"><i style="width:${Math.min(100, x.pctReceita)}%"></i>${semF ? '' : `<u style="left:${META_FLAGS[f]}%" title="meta ${META_FLAGS[f]}% da receita"></u>`}</div><div class="hs-meta-foot">${semF ? `<span>receita ainda sem medição</span><span class="hs-meta-lac${x.clientes ? ' off' : ''}">${x.clientes ? 'ligar Reportei / CSAT' : 'tudo medido'}</span>` : `<span>meta ${META_FLAGS[f]}% da receita</span><span class="hs-meta-lac" title="${x.meta && !x.meta.ok && x.meta.difClientes ? `em clientes: ${f === 'green' ? 'faltam ' : ''}${x.meta.difClientes}${f === 'green' ? '' : ' a mais'}` : ''}">${metaTxtR(f, x)}</span>`}</div></div>`; }).join('')}</div>
 
-      <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">LTV dos clientes com Health Score: ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
-      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7 dias')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Relacion.')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
+      <p class="eyebrow">Clientes · ordenados por ${ORDEM_LBL[state.hsOrdem] || 'Health Score'} ${state.hsDir === 'desc' ? '(maior primeiro)' : '(menor primeiro)'} <span class="hs-hist-info">receita dos clientes com Health Score: ${fmtBRL(mensalRank)}/mês${K.base.receita ? ` (${fmtPct1(pctNum(mensalRank, K.base.receita))}% da carteira)` : ''} · LTV ${fmtBRL(ltvRank)}</span> ${hsHist && hsHist.dias.length ? `<span class="hs-hist-info">tendência vs 7 dias · ${hsHist.dias.length} foto${hsHist.dias.length === 1 ? '' : 's'}</span>` : '<span class="hs-hist-info">tendência aparece a partir da 2ª semana de fotos</span>'}</p>
+      <div class="hs-table-wrap"><table class="hs-table"><thead><tr>${th('nome', 'Cliente', '')}${th('score', 'Score')}${th('delta', '7 dias')}${th('streak', 'Flag há')}${th('trafego', 'Resultado')}${th('satisfacao', 'Satisf.')}${th('produtividade', 'Produt.')}${th('contato', 'Relacion.')}${th('mensalidade', 'Mensal.')}${th('ltv', 'LTV')}</tr></thead><tbody>${rank.map(linha).join('')}</tbody></table></div>
       <p class="hs-ordem-dica">Clique no título de uma coluna pra ordenar; clique de novo pra inverter.</p>
       ${expandir}
 
@@ -930,7 +981,8 @@
         <div><b>Produtividade</b> tarefas no prazo ÷ tarefas (abertas + concluídas nos últimos 30 dias); conta abertas vencidas e concluídas fora do prazo. Por faixa fixa: 100% → 100 pontos · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · abaixo de 85 → 0.</div>
         <div><b>Relacionamento</b> nota de engajamento do cliente, calculada todo dia (22h) sobre os últimos 7 dias do grupo de WhatsApp: a IA só extrai os fatos (pedidos da Bibit e se foram respondidos, iniciativas, tom, alertas) e a nota sai por fórmula — Presença 20 (dias com mensagem do cliente: 4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Responsividade 20 (% de pedidos vencidos respondidos: 100% → 20 · ≥90 → 15 · ≥80 → 10 · ≥70 → 5; sem pedido = não conta) · Iniciativa 20 (4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Tom 40 (elogio 40 · cordial 30 · neutro 20 · insatisfação 10 · grave 0). Critério que não se aplica tem o peso dividido entre os outros. Limites: 7 dias sem mensagem do cliente → máx. 40 · reclamação grave não resolvida → máx. 30 · ameaça de cancelamento → máx. 20. Classificação: ≥90 excelente · 80–89 engajado · 60–79 morno · 40–59 baixo · &lt;40 crítico.</div>
         <div><b>Flag</b> ≥ ${FLAG_FAIXAS.green} Green Flag · ${FLAG_FAIXAS.yellow}–${FLAG_FAIXAS.green - 1} Yellow Flag · &lt; ${FLAG_FAIXAS.yellow} Red Flag (régua de 25/09/26). Gravada no Growth toda segunda 9h45; o painel mostra o score ao vivo.</div>
-        <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26). Verde: faltam N = quantos clientes precisam subir; amarelo/vermelho: N a mais = quantos precisam sair da faixa.</div>
+        <div><b>Meta da carteira</b> ${META_FLAGS.green}% Green Flag · ${META_FLAGS.yellow}% Yellow · ${META_FLAGS.red}% Red (Bruno, set/26), medidos sobre a <u>receita recorrente</u> e não por número de clientes (André, 28/10/26): cada cliente pesa a mensalidade dele, então um cliente grande em Red Flag pesa o que ele representa no faturamento. Base: clientes em execução, atrasado e encerramento; quem não tem score entra como fatia própria. Verde: faltam R$ = quanto de receita precisa subir pra Green; amarelo/vermelho: R$ a mais = quanto precisa sair da faixa. Nº de clientes e % de clientes aparecem como complemento.</div>
+        <div><b>Mensalidade</b> campo Valor Recorrente da Growth (mensalidade atual; upsell atualiza o campo). É o peso do cliente na carteira, na média da carteira, nas abas de pilar e no Ranking dos colaboradores (a nota de cada pessoa é a média dos clientes dela ponderada pela mensalidade). Cliente sem valor pesa zero e aparece como pendência de cadastro.</div>
         <div><b>Sem campanha</b> Reportei ligado mas sem investimento em anúncios na última semana (ou métrica com mais de 10 dias): o pilar de tráfego sai da conta e o peso redistribui; o card e o balcão sinalizam.</div>
         <div><b>Flag há</b> dias seguidos na flag atual, pelas fotos diárias do score (desde 14/09/26; "≥" quando a sequência encosta no início do histórico). Dia sem foto não quebra a sequência.</div>
         <div><b>Expandir</b> Green Flag há ≥ ${MADURO_DIAS} dias + CSAT ≥ 9 + sem sinal de risco no resumo do WhatsApp = candidato a cross-sell/upsell, apresentado pela operação na reunião semanal.</div>
@@ -941,7 +993,7 @@
     el.querySelectorAll('[data-hs-ordem]').forEach((n) => n.addEventListener('click', () => {
       const k = n.dataset.hsOrdem;
       if (state.hsOrdem === k) state.hsDir = state.hsDir === 'asc' ? 'desc' : 'asc';
-      else { state.hsOrdem = k; state.hsDir = (k === 'ltv' || k === 'delta' || k === 'streak') ? 'desc' : 'asc'; } // LTV e variação: maior primeiro por padrão
+      else { state.hsOrdem = k; state.hsDir = (k === 'ltv' || k === 'mensalidade' || k === 'delta' || k === 'streak') ? 'desc' : 'asc'; } // LTV, mensalidade e variação: maior primeiro por padrão
       renderHealth(el);
     }));
     if (!hsHist) loadHist().then(() => { if (state.view === 'health') renderHealth(el); });
@@ -1262,10 +1314,16 @@
     const porPessoaSel = k === 'trafego' ? !!pessoaSel : !!filtro;
     const com = linhas.filter((x) => x.m);
     const sem = linhas.filter((x) => !x.m);
-    const media = com.length ? com.reduce((s, x) => s + x.m.valor, 0) / com.length : null;
+    // média da carteira PONDERADA pela mensalidade (André, 28/10/26) — cliente que paga mais pesa mais
+    const media = mediaPond(com.map((x) => ({ v: x.m.valor, w: x.c.mensalidade })));
     const abaixo = com.filter((x) => x.m.lacuna > 0).sort((a, b) => b.m.lacuna - a.m.lacuna);
     const naMeta = com.length - abaixo.length;
     const totalLac = abaixo.reduce((s, x) => s + x.m.lacuna, 0);
+    // receita em risco: mensalidade dos clientes abaixo da meta, em R$ e em % da receita do corte (quem tem dado)
+    const recCorte = somaMensal(com.map((x) => x.c));
+    const recRisco = somaMensal(abaixo.map((x) => x.c));
+    const pctRisco = recCorte ? pctNum(recRisco, recCorte) : 0;
+    if (!state.plOrdem) state.plOrdem = 'receita'; // lista cliente a cliente: 'receita' (padrão) | 'meta' (distância da meta)
     const fmtV = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pctFmt(v) : `${Math.round(v)} pts`);
     const fmtLac = (v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' pontos percentuais' : `${Math.round(v)} pts`);
     const mediaCls = media == null ? 'na' : k === 'satisfacao' ? (media >= 9 ? 'g' : media >= 8 ? 'y' : 'r') : k === 'produtividade' ? (media >= 95 ? 'g' : media >= 85 ? 'y' : 'r') : (media >= 70 ? 'g' : media >= 50 ? 'y' : 'r');
@@ -1310,12 +1368,13 @@
       // Resultado: cada pessoa entra com a FRENTE dela no cliente (Will → social, Daniel → tráfego, Rômulo → AV, Gabi → RP), não com a nota mista do pilar
       // Satisfação: cada pessoa entra com a nota que o cliente dá ao PAPEL dela (igual Colaborador e Ranking — auditoria 27/10)
       const medidaDe = (c, p, m) => (k === 'trafego' ? medidaPilar('trafego', c) : k === 'satisfacao' ? medidaPilar('satisfacao', c, String(p.id || p.name)) : m);
-      for (const { c, m } of [...com, ...sem]) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); const mm = k === 'trafego' || k === 'satisfacao' ? medidaDe(c, p, m) : m; if (!mm) { a.semDado++; continue; } a.vals.push(mm.valor); a.lac += mm.lacuna; if (mm.lacuna > 0) a.abaixo++; a.clientes++; }
+      for (const { c, m } of [...com, ...sem]) for (const p of pessoasPilar(k, c)) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, vals: [], lac: 0, abaixo: 0, clientes: 0, semDado: 0 }); const a = agg.get(id); const mm = k === 'trafego' || k === 'satisfacao' ? medidaDe(c, p, m) : m; if (!mm) { a.semDado++; continue; } a.vals.push({ v: mm.valor, w: c.mensalidade }); a.lac += mm.lacuna; if (mm.lacuna > 0) a.abaixo++; a.clientes++; }
       for (const [id, a] of [...agg.entries()]) if (!a.vals.length) agg.delete(id);
-      const rows = [...agg.values()].map((a) => ({ ...a, media: a.vals.reduce((x, y) => x + y, 0) / a.vals.length })).sort((a, b) => a.media - b.media);
+      // nota da pessoa = média dos clientes dela PONDERADA pela mensalidade (André, 28/10/26) — igual Colaborador e Ranking
+      const rows = [...agg.values()].map((a) => ({ ...a, media: mediaPond(a.vals) })).sort((a, b) => a.media - b.media);
       const clsDe = (v) => (k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
       const metaV = k === 'satisfacao' ? 9 : 70;
-      if (rows.length) placar = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">nota de cada pessoa no pilar = média dos clientes em que ela está${k === 'trafego' ? ` (${esc(FRENTE_LBL[FR])}: quem é dessa área no card)` : ' (pelo campo Equipe)'}${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
+      if (rows.length) placar = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">nota de cada pessoa no pilar = média dos clientes em que ela está, ponderada pela mensalidade de cada cliente${k === 'trafego' ? ` (${esc(FRENTE_LBL[FR])}: quem é dessa área no card)` : ' (pelo campo Equipe)'}${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th class="r">Nota</th><th class="r">Falta</th><th class="r">Clientes</th><th class="r">Na meta</th><th class="r">Abaixo</th><th class="r">Sem dado</th></tr></thead><tbody>${rows.map((a) => `<tr class="pl-pessoa" data-pl-f="${esc(String(a.p.id || a.p.name))}" title="filtrar por ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td hs-td-score ${clsDe(a.media)}">${fmtV(a.media)}</td><td class="hs-td">${a.media >= metaV ? '<span class="g">na meta</span>' : `<span class="${clsDe(a.media)}">${fmtLac(metaV - a.media)}</span>`}</td><td class="hs-td">${a.clientes}</td><td class="hs-td g">${a.clientes - a.abaixo}</td><td class="hs-td ${a.abaixo ? 'r' : 'g'}">${a.abaixo}</td><td class="hs-td na">${a.semDado || '—'}</td></tr>`).join('')}</tbody></table></div>`;
     }
 
@@ -1355,34 +1414,42 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? porqueCelHTML(c, FR) : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const pesoTxt = (c) => (recCorte && c.mensalidade ? `${fmtPct1(pctNum(c.mensalidade, recCorte))}% da receita deste corte` : 'sem Valor Recorrente na Growth');
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td hs-td-ltv${c.mensalidade ? '' : ' na'}" title="${esc(pesoTxt(c))}">${fmtBRL(c.mensalidade)}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? porqueCelHTML(c, FR) : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       ${k === 'trafego' ? subResultadoHTML() : ''}
       <div class="pl-head">
         <div class="hs-termo pl-termo">
-          <div class="hs-termo-media"><span class="hs-big ${mediaCls}">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador' : k === 'satisfacao' ? 'nota ao papel dele' : 'média do colaborador') : 'média da carteira'}<br><span>${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
+          <div class="hs-termo-media"><span class="hs-big ${mediaCls}" title="média ponderada pela mensalidade de cada cliente">${media == null ? '—' : fmtV(media)}</span><span class="hs-termo-l">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador' : k === 'satisfacao' ? 'nota ao papel dele' : 'média do colaborador') : 'média da carteira'}<br><span>ponderada pela receita · ${com.length} cliente${com.length === 1 ? '' : 's'} com dado${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></span></div>
           <div class="pl-meta-box"><span class="pl-meta-n">${k === 'satisfacao' ? '9' : k === 'produtividade' ? '95%' : M.meta + ' pts'}</span><span class="hs-termo-l">meta<br><span>${esc(M.desc)}</span></span></div>
           <div class="hs-termo-pilares pl-kpis">
             <div class="hs-termo-p"><span class="hs-termo-pn g">${naMeta}</span><span class="hs-termo-pl">na meta</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn ${abaixo.length ? 'r' : 'g'}">${abaixo.length}</span><span class="hs-termo-pl">abaixo</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn na">${sem.length}</span><span class="hs-termo-pl">sem dado</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn ${com.filter((x) => x.m.cls === 'r').length ? 'r' : 'g'}">${com.filter((x) => x.m.cls === 'r').length}</span><span class="hs-termo-pl">na faixa vermelha</span></div>
+            <div class="hs-termo-p pl-kpi-rec" title="mensalidade somada dos clientes abaixo da meta neste corte · ${fmtBRL(recRisco)} de ${fmtBRL(recCorte)}"><span class="hs-termo-pn ${recRisco ? 'r' : 'g'}">${fmtPct1(pctRisco)}%</span><span class="hs-termo-pl">da receita abaixo da meta<br><small>${fmtBRL(recRisco)}/mês</small></span></div>
           </div>
         </div>
         <div class="pl-filtros"><span class="balcao-l">${k === 'trafego' ? (FR === 'trafego' ? 'por tipo de campanha' : 'por colaborador') : 'por colaborador'}</span><div class="chips">${chips}${limpar}</div></div>
       </div>
 
-      <p class="eyebrow">Cliente a cliente · distância da meta <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador em cada grupo: calado com o cliente falando = 0 · calado em grupo parado = 50 · respostas lentas descontam' : k === 'satisfacao' ? 'nota que cada cliente dá ao papel do colaborador no CSAT' : 'tarefas do colaborador em cada cliente') : 'todos os clientes com dado, do pior pro melhor — à esquerda do traço da META falta, à direita já bateu'}</span></p>
+      <p class="eyebrow">Cliente a cliente · ${state.plOrdem === 'meta' ? 'distância da meta' : 'peso na receita'} <span class="hs-hist-info">${porPessoaSel ? (k === 'contato' ? 'atuação do colaborador em cada grupo: calado com o cliente falando = 0 · calado em grupo parado = 50 · respostas lentas descontam' : k === 'satisfacao' ? 'nota que cada cliente dá ao papel do colaborador no CSAT' : 'tarefas do colaborador em cada cliente') : state.plOrdem === 'meta' ? 'todos os clientes com dado, do pior pro melhor — à esquerda do traço da META falta, à direita já bateu' : 'quem está abaixo da meta vem primeiro, do maior pro menor peso na receita — a receita em risco se concentra nos primeiros; depois quem já bateu'}</span><span class="pl-ordem"><button class="hs-chip pl-chip${state.plOrdem !== 'meta' ? ' is-on' : ''}" data-pl-ordem="receita">por receita</button><button class="hs-chip pl-chip${state.plOrdem === 'meta' ? ' is-on' : ''}" data-pl-ordem="meta">por distância da meta</button></span></p>
       ${com.length ? (() => {
-        // lista completa (André, 26/10/26): abaixo e acima da meta, do pior pro melhor, com o rótulo META em cima do traço
+        // lista completa (André, 26/10/26): abaixo e acima da meta, com o rótulo META em cima do traço.
+        // Ordem padrão por RECEITA (André, 28/10/26): abaixo da meta primeiro, do maior pro menor peso; linha de corte onde
+        // 80% da receita em risco está concentrada (Pareto). "por distância da meta" = do pior pro melhor, como antes.
         const esc100 = k === 'satisfacao' ? 10 : 100;
         const metaNum = k === 'satisfacao' ? 9 : k === 'produtividade' ? 95 : 70;
         const metaPos = Math.round((metaNum / esc100) * 100);
-        const todos = [...com].sort((a, b) => a.m.valor - b.m.valor || b.m.lacuna - a.m.lacuna);
-        const cab = `<div class="pl-bar pl-bar-cab" aria-hidden="true"><span></span><span class="pl-bar-track"><b style="left:${metaPos}%">META</b></span><span></span><span></span></div>`;
+        const porRec = state.plOrdem !== 'meta';
+        const byRec = (a, b) => (b.c.mensalidade || 0) - (a.c.mensalidade || 0) || b.m.lacuna - a.m.lacuna;
+        const todos = porRec ? [...[...abaixo].sort(byRec), ...com.filter((x) => x.m.lacuna <= 0).sort(byRec)] : [...com].sort((a, b) => a.m.valor - b.m.valor || b.m.lacuna - a.m.lacuna);
+        let corte = -1; if (porRec && recRisco) { let acum = 0; for (let i = 0; i < abaixo.length; i++) { acum += todos[i].c.mensalidade || 0; if (acum / recRisco >= 0.8 - 1e-9) { corte = i; break; } } }
+        const cab = `<div class="pl-bar pl-bar-cab" aria-hidden="true"><span></span><span class="pl-bar-track"><b style="left:${metaPos}%">META</b></span><span></span><span></span><span></span></div>`;
         const dir = (x) => x.m.lacuna > 0 ? `falta ${fmtLac(x.m.lacuna)}` : x.m.valor > metaNum ? `<span class="g">+${fmtLac(x.m.valor - metaNum)} acima</span>` : '<span class="g">na meta</span>';
-        return `<div class="pl-pareto">${cab}${todos.map((x) => { const w = Math.max(2, Math.min(100, Math.round((x.m.valor / esc100) * 100))); return `<button class="pl-bar ${x.m.cls}${x.m.lacuna > 0 ? '' : ' pl-bar-ok'}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">${dir(x)}</span></button>`; }).join('')}</div>`;
+        const rec = (x) => (x.c.mensalidade ? `${fmtBRL(x.c.mensalidade)}<small>${recCorte ? ' · ' + fmtPct1(pctNum(x.c.mensalidade, recCorte)) + '%' : ''}</small>` : '<small class="na">sem valor</small>');
+        return `<div class="pl-pareto">${cab}${todos.map((x, i) => { const w = Math.max(2, Math.min(100, Math.round((x.m.valor / esc100) * 100))); return `<button class="pl-bar ${x.m.cls}${x.m.lacuna > 0 ? '' : ' pl-bar-ok'}" data-id="${x.c.id}" title="${esc(x.c.name)} · ${esc(x.m.txt)} · ${esc(pesoTxt(x.c))}"><span class="pl-bar-n">${esc(x.c.name)}</span><span class="pl-bar-track"><i style="width:${w}%"></i><u style="left:${metaPos}%"></u></span><span class="pl-bar-v ${x.m.cls}">${fmtV(x.m.valor)}</span><span class="pl-bar-a">${dir(x)}</span><span class="pl-bar-r">${rec(x)}</span></button>${porRec && i === corte && corte < abaixo.length - 1 ? `<div class="pl-pareto-corte"><span>80% da receita abaixo da meta está ${corte + 1 === 1 ? 'neste cliente' : `nestes ${corte + 1} clientes`} · ${fmtBRL(recRisco)}/mês em risco no total</span></div>` : ''}${porRec && i === abaixo.length - 1 && abaixo.length && todos.length > abaixo.length ? `<div class="pl-pareto-corte pl-pareto-ok"><span>abaixo, quem já bateu a meta</span></div>` : ''}`; }).join('')}</div>`;
       })() : `<div class="fn-empty">Nenhum cliente com dado${filtroLbl ? ' neste filtro' : ''}.</div>`}
 
       ${placar}
@@ -1391,12 +1458,13 @@
       ${k === 'trafego' ? motivosHTML(abaixo, FR) : ''}
 
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
-      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>${k === 'trafego' ? 'Por que a nota está assim' : 'Detalhe'}</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
+      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th class="r" title="mensalidade (Valor Recorrente) — peso do cliente na carteira">Mensal.</th><th>${k === 'trafego' ? 'Por que a nota está assim' : 'Detalhe'}</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? (filtro ? 'sem nota do cliente pra função desta pessoa' : 'nunca respondeu CSAT') : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
-      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
+      <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. Na lista "Cliente a cliente", quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Receita</b> a média da carteira e a nota de cada colaborador são ponderadas pela mensalidade dos clientes (Valor Recorrente da Growth) — cliente que paga mais pesa mais (André, 28/10/26). "Da receita abaixo da meta" = quanto da mensalidade somada deste corte está em clientes abaixo da meta; a lista por receita mostra onde 80% dessa receita em risco se concentra.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;
 
     el.querySelectorAll('[data-pl-f]').forEach((n) => n.addEventListener('click', () => { state.pilarFiltro[fKey] = n.dataset.plF || null; navAtualizar(); renderPilar(el, k); }));
+    el.querySelectorAll('[data-pl-ordem]').forEach((n) => n.addEventListener('click', () => { state.plOrdem = n.dataset.plOrdem; renderPilar(el, k); }));
     el.querySelectorAll('[data-id]').forEach((n) => n.addEventListener('click', () => { state.cliente = n.dataset.id; state.view = 'geral'; render(); }));
     bindSubResultado(el);
   }
@@ -1442,14 +1510,15 @@
     }
     return medidaPilar(k, c, a.id);
   }
-  // resumo da pessoa: média por pilar + lista de (cliente × pilar) abaixo da meta
+  // resumo da pessoa: média por pilar PONDERADA pela mensalidade dos clientes (André, 28/10/26; igual ao Ranking) +
+  // lista de (cliente × pilar) abaixo da meta
   function resumoColab(a) {
     const por = {}; const abaixo = [];
     for (const k of PILARES) {
-      const vals = [];
-      for (const c of a.clientes) { const m = medidaColab(k, c, a); if (!m) continue; vals.push(m.valor); if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META_V[k] }); }
-      const media = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
-      por[k] = { media, n: vals.length, cls: clsPilar(k, media), lacuna: media == null ? null : Math.max(0, META_V[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
+      const vals = []; let receita = 0;
+      for (const c of a.clientes) { const m = medidaColab(k, c, a); if (!m) continue; vals.push({ v: m.valor, w: c.mensalidade }); receita += c.mensalidade || 0; if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META_V[k] }); }
+      const media = vals.length ? mediaPond(vals) : null;
+      por[k] = { media, n: vals.length, receita, cls: clsPilar(k, media), lacuna: media == null ? null : Math.max(0, META_V[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
     }
     abaixo.sort((x, y) => (x.m.cls === y.m.cls ? y.rel - x.rel : x.m.cls === 'r' ? -1 : y.m.cls === 'r' ? 1 : 0));
     return { por, abaixo };
@@ -1527,9 +1596,9 @@
           </div>
           ${filtros}${periodoColabHTML()}
         </div>
-        <p class="eyebrow">Placar geral <span class="hs-hist-info">nota de cada pessoa em cada pilar = média dos clientes em que ela está · o número pequeno é quantos clientes estão abaixo da meta naquele pilar</span></p>
+        <p class="eyebrow">Placar geral <span class="hs-hist-info">nota de cada pessoa em cada pilar = média dos clientes em que ela está, ponderada pela mensalidade de cada cliente · o número pequeno é quantos clientes estão abaixo da meta naquele pilar</span></p>
         <div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Colaborador</th><th>Papel</th><th class="r">Clientes</th><th class="r">Resultado</th><th class="r">Satisfação</th><th class="r">Produtividade</th><th class="r">Relacionamento</th><th class="r" title="combinações cliente × pilar abaixo da meta">Abaixo</th></tr></thead><tbody>${rows.sort((x, y) => y.r.abaixo.length - x.r.abaixo.length || y.a.clientes.length - x.a.clientes.length).map(({ a, r }) => `<tr class="pl-pessoa" data-colab="${esc(a.id)}" title="ver ${esc(a.p.name)}"><td class="hs-td-cli">${avatarHTML(a.p, 'avatar avatar-xs')}<span>${esc(a.p.name)}</span></td><td class="hs-td-txt">${esc([...a.papeis].map((k) => PAPEL_LBL[k] || k).join(', ') || 'equipe')}</td><td class="hs-td">${a.clientes.length}</td>${PILARES.map((k) => td(k, r.por[k])).join('')}<td class="hs-td ${r.abaixo.length ? 'r' : 'g'}">${r.abaixo.length}</td></tr>`).join('')}</tbody></table></div>
-        <div class="hs-regras pl-regras"><div><b>Como ler</b> cada célula é a média da pessoa naquele pilar, nos clientes em que ela está. Em Resultado, cada pessoa é medida pela frente dela: tráfego (gestor do card) ou performance dos posts da área (social, AV, RP).</div><div><b>Clique</b> no nome ou no chip pra abrir a visão completa do colaborador: clientes, o que está abaixo da meta, silêncio, atrasadas e pareceres da IA.</div></div>`;
+        <div class="hs-regras pl-regras"><div><b>Como ler</b> cada célula é a média da pessoa naquele pilar, nos clientes em que ela está, ponderada pela mensalidade de cada cliente (cliente que paga mais pesa mais — André, 28/10/26; mesma conta do Ranking). Em Resultado, cada pessoa é medida pela frente dela: tráfego (gestor do card) ou performance dos posts da área (social, AV, RP).</div><div><b>Clique</b> no nome ou no chip pra abrir a visão completa do colaborador: clientes, o que está abaixo da meta, silêncio, atrasadas e pareceres da IA.</div></div>`;
       el.querySelectorAll('[data-colab]').forEach((n) => n.addEventListener('click', () => { state.colab = n.dataset.colab || null; render(); }));
       bindPeriodoColab(el);
       return;
@@ -1542,7 +1611,7 @@
     if (state.colabFoco && (!PILARES.includes(state.colabFoco) || (state.colabFoco === 'trafego' && !gestor))) state.colabFoco = null;
     const foco = state.colabFoco;
     const kpi = (k) => { const p = por[k]; const M = METAS_PILAR[k]; const na = k === 'trafego' && !gestor;
-      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''}><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go" aria-hidden="true">›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'sem resultado da área dela' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
+      return `<button class="cb-kpi ${na ? 'is-na' : p.cls}${foco === k ? ' is-on' : ''}" data-foco="${k}"${na ? ' disabled' : ''}><span class="cb-kpi-l">${M.lbl}${na ? '' : '<i class="cb-kpi-go" aria-hidden="true">›</i>'}</span><span class="cb-kpi-n ${na ? 'na' : p.cls}">${na ? '—' : fmtPilar(k, p.media)}</span><span class="cb-kpi-s">${na ? 'sem resultado da área dela' : p.media == null ? 'sem dado' : p.lacuna > 0 ? `falta ${fmtLacP(k, p.lacuna)} · meta ${fmtPilar(k, META_V[k])}` : `na meta (${fmtPilar(k, META_V[k])})`}</span><span class="cb-kpi-s na">${na ? '' : `${p.n} cliente${p.n === 1 ? '' : 's'} com dado${p.receita ? ` · ${fmtBRL(p.receita)}/mês` : ''}${p.abaixo ? ` · <b class="r">${p.abaixo} abaixo</b>` : ''}`}</span></button>`; };
 
     // silêncio: grupos em que ela está na Equipe e não escreveu na semana
     const calados = a.clientes.filter((c) => { const m = medidaColab('contato', c, a); return m && /^calado/.test(m.txt); });

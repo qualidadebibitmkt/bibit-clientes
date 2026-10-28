@@ -136,12 +136,13 @@ function colaboradores(clients, tasksOf, excluir = foraPlacar) {
   return [...map.values()].map((a) => ({ ...a, papeis: [...a.papeis], clientes: [...a.clientes.values()].sort((x, y) => x.name.localeCompare(y.name, 'pt-BR')) }));
 }
 
+// média por pilar PONDERADA pela mensalidade dos clientes (André, 28/10/26) — mesma conta da aba Colaborador e do Ranking
 function resumo(a, tasksOf) {
   const por = {}; const abaixo = [];
   for (const k of PILARES) {
     const vals = [];
-    for (const c of a.clientes) { const m = medida(k, c, a, tasksOf); if (!m) continue; vals.push(m.valor); if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META[k] }); }
-    const media = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
+    for (const c of a.clientes) { const m = medida(k, c, a, tasksOf); if (!m) continue; vals.push({ v: m.valor, w: c.mensalidade > 0 ? c.mensalidade : 0 }); if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META[k] }); }
+    const media = vals.length ? require('./_healthscore').mediaPonderada(vals) : null;
     por[k] = { aplica: k !== 'trafego' || a.papeis.includes('trafego'), media, n: vals.length, cls: cls(k, media), meta: META[k], falta: media == null ? null : Math.max(0, META[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
   }
   abaixo.sort((x, y) => (x.m.cls === y.m.cls ? y.rel - x.rel : x.m.cls === 'r' ? -1 : y.m.cls === 'r' ? 1 : 0));

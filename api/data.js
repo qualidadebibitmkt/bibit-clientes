@@ -4,6 +4,9 @@
 // portanto nunca chegam ao navegador, mesmo em chamada direta a /api/data.
 // EXCEÇÃO (Bruno, 17/09/26): o campo LTV da Growth (R$) SAI ao navegador — único
 // valor em R$ exposto; entra na ficha, na adega (card + ordenação) e no ranking do HS.
+// EXCEÇÃO (André, 28/10/26): o Valor Recorrente da Growth (mensalidade, R$) também SAI ao navegador — a leitura da
+// carteira passou a ser proporcional à receita (ver carteiraPorFlag em _healthscore.js); entra na ficha, na adega,
+// no Health Score, nas abas de pilar e no Ranking (peso da média por pessoa).
 
 const CLICKUP = 'https://api.clickup.com/api/v2';
 const vendas = require('./_vendas');
@@ -18,9 +21,9 @@ const LISTS = {
 const GROWTH_LIST = '901712531318';
 const CROSS_LIST = '901713519081';   // vendas de expansão — nome, mês, valor e quanto já foi recebido (André, 26/10/26)
 const UPSELL_LIST = '901713575176';
-// Valor recorrente (Growth e Upsell): LIDO SÓ NO SERVIDOR para calcular o NRR em %.
-// O valor recorrente em R$ não vai ao navegador; o valor das VENDAS (cross/upsell) aparece nas Expansões por decisão do
-// André (26/10/26), como o LTV (Bruno, 17/09/26).
+// Valor recorrente (Growth e Upsell): usado no NRR em % e, desde 28/10/26 (André), exposto ao navegador como
+// `mensalidade` — é o peso do cliente na leitura da carteira por receita. O valor das VENDAS (cross/upsell) aparece nas
+// Expansões por decisão do André (26/10/26), como o LTV (Bruno, 17/09/26).
 const CF_VALOR_REC = '65f9eee2-b80d-4a6b-959f-61395ae91b02';
 const CSAT_LIST = '901713333681'; // CSAT - Envios
 // CSAT - WD (André, 23/10/26): enviado ao cliente após CADA entrega de web (LP, Website, E-Commerce). Vira a nota de
@@ -74,7 +77,7 @@ const CF_HS_ROAS = 'f5a25347-e2d8-443f-9017-7bdc62af5814';
 const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
 const CF_HS_LEAD = '0cc186ba-9053-4266-9a2b-9c304c8e6e5d';
 const CF_HS_ATUALIZADO = '02aa0b63-6f5d-423d-b299-1cb0e181513d';
-const { calcularTodos, FAIXAS: HS_FAIXAS, CARENCIA_TRAFEGO_DIAS } = require('./_healthscore');
+const { calcularTodos, FAIXAS: HS_FAIXAS, CARENCIA_TRAFEGO_DIAS, carteiraPorFlag } = require('./_healthscore');
 const HS_VALIDADE_DIAS = 10; // métrica de tráfego mais velha que isso = campanha parada (coleta é semanal, segunda 9h30)
 const CF_DATA_SAIDA = 'b969da4a-8bae-4f4c-9f8b-2919620a98e0';
 const CF_TEAM = {
@@ -519,6 +522,8 @@ async function calcular(req, res) {
         const base = atual - upRec;
         c.nrr = base > 0 ? Math.round((atual / base) * 100) : null;
       } else c.nrr = null;
+      // mensalidade (Valor Recorrente, R$) — peso do cliente na carteira por receita (André, 28/10/26); 0/vazio = sem valor
+      c.mensalidade = atual != null && atual > 0 ? atual : null;
     }
 
     // ---- Health Score (3 pilares por enquanto) ----
@@ -654,7 +659,8 @@ async function calcular(req, res) {
         const dia = wa.dayKeyBR(now); // dia de Brasília (antes UTC: depois das 21h a foto caía no dia seguinte)
         const key = 'hs:snap:' + dia;
         const foto = {};
-        for (const c of clients) if (c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente) foto[c.id] = { s: c.healthScore.score, f: c.healthScore.flag, p: Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, v]) => [k, v.nota])) };
+        // r = mensalidade do dia (André, 28/10/26): deixa a tendência e o "Flag há" serem lidos em receita, não só em clientes
+        for (const c of clients) if (c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente) foto[c.id] = { s: c.healthScore.score, f: c.healthScore.flag, p: Object.fromEntries(Object.entries(c.healthScore.pilares).map(([k, v]) => [k, v.nota])), r: c.mensalidade || 0 };
         const ja = await wa.redis(['EXISTS', key]);
         if (!ja) await wa.redisPipeline([['SET', key, JSON.stringify(foto)], ['EXPIRE', key, String(120 * 86400)]]);
       }
@@ -667,6 +673,9 @@ async function calcular(req, res) {
       clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => (req._internal && _waGrupo ? { ...c, waGrupo: _waGrupo } : c)),
       tasks,
       divergenciasCliente,
+      // carteira por receita (André, 28/10/26): receita, % e nº de clientes por flag (+ fatia "sem score"), meta 70/20/10 em R$
+      // e média da carteira ponderada pela mensalidade — fonte única em _healthscore.js (o front aplica a mesma regra nos filtros)
+      carteira: carteiraPorFlag(clients),
       // faixas de pontos do tráfego (fonte única _healthscore.js) — o painel explica "por que a nota está assim" (André, 28/10/26)
       regrasTrafego: { faixas: { roas: HS_FAIXAS.roas, custoConversa: HS_FAIXAS.custoConversa, custoLead: HS_FAIXAS.custoLead, cpm: HS_FAIXAS.cpm }, carenciaDias: CARENCIA_TRAFEGO_DIAS },
       // pilar Vendas do Ranking (André, 26/10/26): só chamadas internas (/api/ranking) recebem o mapa por pessoa,

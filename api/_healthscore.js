@@ -215,4 +215,72 @@ function calcularTodos(clientes) {
   return out;
 }
 
-module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO };
+// ---- Carteira por RECEITA (André, 28/10/26) ----------------------------------
+// A leitura da carteira (termômetro, meta 70/20/10, cartões da adega, Pareto das abas de pilar, relatório diário e
+// Ranking) é PROPORCIONAL AO VALOR RECORRENTE de cada cliente: um cliente em Red Flag que paga 30% da receita = 30% da
+// carteira em Red, não 1/34. A nota individual de cada cliente NÃO muda — muda só o agregado.
+//  - Base = execução + atrasado + encerramento (quem ainda paga). Churn nunca entra.
+//  - Cliente sem flag (score insuficiente e sem flag gravada no Growth) entra como fatia própria "sem score"; as flags são
+//    calculadas sobre o TOTAL da base — receita que ninguém está medindo aparece como lacuna, não some.
+//  - Percentual da receita = leitura principal; R$ e nº de clientes = complementares.
+//  - Fonte: campo Valor Recorrente do Growth (mensalidade atual; upsell já atualiza o campo). Cliente sem valor pesa 0 e é
+//    contado em `semValor` pra aparecer como pendência de cadastro.
+const META_FLAGS = { green: 70, yellow: 20, red: 10 }; // meta de distribuição (Bruno, 25/09/26) — desde 28/10/26 sobre a receita
+const STATUS_CARTEIRA = ['execucao', 'atrasado', 'encerramento'];
+const stKeyDe = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+// flag efetiva = score ao vivo quando suficiente; senão a flag gravada no Growth (mesma regra do copo no painel)
+const flagEfetiva = (c) => (c.healthScore && c.healthScore.flag) || c.flag || null;
+// % com 1 casa, arredondado pro lado da meta: verde pra baixo (69,96% não vira "70%" ao lado de "faltam"), amarelo/vermelho
+// pra cima (20,04% não vira "20%" ao lado de "a mais"); o resto arredonda normal
+function pctFlag(a, b, f) {
+  if (!b) return 0;
+  const v = (a / b) * 1000;
+  return (f === 'green' ? Math.floor(v + 1e-9) : f === 'yellow' || f === 'red' ? Math.ceil(v - 1e-9) : Math.round(v)) / 10;
+}
+// média ponderada por receita: itens [{ v, w }] — sem peso em nenhum item, cai na média simples (nunca divide por zero)
+function mediaPonderada(itens) {
+  const ok = itens.filter((x) => x && x.v != null);
+  if (!ok.length) return null;
+  const somaW = ok.reduce((a, x) => a + (x.w > 0 ? x.w : 0), 0);
+  if (!(somaW > 0)) return ok.reduce((a, x) => a + x.v, 0) / ok.length;
+  return ok.reduce((a, x) => a + x.v * (x.w > 0 ? x.w : 0), 0) / somaW;
+}
+function carteiraPorFlag(clients) {
+  const base = clients.filter((c) => STATUS_CARTEIRA.includes(stKeyDe(c.status)));
+  const tot = { clientes: base.length, receita: 0, semValor: 0 };
+  const sl = { green: { clientes: 0, receita: 0 }, yellow: { clientes: 0, receita: 0 }, red: { clientes: 0, receita: 0 }, semScore: { clientes: 0, receita: 0 } };
+  for (const c of base) {
+    const r = c.mensalidade > 0 ? c.mensalidade : 0;
+    if (!(c.mensalidade > 0)) tot.semValor++;
+    tot.receita += r;
+    const f = flagEfetiva(c) || 'semScore';
+    sl[f].clientes++; sl[f].receita += r;
+  }
+  tot.receita = Math.round(tot.receita * 100) / 100;
+  const flags = {};
+  for (const f of Object.keys(sl)) {
+    const x = sl[f];
+    const o = { clientes: x.clientes, receita: Math.round(x.receita * 100) / 100, pctReceita: pctFlag(x.receita, tot.receita, f), pctClientes: pctFlag(x.clientes, tot.clientes, f) };
+    if (META_FLAGS[f] != null) {
+      const alvo = (tot.receita * META_FLAGS[f]) / 100;
+      // verde: R$ que faltam pra chegar na meta; amarelo/vermelho: R$ a mais do que a meta permite
+      const dif = f === 'green' ? alvo - x.receita : x.receita - alvo;
+      const alvoN = f === 'green' ? Math.ceil((META_FLAGS[f] / 100) * tot.clientes) : Math.floor((META_FLAGS[f] / 100) * tot.clientes);
+      const difN = f === 'green' ? alvoN - x.clientes : x.clientes - alvoN;
+      o.meta = { pct: META_FLAGS[f], receitaAlvo: Math.round(alvo), ok: dif <= 0.005, difReceita: Math.max(0, Math.round(dif)), difClientes: Math.max(0, difN) };
+    }
+    flags[f] = o;
+  }
+  // média da carteira ponderada pela receita (só quem tem score suficiente), ao lado da média simples
+  const comScore = base.filter((c) => c.healthScore && c.healthScore.score != null && !c.healthScore.insuficiente);
+  const mediaPond = mediaPonderada(comScore.map((c) => ({ v: c.healthScore.score, w: c.mensalidade })));
+  const mediaSimples = comScore.length ? comScore.reduce((a, c) => a + c.healthScore.score, 0) / comScore.length : null;
+  return {
+    base: { status: STATUS_CARTEIRA, ...tot },
+    flags,
+    meta: META_FLAGS,
+    score: { ponderado: mediaPond == null ? null : Math.round(mediaPond), simples: mediaSimples == null ? null : Math.round(mediaSimples), clientes: comScore.length },
+  };
+}
+
+module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO, META_FLAGS, STATUS_CARTEIRA, carteiraPorFlag, mediaPonderada, pctFlag, flagEfetiva };

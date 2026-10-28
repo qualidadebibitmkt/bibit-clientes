@@ -2,7 +2,10 @@
 // O Ranking SOMA pontos, como a Matriz de Avaliação de Desempenho (réguas em api/_ranking-regras.js):
 //   1. Health Score compilado (0–100) — os 4 pilares do Health Score medidos por pessoa (como já era):
 //        Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado;
-//        com menos de 2 pilares com dado a pessoa fica "sem posição"
+//        com menos de 2 pilares com dado a pessoa fica "sem posição".
+//        Desde 28/10/26 (André) a nota de cada pilar da pessoa é a média dos clientes dela PONDERADA PELA MENSALIDADE
+//        (Valor Recorrente): cliente grande em Red pesa mais na nota de quem atende ele. Cliente sem valor entra com peso 0
+//        (se ninguém tiver valor, cai na média simples).
 //   2. Renovação (0–100) — % de renovação contratual do mês, régua da matriz (90–100% = 100 · 80 · 60 · 40 · <60% = 0)
 //   3. Vendas (0–200) — Cross Sell + Up Sell RECEBIDO no mês, régua da matriz (api/_vendas.js)
 //   4. NRR (0–200) — NRR individual do mês: <100% = 0 · 100 = 40 · 105 = 60 · 110 = 80 · 120 = 100 · 130 = 150 · 150%+ = 200
@@ -86,11 +89,13 @@ function calcular(captured, mes, cards) {
       for (const c of a.clientes) {
         const m = colab.medida(k, c, a, tasksOf); if (!m) continue;
         const nota = notaDe(k, m); if (nota == null) continue;
-        notas.push(nota); brutos.push(m.valor); if (m.lacuna > 0) ab++;
-        porCliente.push({ clienteId: c.id, cliente: c.name, flag: flagDe(c) || null, valor: m.valor, nota, lacuna: m.lacuna, txt: m.txt, frente: m.frente || m.papel || null });
+        const w = c.mensalidade > 0 ? c.mensalidade : 0; // peso = mensalidade do cliente (André, 28/10/26)
+        notas.push({ v: nota, w }); brutos.push({ v: m.valor, w }); if (m.lacuna > 0) ab++;
+        porCliente.push({ clienteId: c.id, cliente: c.name, flag: flagDe(c) || null, valor: m.valor, nota, lacuna: m.lacuna, txt: m.txt, frente: m.frente || m.papel || null, mensalidade: c.mensalidade ?? null });
       }
       abaixo += ab;
-      pil[k] = { nota: notas.length ? round0(media(notas)) : null, bruto: brutos.length ? round1(media(brutos)) : null, n: notas.length, abaixo: ab, meta: META[k], peso: PESOS[k], porCliente: porCliente.sort((x, y) => x.nota - y.nota) };
+      const somaW = notas.reduce((s, x) => s + x.w, 0);
+      pil[k] = { nota: notas.length ? round0(hs.mediaPonderada(notas)) : null, bruto: brutos.length ? round1(hs.mediaPonderada(brutos)) : null, n: notas.length, receita: Math.round(somaW), abaixo: ab, meta: META[k], peso: PESOS[k], porCliente: porCliente.sort((x, y) => x.nota - y.nota) };
     }
     const vendas = { ...V.pilar(captured._vendas, a.p.name, mesRef), mes: mesRef, disponivel: !!captured._vendas };
     const comp = compor({ trafego: pil.trafego.nota, satisfacao: pil.satisfacao.nota, produtividade: pil.produtividade.nota, contato: pil.contato.nota });
@@ -180,7 +185,7 @@ const REGRAS = {
   regua: { satisfacao: hs.FAIXAS.csat.faixas, produtividade: hs.FAIXAS.produtividade.faixas, renovacao: RR.REGUA_RENOVACAO, nrr: RR.REGUA_NRR, vendas: V.REGUA.map((r) => ({ faixa: r.rot, pts: r.pts })) },
   texto: [
     ['Total', 'O Ranking soma pontos, como a Matriz de Avaliação de Desempenho: Health Score (até 100) + Renovação (até 100) + Vendas (até 200) + NRR (até 200) = até 600 pontos. Pilar sem dado soma 0.'],
-    ['Health Score', 'O Health Score de cada pessoa, de 0 a 100: Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado (cada pilar é a média dos clientes em que ela está). Satisfação na régua 10→100 · 9→80 · 8→60 · 7→40 · <7→0; Produtividade 100%→100 · 95→80 · 90→60 · 85→40 · <85→0. Com menos de 2 pilares com dado a pessoa fica sem posição.'],
+    ['Health Score', 'O Health Score de cada pessoa, de 0 a 100: Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado. Cada pilar é a média dos clientes em que ela está, ponderada pela mensalidade de cada cliente (desde 28/10/26): cliente que paga mais pesa mais na nota da pessoa. Satisfação na régua 10→100 · 9→80 · 8→60 · 7→40 · <7→0; Produtividade 100%→100 · 95→80 · 90→60 · 85→40 · <85→0. Com menos de 2 pilares com dado a pessoa fica sem posição.'],
     ['Renovação', '% de renovação contratual do mês (clientes que continuam ÷ carteira do mês, igual ao ranking antigo): 90–100% = 100 · 80–89% = 80 · 70–79% = 60 · 60–69% = 40 · abaixo de 60% = 0.'],
     ['Vendas', 'Cross Sell + Up Sell RECEBIDO no mês pela pessoa (Closer; sem Closer, o Responsável; dividido quando há mais de um): R$ 100–1 mil = 20 · 1–3 mil = 40 · 3–5 mil = 60 · 5–10 mil = 80 · 10–20 mil = 100 · acima de 20 mil = 200.'],
     ['NRR', 'NRR individual do mês (receita da carteira no mês ÷ receita no início do mês, com cross sell, upsell, downsell e churn): abaixo de 100% = 0 · 100–104,99% = 40 · 105–109,99% = 60 · 110–119,99% = 80 · 120–129,99% = 100 · 130–149,99% = 150 · 150% ou mais = 200.'],
