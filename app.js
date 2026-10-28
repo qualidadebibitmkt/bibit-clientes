@@ -1043,20 +1043,83 @@
     custoConversa: ['Conferir se a campanha é de mensagem — campanha com outro objetivo gera conversa por acaso e o custo por conversa explode.', 'Conferir se o Tipo de Relatório do card está certo (conversas).', 'Chamada clara pro WhatsApp no criativo.'],
     custoLead: ['Conferir se o formulário ou a página está registrando os cadastros.', 'Revisar público e oferta da campanha.'],
   };
-  function motivosTrafegoHTML(abaixoTr) {
-    const grupos = {};
-    for (const { c } of abaixoTr) for (const it of porqueTrafego(c)) { if (it.causa === 'ok') continue; (grupos[it.causa] = grupos[it.causa] || { titulo: it.titulo, itens: [] }).itens.push({ c, it }); }
-    const lista = Object.entries(grupos).sort((a, b) => b[1].itens.length - a[1].itens.length);
-    if (!lista.length) return '';
-    const val = (it) => (it.valor != null ? it.fmt(it.valor) : '');
-    return `<p class="eyebrow pl-sec">Por que as notas estão baixas <span class="hs-hist-info">motivos dos ${abaixoTr.length} cliente${abaixoTr.length === 1 ? '' : 's'} abaixo da meta, do mais comum pro menos comum · um cliente pode aparecer em mais de um motivo · só orientação, não muda nota</span></p>
-      <div class="iqw-ev-grid">${lista.map(([k, g], i) => `<div class="iqw-ev-card">
-        <div class="iqw-ev-top"><span class="iqw-ev-n">${i + 1}</span><div><p class="iqw-ev-t">${esc(g.titulo)}</p><p class="iqw-ev-sub">${g.itens.length} cliente${g.itens.length === 1 ? '' : 's'}</p></div></div>
-        <div class="hs-pilar-list">${g.itens.map(({ c, it }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}${val(it) ? `<b class="r">${esc(val(it))}</b>` : ''}</button>`).join('')}</div>
-        <p class="iqw-ev-h">O que fazer</p>
-        <ul class="iqw-ev-list">${(DICAS_TR[k] || []).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-      </div>`).join('')}</div>`;
+  // ---- Social Media / RP Manager / Audiovisual: "por que a nota está assim" (André, 28/10/26) ----
+  // nota de cada post = engajamento (curtidas + comentários ÷ alcance) 60% + compartilhamento 40%, comparados à meta do cliente;
+  // cada taxa: 100% da meta ou mais = 100 · 90% = 80 · 80% = 60 · 70% = 40 · abaixo de 70% = 0 (motor do api/_iqc-engine.js)
+  const pctN = (x) => `${Math.round(x)}%`;
+  const taxa = (x) => `${Number(x).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+  const UN_FR = { social: 'post', rp: 'post', audiovisual: 'vídeo' };
+  function porqueConteudo(c, FR) {
+    const fr = c.conteudo && c.conteudo[FR]; const P = fr && fr.porque;
+    if (!fr || fr.nota == null) return [];
+    const un = UN_FR[FR] || 'post'; const n = fr.n || 0; const pl = (k) => `${k} ${un}${k === 1 ? '' : 's'}`;
+    const nota = Math.round(fr.nota);
+    if (!P) return [{ causa: 'info', titulo: nota >= 70 ? 'Na meta' : 'Abaixo da meta', cls: nota >= 70 ? 'g' : 'r', txt: `Média de ${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias (7 dias depois de publicar): ${nota} pts.` }];
+    const out = [];
+    const resumoE = P.atE != null ? `engajamento chegou, em média, a ${pctN(P.atE)} da meta${P.txE != null && P.mE != null ? ` (${taxa(P.txE)} contra meta de ${taxa(P.mE)})` : ''}` : null;
+    const resumoC = P.atC != null ? `compartilhamento a ${pctN(P.atC)} da meta${P.txC != null && P.mC != null ? ` (${taxa(P.txC)} contra ${taxa(P.mC)})` : ''}` : null;
+    if (nota >= 70) out.push({ causa: 'ok', titulo: 'Na meta', cls: 'g', txt: `${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias, média de ${nota} pts: ${[resumoE, resumoC].filter(Boolean).join(' e ')}.` });
+    else {
+      if (P.atE != null && P.atE < 90) out.push({ causa: 'engajamento', titulo: 'Engajamento abaixo da meta', cls: 'r', chip: `${pctN(P.atE)} da meta`, txt: `Curtidas e comentários (em relação a quem viu) ficaram, em média, em ${pctN(P.atE)} da meta do cliente${P.txE != null && P.mE != null ? ` — ${taxa(P.txE)} contra meta de ${taxa(P.mE)}` : ''}. ${P.abaixoE} de ${pl(n)} abaixo de 90% da meta. Vale 60% da nota de cada ${un}; pra valer 80 precisa chegar a 90% da meta.` });
+      if (P.atC != null && P.atC < 90) out.push({ causa: 'compartilhamento', titulo: 'Pouco compartilhamento', cls: 'r', chip: `${pctN(P.atC)} da meta`, txt: `Compartilhamentos (em relação a quem viu) ficaram, em média, em ${pctN(P.atC)} da meta${P.txC != null && P.mC != null ? ` — ${taxa(P.txC)} contra meta de ${taxa(P.mC)}` : ''}. ${P.abaixoC} de ${pl(n)} abaixo de 90% da meta. Vale 40% da nota de cada ${un}.` });
+      if (!out.length) out.push({ causa: 'irregular', titulo: 'Resultado irregular entre os posts', cls: 'y', chip: `${P.zerados} zerado${P.zerados === 1 ? '' : 's'}`, txt: `Na média as taxas chegam perto da meta (${[resumoE, resumoC].filter(Boolean).join(' e ')}), mas ${P.zerados} de ${pl(n)} zeraram e puxaram a nota pra ${nota}.` });
+    }
+    // onde olhar: formato mais fraco, pior post, meta provisória, poucos posts
+    const extra = [];
+    const fmts = Object.values(P.porFormato || {}).filter((f) => f.n && f.nota != null);
+    if (fmts.length > 1) extra.push(`Por formato: ${fmts.sort((a, b) => a.nota - b.nota).map((f) => `${f.lbl} ${Math.round(f.nota)} pts (${f.n})`).join(' · ')}`);
+    if (nota < 70 && P.piores && P.piores.length) extra.push(`Pior${P.piores.length > 1 ? 'es' : ''}: ${P.piores.map((x) => `“${x.nome}” ${Math.round(x.nota)} pts`).join(' · ')}`);
+    if (P.metaProvisoria) extra.push(`${P.metaProvisoria} de ${pl(n)} medido${n === 1 ? '' : 's'} com meta provisória (automática) — vale conferir a meta do cliente em "Metas de desempenho"`);
+    if (n <= 2) extra.push(`Só ${pl(n)} medido${n === 1 ? '' : 's'}: a nota ainda oscila bastante`);
+    if (extra.length) out.push({ causa: 'info', titulo: 'Onde olhar', cls: 'na', txt: extra.join('. ') + '.' });
+    return out;
   }
+  // ---- Web Design: "por que a nota está assim" — critérios e os pontos com nota 60 ou menos (IQW, últimos 90 dias) ----
+  function porqueWeb(c) {
+    const fr = c.conteudo && c.conteudo.webdesign; const P = fr && fr.porque;
+    if (!fr || fr.nota == null) return [];
+    const n = fr.n || 0; const nota = Math.round(fr.nota);
+    const crit = P && P.criterios ? Object.values(P.criterios) : [];
+    const critTxt = crit.length ? crit.map((x) => `${x.rotulo.replace(/^Qualidade /, '')} ${x.nota}`).join(' · ') : '';
+    const out = [{ causa: nota >= 70 ? 'ok' : 'info', titulo: nota >= 70 ? 'Na meta' : 'Abaixo da meta', cls: nota >= 70 ? 'g' : 'r', txt: `Média de ${n} projeto${n === 1 ? '' : 's'} de web avaliado${n === 1 ? '' : 's'} nos últimos 90 dias: ${nota} pts${critTxt ? ` — ${critTxt}` : ''}.` }];
+    for (const f of (P && P.fracos) || []) out.push({ causa: f.k, titulo: f.ponto, cls: f.nota <= 40 ? 'r' : 'y', chip: `${f.nota}`, txt: `${f.criterio} · ${f.tipo}: nota ${f.nota}${f.jus ? ` — “${f.jus}”` : ''}.` });
+    return out;
+  }
+  const porqueFrente = (c, FR) => (FR === 'trafego' ? porqueTrafego(c).map((it) => ({ ...it, cls: it.nota >= 80 ? 'g' : it.nota >= 40 ? 'y' : 'r', chip: it.valor != null ? it.fmt(it.valor) : '' })) : FR === 'webdesign' ? porqueWeb(c) : porqueConteudo(c, FR));
+  const porqueCelHTML = (c, FR) => { const its = porqueFrente(c, FR); return its.length ? its.map((it) => `<div class="tr-porque${it.causa === 'info' ? ' tr-porque-info' : ''}"><b class="${it.cls}">${esc(it.titulo || 'Na meta')}</b> ${esc(it.txt)}</div>`).join('') : '<span class="na">—</span>'; };
+  const DICA_ENG = {
+    social: ['Abrir com um gancho forte na primeira linha ou nos primeiros 3 segundos do vídeo.', 'Fechar o post com uma pergunta ou chamada pra comentar.', 'Repetir os temas e formatos dos posts que bateram a meta (aba Posts, logo abaixo).', 'Publicar nos horários em que o público do cliente mais está online.'],
+    rp: ['Escolher parceiros com público parecido com o do cliente — alcance alto com público errado derruba o engajamento.', 'Combinar com o parceiro uma chamada pra comentar.', 'Repetir os parceiros e formatos que bateram a meta (aba Posts, logo abaixo).'],
+    audiovisual: ['Os 3 primeiros segundos decidem: começar pela cena mais forte.', 'Vídeos mais curtos e com legenda na tela.', 'Fechar com chamada pra comentar.', 'Repetir os temas dos vídeos que bateram a meta (aba Posts, logo abaixo).'],
+  };
+  const DICA_COMP = {
+    social: ['Conteúdo que dá vontade de mandar pra alguém: dica útil, humor, bastidor, curiosidade do produto.', 'Chamada direta: "manda pra quem…" ou "marca quem…".', 'Carrossel com informação prática costuma circular mais que post só de produto.'],
+    rp: ['Pedir ao parceiro o post em collab (aparece nos dois perfis).', 'Conteúdo que dá vontade de mandar pra alguém: dica, humor, bastidor.', 'Chamada direta: "manda pra quem…" ou "marca quem…".'],
+    audiovisual: ['Vídeo com informação prática ou momento engraçado é o que mais circula.', 'Chamada direta no fim: "manda pra quem…".', 'Cortes curtos dos melhores momentos rendem mais compartilhamento que o vídeo inteiro.'],
+  };
+  const DICAS_FRENTE = (FR, causa) => {
+    if (FR === 'trafego') return DICAS_TR[causa] || [];
+    if (FR === 'webdesign') return (window.IQW && window.IQW.DICAS && window.IQW.DICAS[causa]) || ['Revisar este ponto antes da próxima entrega (detalhe na seção "Como evoluir", logo abaixo).'];
+    if (causa === 'engajamento') return DICA_ENG[FR] || DICA_ENG.social;
+    if (causa === 'compartilhamento') return DICA_COMP[FR] || DICA_COMP.social;
+    if (causa === 'irregular') return ['Comparar os posts que zeraram com os que bateram a meta (aba Posts, logo abaixo) e repetir o que deu certo.', 'Conferir se a meta do cliente faz sentido pra cada formato (aba Metas de desempenho).'];
+    return [];
+  };
+  // bloco "Por que as notas estão baixas" — mesmo desenho em todas as sub-abas do Resultado
+  function motivosHTML(abaixoL, FR) {
+    const grupos = {};
+    for (const { c } of abaixoL) for (const it of porqueFrente(c, FR)) { if (it.causa === 'ok' || it.causa === 'info') continue; (grupos[it.causa] = grupos[it.causa] || { titulo: it.titulo, itens: [] }).itens.push({ c, it }); }
+    const lista = Object.entries(grupos).sort((a, b) => b[1].itens.length - a[1].itens.length).slice(0, 6);
+    if (!lista.length) return '';
+    return `<p class="eyebrow pl-sec">Por que as notas estão baixas <span class="hs-hist-info">motivos dos ${abaixoL.length} cliente${abaixoL.length === 1 ? '' : 's'} abaixo da meta, do mais comum pro menos comum · um cliente pode aparecer em mais de um motivo · só orientação, não muda nota</span></p>
+      <div class="iqw-ev-grid">${lista.map(([k, g], i) => { const dicas = DICAS_FRENTE(FR, k); return `<div class="iqw-ev-card">
+        <div class="iqw-ev-top"><span class="iqw-ev-n">${i + 1}</span><div><p class="iqw-ev-t">${esc(g.titulo)}</p><p class="iqw-ev-sub">${g.itens.length} cliente${g.itens.length === 1 ? '' : 's'}</p></div></div>
+        <div class="hs-pilar-list">${g.itens.map(({ c, it }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}${it.chip ? `<b class="${it.cls || 'r'}">${esc(it.chip)}</b>` : ''}</button>`).join('')}</div>
+        ${dicas.length ? `<p class="iqw-ev-h">O que fazer</p><ul class="iqw-ev-list">${dicas.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+      </div>`; }).join('')}</div>`;
+  }
+
+
 
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
   function medidaPilar(k, c, pessoa = null) {
@@ -1288,7 +1351,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' && FR === 'trafego' ? (() => { const its = porqueTrafego(c); return its.length ? its.map((it) => `<div class="tr-porque"><b class="${it.nota >= 80 ? 'g' : it.nota >= 40 ? 'y' : 'r'}">${esc(it.titulo || 'Na meta')}</b> ${esc(it.txt)}</div>`).join('') : '<span class="na">—</span>'; })() : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? porqueCelHTML(c, FR) : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       ${k === 'trafego' ? subResultadoHTML() : ''}
@@ -1321,10 +1384,10 @@
       ${placar}
       ${porPessoa}
 
-      ${k === 'trafego' && FR === 'trafego' ? motivosTrafegoHTML(abaixo) : ''}
+      ${k === 'trafego' ? motivosHTML(abaixo, FR) : ''}
 
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
-      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>${k === 'trafego' && FR === 'trafego' ? 'Por que a nota está assim' : 'Detalhe'}</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
+      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>${k === 'trafego' ? 'Por que a nota está assim' : 'Detalhe'}</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? (filtro ? 'sem nota do cliente pra função desta pessoa' : 'nunca respondeu CSAT') : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
       <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;

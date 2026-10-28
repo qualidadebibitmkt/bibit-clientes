@@ -1766,3 +1766,5 @@ body::before {
 .tr-porque { line-height: 1.45; max-width: 560px; }
 .tr-porque + .tr-porque { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--creme-15, rgba(240,230,210,.15)); }
 .tr-porque b { display: block; font-weight: 600; font-size: 12px; margin-bottom: 1px; }
+.tr-porque-info { color: var(--creme-45); font-size: 12px; }
+.tr-porque-info b { color: var(--creme-45); font-weight: 600; }

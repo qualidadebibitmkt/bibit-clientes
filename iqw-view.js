@@ -283,6 +283,7 @@
   }
 
   window.IQW = {
+    DICAS,
     async render(el) { rootEl = el; if (!st.data) { paint(); await load(null); } else paint(); },
   };
 })();

@@ -224,10 +224,27 @@ function conteudoPorCliente(postsAvaliados, agora = Date.now(), dias = 30) {
     if (p.publicadoEm < ini || !p.performance || p.performance.nota == null || !p.performanceDefinitiva) continue;
     if (!out[p.clienteId]) out[p.clienteId] = {};
     const a = out[p.clienteId][p.area] || (out[p.clienteId][p.area] = { soma: 0, n: 0, posts: [] });
-    a.soma += p.performance.nota; a.n++; a.posts.push({ taskId: p.taskId, nome: p.nome, nota: p.performance.nota });
+    const pf = p.performance;
+    a.soma += pf.nota; a.n++; a.posts.push({ taskId: p.taskId, nome: p.nome, nota: pf.nota, formato: p.formato, atE: pf.atingEngajamento, atC: pf.atingCompartilhamento, txE: pf.txEngajamento, txC: pf.txCompartilhamento, mE: pf.metaEngajamento, mC: pf.metaCompartilhamento, prov: !!(p.meta && p.meta.provisoria), nE: pf.notaEngajamento, nC: pf.notaCompartilhamento });
   }
-  for (const cid of Object.keys(out)) for (const k of Object.keys(out[cid])) { const a = out[cid][k]; out[cid][k] = { nota: Math.round((a.soma / a.n) * 10) / 10, n: a.n, posts: a.posts }; }
+  for (const cid of Object.keys(out)) for (const k of Object.keys(out[cid])) { const a = out[cid][k]; out[cid][k] = { nota: Math.round((a.soma / a.n) * 10) / 10, n: a.n, posts: a.posts, porque: porqueConteudo(a.posts) }; }
   return out;
+}
+
+// resumo do "por que a nota está assim" de uma área num cliente (André, 28/10/26) — só números, o painel monta o texto
+// at* = % da meta atingida (90% ou mais vale 80; 100% vale 100); posts abaixo = abaixo de 90% da meta
+function porqueConteudo(posts) {
+  const med = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)); return v.length ? Math.round((v.reduce((s, x) => s + x, 0) / v.length) * 100) / 100 : null; };
+  const formatos = {};
+  for (const x of posts) { const f = x.formato || 'outro'; (formatos[f] = formatos[f] || []).push(x); }
+  return {
+    atE: med(posts.map((x) => x.atE)), atC: med(posts.map((x) => x.atC)),
+    txE: med(posts.map((x) => x.txE)), txC: med(posts.map((x) => x.txC)), mE: med(posts.map((x) => x.mE)), mC: med(posts.map((x) => x.mC)),
+    abaixoE: posts.filter((x) => x.atE != null && x.atE < 90).length, abaixoC: posts.filter((x) => x.atC != null && x.atC < 90).length,
+    zerados: posts.filter((x) => x.nota === 0).length, metaProvisoria: posts.filter((x) => x.prov).length,
+    porFormato: Object.fromEntries(Object.entries(formatos).map(([f, xs]) => [f, { lbl: FORMATO_LBL[f] || f, n: xs.length, nota: med(xs.map((x) => x.nota)), atE: med(xs.map((x) => x.atE)), atC: med(xs.map((x) => x.atC)) }])),
+    piores: posts.slice().sort((a, b) => a.nota - b.nota).slice(0, 2).map((x) => ({ taskId: x.taskId, nome: x.nome, nota: x.nota, atE: x.atE, atC: x.atC })),
+  };
 }
 
 async function gravarConfig(cfg) { await wa.redis(['SET', 'iqc:config', JSON.stringify(cfg)]); }

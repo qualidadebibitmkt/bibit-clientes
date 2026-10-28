@@ -571,10 +571,10 @@ async function calcular(req, res) {
       const IQW = require('./_iqw'); const wa1 = require('./_wa');
       if (wa1.redisReady()) {
         const wd = IQW.webdesignPorCliente((await IQW.lerTodos()).map(IQW.avaliar), now, 90);
-        for (const [cid, v] of Object.entries(wd)) { if (!conteudoPorCliente[cid]) conteudoPorCliente[cid] = {}; conteudoPorCliente[cid].webdesign = { nota: v.nota, n: v.n }; }
+        for (const [cid, v] of Object.entries(wd)) { if (!conteudoPorCliente[cid]) conteudoPorCliente[cid] = {}; conteudoPorCliente[cid].webdesign = { nota: v.nota, n: v.n, porque: v.porque }; }
       }
     } catch (e) { /* IQW é opcional */ }
-    for (const c of clients) c.conteudo = conteudoPorCliente[c.id] ? Object.fromEntries(Object.entries(conteudoPorCliente[c.id]).map(([k, v]) => [k, { nota: v.nota, n: v.n }])) : null;
+    for (const c of clients) c.conteudo = conteudoPorCliente[c.id] ? Object.fromEntries(Object.entries(conteudoPorCliente[c.id]).map(([k, v]) => [k, { nota: v.nota, n: v.n, porque: v.porque || null }])) : null;
     // validade da nota de Relacionamento (auditoria 26/10/26): a análise é diária; se o grupo não é analisado há mais de
     // 3 dias (automação parada), a nota velha sai do score em vez de pesar 25% calada — igual ao tráfego sem coleta
     try {

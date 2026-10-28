@@ -5,6 +5,7 @@ const E = require('./_iqw-engine');
 const TTL = 400 * 86400;
 const BRT_OFF = 3 * 3600 * 1000;
 const mesDe = (ms) => new Date(ms - BRT_OFF).toISOString().slice(0, 7);
+const TIPO_LBL = E.TIPOS;
 const num = (x) => (x == null || x === '' ? null : Number.isFinite(Number(x)) ? Number(x) : null);
 
 async function lerTodos() {
@@ -62,8 +63,19 @@ function webdesignPorCliente(projetos, agora = Date.now(), dias = 90) {
     if (!p.clienteId || ref < ini || !p.resultado || p.resultado.nota == null) continue;
     const a = out[p.clienteId] || (out[p.clienteId] = { soma: 0, n: 0, projetos: [] });
     a.soma += p.resultado.notaExata != null ? p.resultado.notaExata : p.resultado.nota; a.n++; a.projetos.push({ id: p.id, tipo: p.tipo, nota: p.resultado.nota });
+    // "por que a nota está assim" (André, 28/10/26): critérios e os pontos com nota 60 ou menos, com a justificativa da avaliação
+    const ne = notasEfetivas(p) || {}; const jus = (p.avaliacao && p.avaliacao.justificativas) || {};
+    for (const c of E.CRITERIOS) {
+      const cr = p.resultado.criterios && p.resultado.criterios[c.k];
+      if (cr && cr.aplicavel && cr.nota != null) (a.crit = a.crit || {})[c.k] = [...((a.crit || {})[c.k] || []), cr.nota];
+      for (const sb of c.sub) { const v = num(ne[c.k] && ne[c.k][sb.k]); if (v != null && v <= 60) (a.fracos = a.fracos || []).push({ criterio: c.rotulo, ponto: sb.rotulo, k: sb.k, nota: v, tipo: TIPO_LBL[p.tipo] || p.tipo, url: p.url || null, jus: jus[c.k] && jus[c.k][sb.k] ? String(jus[c.k][sb.k]).slice(0, 200) : '' }); }
+    }
   }
-  for (const cid of Object.keys(out)) { const a = out[cid]; out[cid] = { nota: Math.round(a.soma / a.n), n: a.n, projetos: a.projetos }; }
+  for (const cid of Object.keys(out)) {
+    const a = out[cid];
+    const crit = Object.fromEntries(E.CRITERIOS.filter((c) => a.crit && a.crit[c.k]).map((c) => [c.k, { rotulo: c.rotulo, nota: Math.round(a.crit[c.k].reduce((s, x) => s + x, 0) / a.crit[c.k].length) }]));
+    out[cid] = { nota: Math.round(a.soma / a.n), n: a.n, projetos: a.projetos, porque: { criterios: crit, fracos: (a.fracos || []).sort((x, y) => x.nota - y.nota).slice(0, 4) } };
+  }
   return out;
 }
 
