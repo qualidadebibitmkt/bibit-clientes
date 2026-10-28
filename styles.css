@@ -1761,3 +1761,8 @@ body::before {
 .iqw-ev-card .g, .iqw-ev-forte .g, .iqw-ev-meses .g { color: var(--flag-green); }
 .iqw-ev-card .y, .iqw-ev-forte .y, .iqw-ev-meses .y { color: var(--flag-yellow); }
 .iqw-ev-card .r, .iqw-ev-forte .r, .iqw-ev-meses .r { color: var(--flag-red); }
+
+/* Tráfego Pago · por que a nota está assim (28/10/26) */
+.tr-porque { line-height: 1.45; max-width: 560px; }
+.tr-porque + .tr-porque { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--creme-15, rgba(240,230,210,.15)); }
+.tr-porque b { display: block; font-weight: 600; font-size: 12px; margin-bottom: 1px; }

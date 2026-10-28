@@ -976,6 +976,88 @@
     return { abertas: abertas.length, lateAb, concl: concl.length, lateCo, total, late: lateAb + lateCo, semPrazo, pct: total ? Math.floor(((total - lateAb - lateCo) / total) * 1000 + 1e-9) / 10 : null }; // trunca como o servidor: 94,96% = 94,9% (60), nunca 'na meta' por arredondamento
   }
 
+  // ---- Tráfego Pago: "por que a nota está assim" (André, 28/10/26) ----
+  // Explica, em português simples, de onde veio a nota de tráfego de cada cliente e o que falta pra meta.
+  // As faixas vêm do servidor (api/_healthscore.js, fonte única); o espelho abaixo só cobre o painel antigo em cache.
+  const FAIXAS_TR_PADRAO = {
+    roas: { menorMelhor: false, faixas: [[7, 100], [5, 80], [3.5, 60], [2.5, 40]] },
+    custoConversa: { menorMelhor: true, faixas: [[3, 100], [5, 80], [7, 60], [9.9999, 40]] },
+    custoLead: { menorMelhor: true, faixas: [[10, 100], [15, 80], [20, 60], [29.9999, 40]] },
+    cpm: { menorMelhor: true, faixas: [[4, 100], [6, 80], [8, 60], [11.9999, 40]] },
+  };
+  const faixasTr = () => (state.data && state.data.regrasTrafego && state.data.regrasTrafego.faixas) || FAIXAS_TR_PADRAO;
+  const CHAVE_TR = { ROAS: 'roas', CPM: 'cpm', 'Custo por conversa': 'custoConversa', 'Custo por lead': 'custoLead' };
+  const fmtRSp = (n) => `R$ ${Number(n).toLocaleString('pt-BR', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  const fmtXp = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x`;
+  const O_QUE_E = {
+    cpm: 'custo pra mil pessoas verem o anúncio',
+    roas: (v) => `cada R$ 1 em anúncio voltou ${fmtRSp(v)} em vendas`,
+    custoConversa: 'custo de cada conversa iniciada no WhatsApp/Direct',
+    custoLead: 'custo de cada cadastro gerado',
+  };
+  const RESULTADO_DE = { roas: 'nenhuma venda', custoConversa: 'nenhuma conversa', custoLead: 'nenhum cadastro', cpm: 'nenhum alcance' };
+  // devolve [{ causa, titulo, txt, valor, nota }] — um item por métrica que pesa na nota (completo pode ter 2–3)
+  function porqueTrafego(c) {
+    const p = c.healthScore && c.healthScore.pilares.trafego;
+    const det = ((p && p.detalhe) || []).filter((f) => !f.frente);
+    const F = faixasTr(); const carencia = (state.data && state.data.regrasTrafego && state.data.regrasTrafego.carenciaDias) || 7;
+    const out = [];
+    for (const f of det) {
+      if (f.rotulo === 'Campanha') {
+        if (f.nota == null) continue; // em carência: fora do score
+        if (c.campanha && c.campanha.nuncaColetado) out.push({ causa: 'nunca', titulo: 'Nenhum dado de anúncio chegou do Reportei', nota: 0, txt: `O Reportei está ligado no card, mas até hoje nenhum dado de anúncio chegou — a conta de anúncios provavelmente não está conectada no projeto do Reportei (ou o cliente nunca rodou campanha). Enquanto não chegar dado, o tráfego vale 0.` });
+        else out.push({ causa: 'parada', titulo: 'Sem campanha rodando', nota: 0, txt: `Nenhum investimento em anúncio na última semana${c.campanha && c.campanha.desde ? ` (último gasto registrado na semana de ${fmtCurto(c.campanha.desde)})` : ''}. Como o cliente já passou dos ${carencia} primeiros dias em execução, o tráfego vale 0 até a campanha voltar a rodar.` });
+        continue;
+      }
+      const ch = CHAVE_TR[f.rotulo]; const R = ch && F[ch];
+      if (!R) continue;
+      const fmt = ch === 'roas' ? fmtXp : fmtRSp;
+      if (f.valor === 0 || f.valor == null) {
+        if (f.nota == null) continue;
+        out.push({ causa: 'semresultado', titulo: 'Investiu e não teve resultado', nota: 0, txt: `Houve investimento em anúncio na última semana, mas ${RESULTADO_DE[ch]} foi registrada pelo Reportei — o objetivo do cliente (${(c.tipoRelatorio || 'completo').toLowerCase()}) é medido por ${f.rotulo}, então vale 0.` });
+        continue;
+      }
+      const v = Number(f.valor); const nota = f.nota != null ? f.nota : 0;
+      const zeroLim = R.faixas[R.faixas.length - 1][0];
+      const metaLim = R.faixas[1][0]; // faixa de 80 pts = bate a meta de 70
+      const oq = typeof O_QUE_E[ch] === 'function' ? O_QUE_E[ch](v) : O_QUE_E[ch];
+      let txt = `${f.rotulo} ${fmt(v)} na última semana (${oq}) → vale ${nota} pts.`;
+      if (nota >= 80) txt += ' Dentro da meta.';
+      else {
+        const zeroTxt = R.menorMelhor ? `a partir de ${fmt(Math.ceil(zeroLim))} vale 0` : `abaixo de ${fmt(zeroLim)} vale 0`;
+        const metaTxt = R.menorMelhor ? `até ${fmt(metaLim)}` : `${fmt(metaLim)} ou mais`;
+        const dif = R.menorMelhor ? `cair ${Math.round((1 - metaLim / v) * 100)}%` : `subir de ${fmt(v)} para ${fmt(metaLim)}`;
+        txt += `${nota === 0 ? ` Pela régua, ${zeroTxt}.` : ''} Meta: ${metaTxt} (precisa ${dif}).`;
+      }
+      out.push({ causa: nota >= 80 ? 'ok' : ch, titulo: nota >= 80 ? 'Na meta' : { cpm: 'CPM alto (anúncio caro pra aparecer)', roas: 'ROAS baixo (pouca venda pelo investido)', custoConversa: 'Conversa cara', custoLead: 'Cadastro (lead) caro' }[ch], valor: v, fmt, nota, txt });
+    }
+    return out;
+  }
+  // o que fazer por motivo — sugestões pra pauta com o Gestor de Tráfego; só orientação, não muda nota
+  const DICAS_TR = {
+    parada: ['Confirmar com o Gestor de Tráfego se a campanha foi pausada de propósito e combinar com o cliente a data de volta.', 'Ver se não é falta de saldo ou cartão recusado na conta de anúncios (grupo TRÁFEGO - SALDO).', 'Se o cliente não vai anunciar por um tempo, alinhar o status do card — enquanto não roda, o tráfego segue valendo 0.'],
+    nunca: ['Abrir o projeto do cliente no Reportei e conferir se a conta de anúncios da Meta está conectada.', 'Conferir se o Reportei Project ID do card é o projeto certo do cliente.'],
+    semresultado: ['Conferir se o resultado está sendo registrado (evento de compra, conversa ou cadastro).', 'Conferir se o objetivo da campanha bate com o Tipo de Relatório do card.'],
+    cpm: ['Conferir se o público não está estreito demais — público pequeno encarece cada mil pessoas alcançadas.', 'Renovar criativos repetidos há muito tempo (o mesmo anúncio visto várias vezes fica mais caro).', 'Conferir se a campanha está com objetivo de alcance/reconhecimento, como pede o Tipo de Relatório.'],
+    roas: ['Conferir se todas as vendas do site estão sendo contadas — ROAS baixo às vezes é venda que não foi registrada.', 'Concentrar a verba nos anúncios e produtos que mais vendem.', 'Revisar com o cliente a oferta e a página para onde o anúncio leva.'],
+    custoConversa: ['Conferir se a campanha é de mensagem — campanha com outro objetivo gera conversa por acaso e o custo por conversa explode.', 'Conferir se o Tipo de Relatório do card está certo (conversas).', 'Chamada clara pro WhatsApp no criativo.'],
+    custoLead: ['Conferir se o formulário ou a página está registrando os cadastros.', 'Revisar público e oferta da campanha.'],
+  };
+  function motivosTrafegoHTML(abaixoTr) {
+    const grupos = {};
+    for (const { c } of abaixoTr) for (const it of porqueTrafego(c)) { if (it.causa === 'ok') continue; (grupos[it.causa] = grupos[it.causa] || { titulo: it.titulo, itens: [] }).itens.push({ c, it }); }
+    const lista = Object.entries(grupos).sort((a, b) => b[1].itens.length - a[1].itens.length);
+    if (!lista.length) return '';
+    const val = (it) => (it.valor != null ? it.fmt(it.valor) : '');
+    return `<p class="eyebrow pl-sec">Por que as notas estão baixas <span class="hs-hist-info">motivos dos ${abaixoTr.length} cliente${abaixoTr.length === 1 ? '' : 's'} abaixo da meta, do mais comum pro menos comum · um cliente pode aparecer em mais de um motivo · só orientação, não muda nota</span></p>
+      <div class="iqw-ev-grid">${lista.map(([k, g], i) => `<div class="iqw-ev-card">
+        <div class="iqw-ev-top"><span class="iqw-ev-n">${i + 1}</span><div><p class="iqw-ev-t">${esc(g.titulo)}</p><p class="iqw-ev-sub">${g.itens.length} cliente${g.itens.length === 1 ? '' : 's'}</p></div></div>
+        <div class="hs-pilar-list">${g.itens.map(({ c, it }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}${val(it) ? `<b class="r">${esc(val(it))}</b>` : ''}</button>`).join('')}</div>
+        <p class="iqw-ev-h">O que fazer</p>
+        <ul class="iqw-ev-list">${(DICAS_TR[k] || []).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+      </div>`).join('')}</div>`;
+  }
+
   // valor bruto do pilar pro cliente + lacuna até a meta (na unidade do pilar); null = sem dado
   function medidaPilar(k, c, pessoa = null) {
     const hs = c.healthScore;
@@ -1206,7 +1288,7 @@
         <div class="hs-pilar-list">${rows.map(([r, b]) => `<button class="hs-chip" data-id="${b.c.id}">${esc(r)} <b class="g">${fmtM(r, b.v)}</b><i>${esc(b.c.name)}</i></button>`).join('')}</div>`;
     }
 
-    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
+    const linhaTab = ({ c, m }) => `<tr class="hs-tr" data-id="${c.id}"><td class="hs-td-cli">${glass(flagDe(c), 18)}<span>${esc(c.name)}</span>${k === 'trafego' && FR === 'trafego' && c.tipoRelatorio ? `<span class="hs-td-plano">${esc(c.tipoRelatorio.toLowerCase())}</span>` : c.plano ? `<span class="hs-td-plano">${planoIcon(c.plano, 14)}${esc(planoLabel(c.plano).toLowerCase())}</span>` : ''}</td><td class="hs-td-txt">${esc(m.txt)}</td><td class="hs-td ${m.cls}">${fmtV(m.valor)}</td><td class="hs-td">${m.lacuna > 0 ? `<span class="${m.cls}">${fmtLac(m.lacuna)}</span>` : '<span class="g">na meta</span>'}</td><td class="hs-td-txt">${k === 'satisfacao' && c.metrics && c.metrics.ultimaResposta ? 'última resposta ' + fmtCurto(c.metrics.ultimaResposta) : k === 'contato' ? `${(() => { const eq = c.contato && c.contato.equipe; if (!eq) return ''; const falou = new Set(eq.pessoas.map((x) => String(x.nome).split(' ')[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))); const cal = semExcluidos(equipeDe(c)).filter((p) => !contatoOpcional(c, String(p.id || p.name))).map((p) => p.name.split(' ')[0]).filter((n) => { const f = n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return !falou.has(f) && !(f === 'willian' && falou.has('will')); }); return cal.length ? `<span class="r" title="na Equipe e sem mensagem na semana">sem mensagem na semana: ${esc(cal.join(', '))}</span> · ` : ''; })()}${c.contato && c.contato.equipe ? `<span class="${c.contato.equipe.grupo.semResposta ? 'r' : 'na'}">${c.contato.equipe.grupo.msgsCliente} do cliente · ${c.contato.equipe.grupo.msgsBibit} da Bibit${c.contato.equipe.grupo.semResposta ? ` · ${c.contato.equipe.grupo.semResposta} sem resposta >24h` : ''}${c.contato.equipe.grupo.pendentes ? ` · ${c.contato.equipe.grupo.pendentes} aguardando` : ''}</span> ` : ''}${c.contato && c.contato.resumo ? `<span title="${esc(c.contato.resumo)}">${esc(c.contato.resumo.slice(0, 70))}${c.contato.resumo.length > 70 ? '…' : ''}</span>` : ''}` : k === 'trafego' && FR === 'trafego' ? (() => { const its = porqueTrafego(c); return its.length ? its.map((it) => `<div class="tr-porque"><b class="${it.nota >= 80 ? 'g' : it.nota >= 40 ? 'y' : 'r'}">${esc(it.titulo || 'Na meta')}</b> ${esc(it.txt)}</div>`).join('') : '<span class="na">—</span>'; })() : k === 'trafego' ? (c.healthScore.pilares.trafego.detalhe || []).filter((f) => (m.frente && m.frente !== 'trafego' ? f.frente === m.frente : !f.frente)).map((f) => `${esc(f.rotulo)} ${f.valor != null ? (f.unid === 'pts' ? Math.round(f.valor) + ' pts' : f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}`).join(' · ') : ''}</td></tr>`;
 
     el.innerHTML = `
       ${k === 'trafego' ? subResultadoHTML() : ''}
@@ -1239,8 +1321,10 @@
       ${placar}
       ${porPessoa}
 
+      ${k === 'trafego' && FR === 'trafego' ? motivosTrafegoHTML(abaixo) : ''}
+
       <p class="eyebrow pl-sec">Cliente a cliente <span class="hs-hist-info">detalhado</span></p>
-      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>Detalhe</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
+      ${com.length ? `<div class="hs-table-wrap"><table class="hs-table"><thead><tr><th>Cliente</th><th>Medida</th><th class="r">Valor</th><th class="r">Falta</th><th>${k === 'trafego' && FR === 'trafego' ? 'Por que a nota está assim' : 'Detalhe'}</th></tr></thead><tbody>${[...abaixo, ...com.filter((x) => x.m.lacuna <= 0).sort((a, b) => b.m.valor - a.m.valor)].map(linhaTab).join('')}</tbody></table></div>` : '<div class="fn-empty">Sem dado neste filtro.</div>'}
       ${sem.length ? `<p class="hs-quase-l">Sem dado neste pilar</p><div class="hs-pilar-list hs-quase">${sem.map(({ c }) => `<button class="hs-chip" data-id="${c.id}">${esc(c.name)}<i>${k === 'trafego' ? (FR === 'webdesign' ? 'sem projeto de web avaliado (90 dias)' : FR === 'audiovisual' ? 'sem vídeo medido nos últimos 30 dias' : FR !== 'trafego' ? 'sem post medido nos últimos 30 dias' : !c.temReportei ? 'sem Reportei ligado' : semCampanha(c) ? 'sem campanha rodando' : 'sem dado de anúncios') : k === 'satisfacao' ? (filtro ? 'sem nota do cliente pra função desta pessoa' : 'nunca respondeu CSAT') : k === 'contato' ? (c.contato && c.contato.resumo ? 'conversa lida, ainda sem nota' : 'sem grupo analisado') : ''}</i></button>`).join('')}</div>` : ''}
 
       <div class="hs-regras pl-regras"><div><b>Meta</b> ${esc(M.desc)}.</div><div><b>Falta</b> quanto falta pra chegar na meta, na unidade do pilar. A lista "Cliente a cliente" vai do pior pro melhor: quem está à esquerda do traço da META é a pauta da reunião semanal.</div><div><b>Peso no score</b> ${k === 'trafego' ? (FR === 'trafego' ? '30 (o pilar Resultado inteiro; o tráfego é uma das áreas que formam a média)' : `30 (o pilar Resultado inteiro; ${esc(FRENTE_LBL[FR])} é uma das áreas que formam a média)`) : k === 'produtividade' ? 20 : 25}.</div></div>`;

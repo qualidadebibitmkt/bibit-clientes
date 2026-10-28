@@ -74,7 +74,7 @@ const CF_HS_ROAS = 'f5a25347-e2d8-443f-9017-7bdc62af5814';
 const CF_HS_CONVERSA = '3a7e3d8a-f76b-437b-a474-9bc615f8aeda';
 const CF_HS_LEAD = '0cc186ba-9053-4266-9a2b-9c304c8e6e5d';
 const CF_HS_ATUALIZADO = '02aa0b63-6f5d-423d-b299-1cb0e181513d';
-const { calcularTodos } = require('./_healthscore');
+const { calcularTodos, FAIXAS: HS_FAIXAS, CARENCIA_TRAFEGO_DIAS } = require('./_healthscore');
 const HS_VALIDADE_DIAS = 10; // métrica de tráfego mais velha que isso = campanha parada (coleta é semanal, segunda 9h30)
 const CF_DATA_SAIDA = 'b969da4a-8bae-4f4c-9f8b-2919620a98e0';
 const CF_TEAM = {
@@ -667,6 +667,8 @@ async function calcular(req, res) {
       clients: clients.map(({ matchName, _valorRec, _waGrupo, ...c }) => (req._internal && _waGrupo ? { ...c, waGrupo: _waGrupo } : c)),
       tasks,
       divergenciasCliente,
+      // faixas de pontos do tráfego (fonte única _healthscore.js) — o painel explica "por que a nota está assim" (André, 28/10/26)
+      regrasTrafego: { faixas: { roas: HS_FAIXAS.roas, custoConversa: HS_FAIXAS.custoConversa, custoLead: HS_FAIXAS.custoLead, cpm: HS_FAIXAS.cpm }, carenciaDias: CARENCIA_TRAFEGO_DIAS },
       // pilar Vendas do Ranking (André, 26/10/26): só chamadas internas (/api/ranking) recebem o mapa por pessoa,
       // e mesmo lá o R$ não sai do servidor — o ranking converte em pontos/faixa antes de responder
       // lista de vendas que não respondeu → null (painel mostra "vendas indisponíveis", não "não vendeu")
