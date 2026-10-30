@@ -1,13 +1,14 @@
 // BIBIT · IQC — camada de dados (Redis) e montagem das avaliações.
 // O ClickUp continua sendo a fonte dos POSTS (card = publicação: cliente, área/lista, responsável, data,
 // id do post no Meta). O Redis (mesmo Upstash do painel) guarda o que o ClickUp não tem: métricas coletadas
-// no D+2 e no D+7, metas por cliente × formato (versionadas), aprovação por post (análise do WhatsApp ou
+// no D+2 e no D+7, seguidores do perfil (foto diária), aprovação por post (análise do WhatsApp ou
 // do gestor), auditoria criativa por IA e os fechamentos mensais.
 //
 // Chaves:
 //   iqc:post:<taskId>            registro do post (métricas, aprovação, auditoria)        TTL 400 d
 //   iqc:mes:<AAAA-MM>            SET de taskIds publicados no mês (BRT)                   TTL 400 d
-//   iqc:metas                    JSON [{id, clienteId|'PADRAO', formato|'*', engajamento, compartilhamento, de, ate, origem, por, em}]
+//   iqc:seg:<clienteId>          seguidores do perfil do cliente: {seguidores, username, igUserId, em, hist:{AAAA-MM-DD: n}}  TTL 400 d
+//                                (coleta diária do Make "IQC · Seguidores dos perfis"; é o denominador do engajamento — André, 30/10/26)
 //   iqc:aprov:<clienteId>:<AAAA-MM>  estado da aprovação do calendário do mês             TTL 400 d
 //   iqc:fech:<AAAA-MM>           fechamento mensal (definitivo)                            sem TTL
 //   iqc:config                   {janelaDias, janelaProvisoriaDias, amostraAuditoria, versao}
@@ -77,12 +78,41 @@ async function gravarRegistro(taskId, reg, mes) {
   if (mes) cmds.push(['SADD', 'iqc:mes:' + mes, taskId], ['EXPIRE', 'iqc:mes:' + mes, String(TTL)]);
   await wa.redisPipeline(cmds);
 }
-async function lerMetas() {
-  const raw = await wa.redis(['GET', 'iqc:metas']);
-  if (!raw) return [];
-  try { return JSON.parse(raw) || []; } catch { return []; }
+// ---------- seguidores do perfil (denominador do engajamento) ----------
+const SEG_HIST_MAX = 400; // dias guardados no histórico
+async function lerSeguidores(clienteIds) {
+  const ids = [...new Set((clienteIds || []).filter(Boolean))];
+  if (!ids.length) return {};
+  const out = await wa.redisPipeline(ids.map((id) => ['GET', 'iqc:seg:' + id]));
+  const map = {};
+  out.forEach((r, i) => { if (r && r.result) { try { map[ids[i]] = JSON.parse(r.result); } catch {} } });
+  return map;
 }
-async function gravarMetas(lista) { await wa.redis(['SET', 'iqc:metas', JSON.stringify(lista)]); }
+// grava a foto do dia (BRT) e mantém o "atual"; a mesma data regrava (última leitura do dia vale)
+async function gravarSeguidores(clienteId, { seguidores, username, igUserId, em }) {
+  const atual = (await lerSeguidores([clienteId]))[clienteId] || { hist: {} };
+  const quando = em || Date.now();
+  const n = Math.round(Number(seguidores));
+  const hist = { ...(atual.hist || {}), [diaDe(quando)]: n };
+  const dias = Object.keys(hist).sort();
+  while (dias.length > SEG_HIST_MAX) delete hist[dias.shift()];
+  const reg = { seguidores: n, username: username || atual.username || null, igUserId: igUserId || atual.igUserId || null, em: quando, hist };
+  await wa.redisPipeline([['SET', 'iqc:seg:' + clienteId, JSON.stringify(reg)], ['EXPIRE', 'iqc:seg:' + clienteId, String(TTL)]]);
+  return reg;
+}
+// seguidores válidos pra um post: a foto do dia da coleta das métricas (ou a última anterior); sem foto anterior, a
+// primeira foto depois (perfil novo na coleta) — nunca inventa número
+function seguidoresPara(reg, quandoMs) {
+  if (!reg) return null;
+  const hist = reg.hist || {};
+  const dias = Object.keys(hist).sort();
+  if (!dias.length) return reg.seguidores > 0 ? { seguidores: reg.seguidores, em: reg.em || null, fonte: 'atual' } : null;
+  const alvo = diaDe(quandoMs || Date.now());
+  let ate = null; for (const d of dias) { if (d <= alvo) ate = d; else break; }
+  const dia = ate || dias[0];
+  if (!(hist[dia] > 0)) return null;
+  return { seguidores: hist[dia], em: Date.parse(dia + 'T12:00:00-03:00'), fonte: ate ? (ate === alvo ? 'do dia' : 'última foto antes da coleta') : 'primeira foto depois da coleta' };
+}
 async function lerConfig() {
   const raw = await wa.redis(['GET', 'iqc:config']);
   // aprovacaoTacitaDias: null = desligado (silêncio não é aprovação — regra do documento). Se ligado (N dias), post PUBLICADO
@@ -91,20 +121,6 @@ async function lerConfig() {
   const base = { janelaDias: E.JANELA_DIAS, janelaProvisoriaDias: E.JANELA_PROVISORIA_DIAS, amostraAuditoria: 3, aprovacaoTacitaDias: null, versao: E.VERSAO_REGRAS };
   if (!raw) return base;
   try { return { ...base, ...JSON.parse(raw) }; } catch { return base; }
-}
-
-// ---------- metas vigentes ----------
-// Prioridade: cliente+formato > cliente+* > PADRAO+formato > PADRAO+*; dentro do mesmo nível, a versão mais recente
-// cuja vigência cobre a data. Versões com `ate` passado não valem pra posts novos (mas continuam no histórico).
-function metaVigente(metas, clienteId, formato, quandoMs) {
-  const q = quandoMs || Date.now();
-  const cobre = (m) => (!m.de || m.de <= q) && (!m.ate || m.ate >= q);
-  const niveis = [[clienteId, formato], [clienteId, '*'], ['PADRAO', formato], ['PADRAO', '*']];
-  for (const [c, f] of niveis) {
-    const cand = metas.filter((m) => m.clienteId === c && (m.formato || '*') === f && cobre(m)).sort((a, b) => (b.em || 0) - (a.em || 0));
-    if (cand.length) return cand[0];
-  }
-  return null;
 }
 
 // prazo de aprovação do calendário do mês M: fim do dia 28 do mês anterior (00:00 do dia 29, horário de Brasília)
@@ -117,7 +133,8 @@ function prazoCalendario(mes) {
 const fmtPrazo = (ms) => { const d = new Date(ms - 3 * 3600 * 1000 - 1); return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
 
 // ---------- avaliação de um post ----------
-function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
+// seg = registro iqc:seg do cliente do post (lerSeguidores), ou null
+function avaliarPost(post, reg, seg, cfg, agora = Date.now()) {
   const r = reg || {};
   const jan = cfg.janelaDias * 86400000, janP = cfg.janelaProvisoriaDias * 86400000;
   const d7 = r.d7 && num(r.d7.alcance) != null ? r.d7 : null;
@@ -125,8 +142,9 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
   const manual = r.manual && num(r.manual.alcance) != null ? r.manual : null;
   const fonte = manual ? 'manual' : d7 ? 'definitiva' : d2 ? 'provisoria' : null;
   const metricas = post.publicado ? (manual || d7 || d2 || null) : null;
-  const meta = metaVigente(metas, post.clienteId, post.formato, post.publicadoEm);
-  const perf = metricas ? E.performancePost(metricas, meta ? { engajamento: meta.engajamento, compartilhamento: meta.compartilhamento } : {}) : null;
+  // seguidores: os que vieram junto com a métrica (manual) ou a foto diária mais próxima da coleta
+  const segPost = metricas ? (num(metricas.seguidores) > 0 ? { seguidores: num(metricas.seguidores), em: metricas.em || null, fonte: metricas.origem === 'manual' ? 'digitado' : 'coleta' } : seguidoresPara(seg, metricas.em || post.publicadoEm + jan)) : null;
+  const perf = metricas ? E.performancePost(metricas, { area: post.area, seguidores: segPost ? segPost.seguidores : null, seguidoresEm: segPost ? segPost.em : null, seguidoresFonte: segPost ? segPost.fonte : null }) : null;
   const janelaFechou = post.publicado && agora >= post.publicadoEm + jan;
   let aprov = r.aprovacao || { status: 'pendente', fonte: null };
   // aprovação tácita do CALENDÁRIO (André, 26/10/26): a mensagem do dia 20 avisa que, sem retorno até o dia 28 (o link do
@@ -146,7 +164,7 @@ function avaliarPost(post, reg, metas, cfg, agora = Date.now()) {
     ...post,
     janela: { fechou: janelaFechou, fechaEm: post.publicadoEm + jan, provisoriaEm: post.publicadoEm + janP, coletas: { d2: !!d2, d7: !!d7, manual: !!manual } },
     metricas, fonteMetricas: fonte, coletadoEm: metricas ? metricas.em || null : null,
-    meta: meta ? { id: meta.id, engajamento: meta.engajamento, compartilhamento: meta.compartilhamento, origem: meta.origem, nivel: meta.clienteId === 'PADRAO' ? 'padrao' : 'cliente', provisoria: !!meta.provisoria } : null,
+    regua: E.reguaDaArea(post.area).id, seguidores: segPost,
     performance: perf, performanceDefinitiva: !!(perf && perf.nota != null && (d7 || manual)),
     aprovacao: aprov,
     auditoria: aud ? { notas: aud.notas, nota: qual ? qual.nota : null, incompleta: qual ? qual.incompleta : true, justificativas: aud.justificativas || null, positivos: aud.positivos || [], melhorias: aud.melhorias || [], limitacoes: aud.limitacoes || [], evidencias: aud.evidencias || [], modelo: aud.modelo, rubrica: aud.rubrica, em: aud.em, revisadoPor: aud.revisadoPor || null, amostra: !!aud.amostra, fonteCowork: aud.fonte === 'cowork' } : null,
@@ -180,10 +198,11 @@ function consolidarMes(posts, { amostraN = 3 } = {}) {
     porCliente.push({
       responsavel: g.responsavel, funcao: g.funcao, area: g.area, clienteId: g.clienteId, cliente: g.cliente,
       posts: g.posts.length, postsComPerf: comPerf.length, postsPerfDefinitiva: perfDef.length, postsAguardando: g.posts.filter((p) => !p.janela.fechou).length,
+      postsSemSeguidores: g.posts.filter((p) => p.publicado && p.metricas && !(p.seguidores && p.seguidores.seguidores > 0)).length,
       performance: perfNota, performanceProvisoria: comPerf.length > 0 && perfDef.length < comPerf.length,
       aprovacao: aprov, qualidade: qualNota, auditados: auditados.length, amostra: idsAmostra,
       ...cons,
-      faltando: cons.faltando.map((f) => f === 'performance' ? (comPerf.length ? 'performance' : 'métricas dos posts') : f === 'aprovacao' ? (aprov.pendentes ? `aprovação (${aprov.pendentes} pendente${aprov.pendentes > 1 ? 's' : ''})` : 'aprovação') : `qualidade (${auditados.length}/${idsAmostra.length} auditados)`),
+      faltando: cons.faltando.map((f) => f === 'performance' ? (comPerf.length ? 'engajamento' : g.posts.some((p) => p.publicado && p.metricas) ? 'seguidores do perfil' : 'métricas dos posts') : f === 'aprovacao' ? (aprov.pendentes ? `aprovação (${aprov.pendentes} pendente${aprov.pendentes > 1 ? 's' : ''})` : 'aprovação') : `qualidade (${auditados.length}/${idsAmostra.length} auditados)`),
     });
   }
   // colaborador = média simples dos clientes elegíveis (com IQC); prévia com os parciais
@@ -215,8 +234,8 @@ function consolidarMes(posts, { amostraN = 3 } = {}) {
 }
 
 // ---------- pilar Resultado do Health Score: performance de conteúdo por área ----------
-// Para cada cliente: nota média de performance dos posts com janela fechada publicados nos últimos `dias` dias,
-// separada por área. Só posts com nota (métrica + meta). Devolve { social: {nota, n}, audiovisual: {...}, rp: {...} }.
+// Para cada cliente: nota média de engajamento dos posts com janela fechada publicados nos últimos `dias` dias,
+// separada por área. Só posts com nota (métricas + seguidores). Devolve { social: {nota, n, posts, porque}, audiovisual, rp }.
 function conteudoPorCliente(postsAvaliados, agora = Date.now(), dias = 30) {
   const ini = agora - dias * 86400000;
   const out = {};
@@ -225,32 +244,42 @@ function conteudoPorCliente(postsAvaliados, agora = Date.now(), dias = 30) {
     if (!out[p.clienteId]) out[p.clienteId] = {};
     const a = out[p.clienteId][p.area] || (out[p.clienteId][p.area] = { soma: 0, n: 0, posts: [] });
     const pf = p.performance;
-    a.soma += pf.nota; a.n++; a.posts.push({ taskId: p.taskId, nome: p.nome, nota: pf.nota, formato: p.formato, atE: pf.atingEngajamento, atC: pf.atingCompartilhamento, txE: pf.txEngajamento, txC: pf.txCompartilhamento, mE: pf.metaEngajamento, mC: pf.metaCompartilhamento, prov: !!(p.meta && p.meta.provisoria), nE: pf.notaEngajamento, nC: pf.notaCompartilhamento });
+    a.soma += pf.nota; a.n++; a.posts.push({ taskId: p.taskId, nome: p.nome, nota: pf.nota, formato: p.formato, txE: pf.txEngajamento, faixa: pf.faixa, classe: pf.classificacao, inter: pf.interacoes, seg: pf.seguidores, regua: pf.regua, curtidas: pf.curtidas, comentarios: pf.comentarios, compartilhamentos: pf.compartilhamentos, salvamentos: pf.salvamentos });
   }
-  for (const cid of Object.keys(out)) for (const k of Object.keys(out[cid])) { const a = out[cid][k]; out[cid][k] = { nota: Math.round((a.soma / a.n) * 10) / 10, n: a.n, posts: a.posts, porque: porqueConteudo(a.posts) }; }
+  for (const cid of Object.keys(out)) for (const k of Object.keys(out[cid])) { const a = out[cid][k]; out[cid][k] = { nota: Math.round((a.soma / a.n) * 10) / 10, n: a.n, posts: a.posts, porque: porqueConteudo(a.posts, k) }; }
   return out;
 }
 
-// resumo do "por que a nota está assim" de uma área num cliente (André, 28/10/26) — só números, o painel monta o texto
-// at* = % da meta atingida (90% ou mais vale 80; 100% vale 100); posts abaixo = abaixo de 90% da meta
-function porqueConteudo(posts) {
+// resumo do "por que a nota está assim" de uma área num cliente (André, 28/10/26; régua de engajamento 30/10/26) — só
+// números, o painel monta o texto
+function porqueConteudo(posts, area) {
+  const regua = E.reguaDaArea(area);
   const med = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)); return v.length ? Math.round((v.reduce((s, x) => s + x, 0) / v.length) * 100) / 100 : null; };
+  const mediana = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return Math.round((v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2) * 100) / 100; };
   const formatos = {};
   for (const x of posts) { const f = x.formato || 'outro'; (formatos[f] = formatos[f] || []).push(x); }
-  const mediana = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return Math.round((v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2) * 100) / 100; };
-  const unica = (xs) => { const v = [...new Set(xs.filter((x) => x != null))]; return v.length === 1 ? v[0] : null; };
+  const porFaixa = {}; for (const [, pts] of regua.faixas) porFaixa[pts] = 0; porFaixa[0] = 0;
+  for (const x of posts) porFaixa[x.nota] = (porFaixa[x.nota] || 0) + 1;
+  const txMed = mediana(posts.map((x) => x.txE));
+  const soma = (k) => posts.reduce((s, x) => s + (Number.isFinite(x[k]) ? x[k] : 0), 0);
   return {
-    // pontos médios de cada parte (o que de fato pesa na nota; post acima da meta não compensa outro abaixo) e o post típico (mediana)
-    nE: med(posts.map((x) => x.nE)), nC: med(posts.map((x) => x.nC)), medAtE: mediana(posts.map((x) => x.atE)), medAtC: mediana(posts.map((x) => x.atC)),
-    medTxE: mediana(posts.map((x) => x.txE)), medTxC: mediana(posts.map((x) => x.txC)), metaE: unica(posts.map((x) => x.mE)), metaC: unica(posts.map((x) => x.mC)),
-    atE: med(posts.map((x) => x.atE)), atC: med(posts.map((x) => x.atC)),
-    txE: med(posts.map((x) => x.txE)), txC: med(posts.map((x) => x.txC)), mE: med(posts.map((x) => x.mE)), mC: med(posts.map((x) => x.mC)),
-    abaixoE: posts.filter((x) => x.atE != null && x.atE < 90).length, abaixoC: posts.filter((x) => x.atC != null && x.atC < 90).length,
-    zerados: posts.filter((x) => x.nota === 0).length, metaProvisoria: posts.filter((x) => x.prov).length,
-    porFormato: Object.fromEntries(Object.entries(formatos).map(([f, xs]) => [f, { lbl: FORMATO_LBL[f] || f, n: xs.length, nota: med(xs.map((x) => x.nota)), atE: med(xs.map((x) => x.atE)), atC: med(xs.map((x) => x.atC)) }])),
-    piores: posts.slice().sort((a, b) => a.nota - b.nota).slice(0, 2).map((x) => ({ taskId: x.taskId, nome: x.nome, nota: x.nota, atE: x.atE, atC: x.atC })),
+    regua: regua.id, reguaLbl: regua.lbl, faixas: regua.faixas, // [[limite %, pontos]] da melhor pra pior
+    txE: med(posts.map((x) => x.txE)), medTxE: txMed, faixaTipica: txMed != null ? E.faixaEngajamento(txMed, regua) : null, notaTipica: txMed != null ? E.pontosEngajamento(txMed, regua) : null,
+    seguidores: posts.map((x) => x.seg).filter((x) => x > 0).sort((a, b) => b - a)[0] || null,
+    interacoes: { curtidas: soma('curtidas'), comentarios: soma('comentarios'), compartilhamentos: soma('compartilhamentos'), salvamentos: soma('salvamentos'), total: soma('inter') },
+    porFaixa, zerados: posts.filter((x) => x.nota === 0).length, abaixo: posts.filter((x) => x.nota < 80).length,
+    proximaFaixa: (() => { // quanto falta, no post típico, pra subir um degrau (em % e em interações por post)
+      if (txMed == null) return null;
+      const seg = posts.map((x) => x.seg).filter((x) => x > 0).sort((a, b) => b - a)[0];
+      const acima = regua.faixas.slice().reverse().find(([lim]) => txMed < lim - 1e-9);
+      if (!acima || !seg) return null;
+      return { limite: acima[0], pontos: acima[1], faltaPct: Math.round((acima[0] - txMed) * 100) / 100, faltaInteracoes: Math.ceil(((acima[0] - txMed) / 100) * seg) };
+    })(),
+    porFormato: Object.fromEntries(Object.entries(formatos).map(([f, xs]) => [f, { lbl: FORMATO_LBL[f] || f, n: xs.length, nota: med(xs.map((x) => x.nota)), txE: med(xs.map((x) => x.txE)) }])),
+    piores: posts.slice().sort((a, b) => a.nota - b.nota || a.txE - b.txE).slice(0, 2).map((x) => ({ taskId: x.taskId, nome: x.nome, nota: x.nota, txE: x.txE, faixa: x.faixa })),
+    melhores: posts.slice().sort((a, b) => b.nota - a.nota || b.txE - a.txE).slice(0, 2).map((x) => ({ taskId: x.taskId, nome: x.nome, nota: x.nota, txE: x.txE, faixa: x.faixa })),
   };
 }
 
 async function gravarConfig(cfg) { await wa.redis(['SET', 'iqc:config', JSON.stringify(cfg)]); }
-module.exports = { MESES_SEM_APROVACAO, AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerMetas, gravarMetas, lerConfig, gravarConfig, metaVigente, avaliarPost, consolidarMes, conteudoPorCliente };
+module.exports = { MESES_SEM_APROVACAO, AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerSeguidores, gravarSeguidores, seguidoresPara, lerConfig, gravarConfig, avaliarPost, consolidarMes, conteudoPorCliente };

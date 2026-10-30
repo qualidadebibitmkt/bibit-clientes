@@ -565,8 +565,10 @@ async function calcular(req, res) {
       if (wa0.redisReady()) {
         const posts = IQC.postsDoPainel({ clients, tasks });
         if (posts.length) {
-          const [regs, metas, cfg] = await Promise.all([IQC.lerRegistros(posts.map((p) => p.taskId)), IQC.lerMetas(), IQC.lerConfig()]);
-          const avaliados = posts.map((p) => IQC.avaliarPost(p, regs[p.taskId], metas, cfg, now));
+          const [regs, segs, cfg] = await Promise.all([IQC.lerRegistros(posts.map((p) => p.taskId)), IQC.lerSeguidores(posts.map((p) => p.clienteId)), IQC.lerConfig()]);
+          const avaliados = posts.map((p) => IQC.avaliarPost(p, regs[p.taskId], segs[p.clienteId] || null, cfg, now));
+          // seguidores do perfil (foto mais recente) na ficha do cliente
+          for (const c of clients) { const sg = segs[c.id]; c.seguidores = sg && sg.seguidores > 0 ? { n: sg.seguidores, em: sg.em || null, username: sg.username || null } : null; }
           conteudoPorCliente = IQC.conteudoPorCliente(avaliados, now, 30);
         }
       }

@@ -28,9 +28,11 @@
 //      em que "sem campanha" nunca pesava). Sem Data de Entrada em Execução = carência vencida.
 //  - Score ≥90 verde · 70–89 amarelo · <70 vermelho (Bruno, 25/09/26; antes 80/50).
 //  - RESULTADO (André, 22/10/26): o pilar "Tráfego" passou a se chamar Resultado e reúne TODAS as áreas da operação:
-//      frente Tráfego (régua acima) + frente por área de conteúdo (Social Media, Audiovisual, RP) = performance média
-//      dos posts do cliente com janela de 7 dias fechada nos últimos 30 dias (motor do IQC: engajamento 60 · compartilhamento 40
-//      vs. meta do cliente × formato). Nota do pilar = média simples das frentes que têm dado; frente sem dado fica fora.
+//      frente Tráfego (régua acima) + frente por área de conteúdo (Social Media, Audiovisual, RP) = engajamento médio
+//      dos posts do cliente com janela de 7 dias fechada nos últimos 30 dias. Desde 30/10/26 (André) é UMA métrica só:
+//      Engajamento = (curtidas + comentários + compartilhamentos + salvamentos) ÷ seguidores × 100, em régua FIXA por área
+//      (A — Social: 0,5/1/2/3% → 40/60/80/100 · B — Audiovisual e RP: 1/2/3/5% → 40/60/80/100; motor em api/_iqc-engine.js).
+//      Nota do pilar = média simples das frentes que têm dado; frente sem dado fica fora.
 //      A chave interna continua "trafego" (snapshots/painel); o rótulo é Resultado. Contato → Relacionamento (só rótulo).
 
 const PESOS = { trafego: 30, satisfacao: 25, produtividade: 20, contato: 25 };
@@ -184,7 +186,7 @@ function notaResultado(tr, conteudo) {
     const c = conteudo && conteudo[k];
     if (!c || c.nota == null) continue;
     frentes[k] = { nota: c.nota, n: c.n };
-    detalhe.push({ rotulo: lbl, valor: c.nota, nota: c.nota, unid: 'pts', frente: k, regua: k === 'webdesign' ? `IQW médio de ${c.n} projeto${c.n === 1 ? '' : 's'} de web avaliado${c.n === 1 ? '' : 's'} nos últimos 90 dias (técnica · experiência · visual · retrabalho)` : `performance média de ${c.n} post${c.n === 1 ? '' : 's'} (janela de 7 dias, últimos 30 dias) — engajamento 60 · compartilhamento 40 vs. meta do cliente` });
+    detalhe.push({ rotulo: lbl, valor: c.nota, nota: c.nota, unid: 'pts', frente: k, regua: k === 'webdesign' ? `IQW médio de ${c.n} projeto${c.n === 1 ? '' : 's'} de web avaliado${c.n === 1 ? '' : 's'} nos últimos 90 dias (técnica · experiência · visual · retrabalho)` : `engajamento médio de ${c.n} post${c.n === 1 ? '' : 's'} (medido 7 dias depois de publicar, últimos 30 dias) — curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores, régua ${k === 'social' ? 'A (estático)' : 'B (vídeo/UGC)'}` });
   }
   const notas = Object.values(frentes).map((f) => f.nota).filter((n) => n != null);
   return { nota: notas.length ? round0(notas.reduce((a, b) => a + b, 0) / notas.length) : null, detalhe, frentes };

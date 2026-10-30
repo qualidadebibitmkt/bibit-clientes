@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 104;
+  const VERSION = 105;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -543,10 +543,10 @@
     const AREA = { social: 'Social Media', audiovisual: 'Audiovisual', rp: 'RP Manager' };
     for (const [k, lbl] of Object.entries(AREA)) {
       if (!tem(k) && !fr[k]) continue;
-      if (fr[k] && fr[k].nota != null) { linhas.push(`<b>${lbl}</b> <b class="${hsCls(fr[k].nota)}">${Math.round(fr[k].nota)}</b>: <span class="hs-regua">desempenho de ${fr[k].n} post${fr[k].n === 1 ? '' : 's'} dos últimos 30 dias — curtidas, comentários e compartilhamentos comparados à meta do cliente, medidos 7 dias depois de publicar</span>`); continue; }
+      if (fr[k] && fr[k].nota != null) { const P = c.conteudo && c.conteudo[k] && c.conteudo[k].porque; linhas.push(`<b>${lbl}</b> <b class="${hsCls(fr[k].nota)}">${Math.round(fr[k].nota)}</b>: <span class="hs-regua">engajamento de ${fr[k].n} post${fr[k].n === 1 ? '' : 's'} dos últimos 30 dias${P && P.medTxE != null ? ` — post típico com ${taxa(P.medTxE)} de engajamento (${P.faixaTipica}, régua ${P.regua}${P.seguidores ? `, ${Number(P.seguidores).toLocaleString('pt-BR')} seguidores` : ''})` : ''} — curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores, medido 7 dias depois de publicar</span>`); continue; }
       const pubs = tasksOf(c.id).filter((x) => x.listKey === k && x.igId && x.dataAgendamento && x.dataAgendamento >= agora - 30 * DIA);
       const esperando = pubs.filter((x) => x.dataAgendamento > agora - 7 * DIA).length;
-      const motivo = pubs.length ? (esperando ? `${esperando} post${esperando === 1 ? '' : 's'} publicado${esperando === 1 ? '' : 's'} esperando completar 7 dias` : 'posts publicados aguardando coleta das métricas') : 'nenhum post publicado pelo painel nos últimos 30 dias';
+      const motivo = pubs.length ? (esperando ? `${esperando} post${esperando === 1 ? '' : 's'} publicado${esperando === 1 ? '' : 's'} esperando completar 7 dias` : (c.seguidores ? 'posts publicados aguardando coleta das métricas' : 'posts publicados, mas o perfil ainda não tem o número de seguidores (coleta diária) — sem isso não há engajamento')) : 'nenhum post publicado pelo painel nos últimos 30 dias';
       linhas.push(`<b>${lbl}</b>: <span class="hs-regua">${motivo} — ainda não pesa</span>`);
     }
     // Web Design
@@ -976,7 +976,7 @@
       <p class="eyebrow">Como é calculado</p>
       <div class="hs-regras">
         <div><b>Pesos</b> Resultado 30 · Satisfação 25 · Relacionamento 25 · Produtividade 20 (matriz de 21/10/26) — pilar sem dado não zera o cliente: os pesos redistribuem entre os disponíveis (mínimo 2 pilares pra emitir flag).</div>
-        <div><b>Resultado</b> todas as áreas da operação, em média simples das frentes com dado: <u>tráfego</u> + <u>conteúdo por área</u> (Social Media, Audiovisual e RP Manager: desempenho médio dos posts dos últimos 30 dias, medido 7 dias após publicar — engajamento 60 · compartilhamento 40, comparado à meta do cliente por formato). A frente de tráfego é a última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Cada métrica vira pontos por faixa fixa (100 · 80 · 60 · 40 · 0): ROAS ≥ 7x · 5–6,9 · 3,5–4,9 · 2,5–3,49 · &lt; 2,5 — CPM ≤ R$ 4 · 4,1–6 · 6,1–8 · 8,1–11,9 · ≥ 12 — custo por conversa ≤ R$ 3 · 3,1–5 · 5,1–7 · 7,1–9,99 · ≥ 10 — custo por lead ≤ R$ 10 · 10–15 · 15–20 · 20–30 · ≥ 30. Objetivo com investimento e sem resultado = 0.</div>
+        <div><b>Resultado</b> todas as áreas da operação, em média simples das frentes com dado: <u>tráfego</u> + <u>conteúdo por área</u> (Social Media, Audiovisual e RP Manager: engajamento médio dos posts dos últimos 30 dias, medido 7 dias após publicar — uma métrica só: <u>curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores do perfil × 100</u>, em régua fixa por área, igual pra todos os clientes: <b>Social Media</b> (estático) abaixo de 0,5% → 0 · 0,5–1% → 40 · 1–2% → 60 · 2–3% → 80 · 3% ou mais → 100; <b>Audiovisual e RP</b> (vídeo e UGC) abaixo de 1% → 0 · 1–2% → 40 · 2–3% → 60 · 3–5% → 80 · 5% ou mais → 100 — regra do André, 30/10/26). A frente de tráfego é a última semana do Reportei, pela métrica do objetivo (Tipo de Relatório): e-commerce → ROAS · reconhecimento → CPM · conversas → custo por conversa · leads → custo por lead · completo → média das frentes. Cada métrica vira pontos por faixa fixa (100 · 80 · 60 · 40 · 0): ROAS ≥ 7x · 5–6,9 · 3,5–4,9 · 2,5–3,49 · &lt; 2,5 — CPM ≤ R$ 4 · 4,1–6 · 6,1–8 · 8,1–11,9 · ≥ 12 — custo por conversa ≤ R$ 3 · 3,1–5 · 5,1–7 · 7,1–9,99 · ≥ 10 — custo por lead ≤ R$ 10 · 10–15 · 15–20 · 20–30 · ≥ 30. Objetivo com investimento e sem resultado = 0.</div>
         <div><b>Satisfação</b> CSAT (e NPS, quando houver) na escala 0–10, por faixa fixa: 10 → 100 pontos · 9–9,9 → 80 · 8–8,9 → 60 · 7–7,9 → 40 · abaixo de 7 → 0.</div>
         <div><b>Produtividade</b> tarefas no prazo ÷ tarefas (abertas + concluídas nos últimos 30 dias); conta abertas vencidas e concluídas fora do prazo. Por faixa fixa: 100% → 100 pontos · 95–99,9 → 80 · 90–94,9 → 60 · 85–89,9 → 40 · abaixo de 85 → 0.</div>
         <div><b>Relacionamento</b> nota de engajamento do cliente, calculada todo dia (22h) sobre os últimos 7 dias do grupo de WhatsApp: a IA só extrai os fatos (pedidos da Bibit e se foram respondidos, iniciativas, tom, alertas) e a nota sai por fórmula — Presença 20 (dias com mensagem do cliente: 4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Responsividade 20 (% de pedidos vencidos respondidos: 100% → 20 · ≥90 → 15 · ≥80 → 10 · ≥70 → 5; sem pedido = não conta) · Iniciativa 20 (4+ → 20 · 3 → 15 · 2 → 10 · 1 → 5) · Tom 40 (elogio 40 · cordial 30 · neutro 20 · insatisfação 10 · grave 0). Critério que não se aplica tem o peso dividido entre os outros. Limites: 7 dias sem mensagem do cliente → máx. 40 · reclamação grave não resolvida → máx. 30 · ameaça de cancelamento → máx. 20. Classificação: ≥90 excelente · 80–89 engajado · 60–79 morno · 40–59 baixo · &lt;40 crítico.</div>
@@ -1005,7 +1005,7 @@
   // meta do pilar + média da carteira, Pareto de quem concentra a lacuna, tabela cliente × valor × meta × falta,
   // corte por tipo de campanha (tráfego) ou por colaborador (satisfação, produtividade, contato).
   const METAS_PILAR = {
-    trafego:       { lbl: 'Resultado',     meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — média das frentes com dado: tráfego (faixa fixa da métrica do objetivo: ROAS, CPM, custo por conversa ou por lead) e conteúdo por área (Social Media, Audiovisual e RP Manager: desempenho dos posts comparado à meta do cliente)' },
+    trafego:       { lbl: 'Resultado',     meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — média das frentes com dado: tráfego (faixa fixa da métrica do objetivo: ROAS, CPM, custo por conversa ou por lead) e conteúdo por área (Social Media, Audiovisual e RP Manager: engajamento dos posts — curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores — na régua fixa da área)' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 (escala 0–10 do Typeform) — 10 vale 100 pontos, 9–9,9 vale 80; 8–8,9 amarelo (60); 7–7,9 vermelho (40); abaixo de 7 zera' },
     produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score); 100% vale 100 pontos, 95–99,9 vale 80' },
     contato:       { lbl: 'Relacionamento', meta: 70, unid: 'pts', desc: 'nota de engajamento do cliente ≥ 70 — calculada todo dia sobre os últimos 7 dias do grupo de WhatsApp (presença 20 · responsividade 20 · iniciativa 20 · tom 40); 50–69 amarelo; abaixo de 50 vermelho' },
@@ -1095,9 +1095,9 @@
     custoConversa: ['Conferir se a campanha é de mensagem — campanha com outro objetivo gera conversa por acaso e o custo por conversa explode.', 'Conferir se o Tipo de Relatório do card está certo (conversas).', 'Chamada clara pro WhatsApp no criativo.'],
     custoLead: ['Conferir se o formulário ou a página está registrando os cadastros.', 'Revisar público e oferta da campanha.'],
   };
-  // ---- Social Media / RP Manager / Audiovisual: "por que a nota está assim" (André, 28/10/26) ----
-  // nota de cada post = engajamento (curtidas + comentários ÷ alcance) 60% + compartilhamento 40%, comparados à meta do cliente;
-  // cada taxa: 100% da meta ou mais = 100 · 90% = 80 · 80% = 60 · 70% = 40 · abaixo de 70% = 0 (motor do api/_iqc-engine.js)
+  // ---- Social Media / RP Manager / Audiovisual: "por que a nota está assim" (André, 28/10/26; régua de engajamento 30/10/26) ----
+  // nota de cada post = engajamento (curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores × 100) na régua fixa
+  // da área: A (Social, estático) 0,5/1/2/3% → 40/60/80/100 · B (Audiovisual e RP, vídeo/UGC) 1/2/3/5% → 40/60/80/100 (api/_iqc-engine.js)
   const pctN = (x) => `${Math.round(x)}%`;
   const taxa = (x) => `${Number(x).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
   const UN_FR = { social: 'post', rp: 'post', audiovisual: 'vídeo' };
@@ -1108,24 +1108,22 @@
     const nota = Math.round(fr.nota);
     if (!P) return [{ causa: 'info', titulo: nota >= 70 ? 'Na meta' : 'Abaixo da meta', cls: nota >= 70 ? 'g' : 'r', txt: `Média de ${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias (7 dias depois de publicar): ${nota} pts.` }];
     const out = [];
-    // o que pesa na nota é a média dos PONTOS de cada parte (100/80/60/40/0 por post); a % da meta é a do post típico (mediana)
-    const metaE = P.metaE != null ? `; meta do cliente ${taxa(P.metaE)}` : '';
-    const metaC = P.metaC != null ? `; meta do cliente ${taxa(P.metaC)}` : '';
-    const tipE = P.medAtE != null ? ` No post típico, o engajamento chegou a ${pctN(P.medAtE)} da meta${P.medTxE != null ? ` (${taxa(P.medTxE)} de quem viu curtiu ou comentou${metaE})` : ''}.` : '';
-    const tipC = P.medAtC != null ? ` No post típico, o compartilhamento chegou a ${pctN(P.medAtC)} da meta${P.medTxC != null ? ` (${taxa(P.medTxC)} de quem viu compartilhou${metaC})` : ''}.` : '';
-    const nE = P.nE != null ? Math.round(P.nE) : null, nC = P.nC != null ? Math.round(P.nC) : null;
-    if (nota >= 70) out.push({ causa: 'ok', titulo: 'Na meta', cls: 'g', txt: `${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias, média de ${nota} pts${nE != null && nC != null ? ` — engajamento valeu ${nE} e compartilhamento ${nC} de 100` : ''}.` });
+    const seg = P.seguidores ? `${Number(P.seguidores).toLocaleString('pt-BR')} seguidores` : 'seguidores';
+    const tipico = P.medTxE != null ? `No ${un} típico, o engajamento foi ${taxa(P.medTxE)} (${P.faixaTipica}, régua ${P.regua} — ${P.notaTipica} pts)` : '';
+    const sobe = P.proximaFaixa ? ` Pra subir pra ${P.proximaFaixa.pontos} pts faltam ${taxa(P.proximaFaixa.faltaPct)} de engajamento — cerca de ${P.proximaFaixa.faltaInteracoes.toLocaleString('pt-BR')} interações a mais por ${un}, com ${seg}.` : '';
+    const faixas = Object.entries(P.porFaixa || {}).filter(([, k]) => k > 0).sort((a, b) => Number(b[0]) - Number(a[0])).map(([pts, k]) => `${k} com ${pts}`).join(' · ');
+    if (nota >= 70) out.push({ causa: 'ok', titulo: 'Na meta', cls: 'g', txt: `${pl(n)} medido${n === 1 ? '' : 's'} nos últimos 30 dias, média de ${nota} pts${faixas ? ` (${faixas})` : ''}. ${tipico}.` });
     else {
-      if (nE != null && nE < 80) out.push({ causa: 'engajamento', titulo: 'Engajamento abaixo da meta', cls: nE >= 60 ? 'y' : 'r', chip: `${nE} pts`, txt: `Curtidas e comentários (em relação a quem viu) valeram, em média, ${nE} de 100 pts — ${P.abaixoE} de ${pl(n)} ${P.abaixoE === 1 ? 'ficou' : 'ficaram'} abaixo de 90% da meta.${tipE} É 60% da nota de cada ${un}; ${un} com 90% da meta ou mais vale 80.` });
-      if (nC != null && nC < 80) out.push({ causa: 'compartilhamento', titulo: 'Pouco compartilhamento', cls: nC >= 60 ? 'y' : 'r', chip: `${nC} pts`, txt: `Compartilhamentos (em relação a quem viu) valeram, em média, ${nC} de 100 pts — ${P.abaixoC} de ${pl(n)} ${P.abaixoC === 1 ? 'ficou' : 'ficaram'} abaixo de 90% da meta.${tipC} É 40% da nota de cada ${un}.` });
-      if (!out.length) out.push({ causa: 'irregular', titulo: 'Resultado irregular entre os posts', cls: 'y', chip: `${P.zerados} zerado${P.zerados === 1 ? '' : 's'}`, txt: `Engajamento e compartilhamento vão bem na média, mas ${P.zerados} de ${pl(n)} zeraram e puxaram a nota pra ${nota}.` });
+      const baixo = P.notaTipica != null && P.notaTipica < 80;
+      if (baixo) out.push({ causa: 'engajamento', titulo: 'Engajamento abaixo da régua', cls: P.notaTipica >= 40 ? 'y' : 'r', chip: P.medTxE != null ? taxa(P.medTxE) : `${nota} pts`, txt: `${tipico}; ${P.abaixo} de ${pl(n)} ${P.abaixo === 1 ? 'ficou' : 'ficaram'} abaixo de 80 pts${P.zerados ? ` e ${P.zerados} zer${P.zerados === 1 ? 'ou' : 'aram'} (abaixo de ${P.faixas && P.faixas.length ? String(P.faixas[P.faixas.length - 1][0]).replace('.', ',') : ''}%)` : ''}. Interações dos ${pl(n)}: ${P.interacoes.curtidas.toLocaleString('pt-BR')} curtidas · ${P.interacoes.comentarios.toLocaleString('pt-BR')} comentários · ${P.interacoes.compartilhamentos.toLocaleString('pt-BR')} compartilhamentos · ${P.interacoes.salvamentos.toLocaleString('pt-BR')} salvamentos.${sobe}` });
+      else out.push({ causa: 'irregular', titulo: 'Resultado irregular entre os posts', cls: 'y', chip: `${P.zerados} zerado${P.zerados === 1 ? '' : 's'}`, txt: `${tipico}, mas ${P.zerados} de ${pl(n)} zer${P.zerados === 1 ? 'ou' : 'aram'} e puxaram a média pra ${nota}.${sobe}` });
     }
-    // onde olhar: formato mais fraco, pior post, meta provisória, poucos posts
+    // onde olhar: formato mais fraco, pior post, melhor post, poucos posts
     const extra = [];
     const fmts = Object.values(P.porFormato || {}).filter((f) => f.n && f.nota != null);
-    if (fmts.length > 1) extra.push(`Por formato: ${fmts.sort((a, b) => a.nota - b.nota).map((f) => `${f.lbl} ${Math.round(f.nota)} pts (${f.n})`).join(' · ')}`);
-    if (nota < 70 && P.piores && P.piores.length) extra.push(`Pior${P.piores.length > 1 ? 'es' : ''}: ${P.piores.map((x) => `“${x.nome}” ${Math.round(x.nota)} pts`).join(' · ')}`);
-    if (P.metaProvisoria) extra.push(`${P.metaProvisoria} de ${pl(n)} medido${n === 1 ? '' : 's'} com meta provisória (automática) — vale conferir a meta do cliente em "Metas de desempenho"`);
+    if (fmts.length > 1) extra.push(`Por formato: ${fmts.sort((a, b) => a.nota - b.nota).map((f) => `${f.lbl} ${Math.round(f.nota)} pts (${f.n}${f.txE != null ? `, ${taxa(f.txE)}` : ''})`).join(' · ')}`);
+    if (nota < 70 && P.piores && P.piores.length) extra.push(`Pior${P.piores.length > 1 ? 'es' : ''}: ${P.piores.map((x) => `“${x.nome}” ${taxa(x.txE)} (${Math.round(x.nota)} pts)`).join(' · ')}`);
+    if (P.melhores && P.melhores.length && P.melhores[0].nota >= 80) extra.push(`Melhor: “${P.melhores[0].nome}” ${taxa(P.melhores[0].txE)} (${Math.round(P.melhores[0].nota)} pts) — vale repetir o formato e o tema`);
     if (n <= 2) extra.push(`Só ${pl(n)} medido${n === 1 ? '' : 's'}: a nota ainda oscila bastante`);
     if (extra.length) out.push({ causa: 'info', titulo: 'Onde olhar', cls: 'na', txt: extra.join('. ') + '.' });
     return out;
@@ -1143,22 +1141,17 @@
   }
   const porqueFrente = (c, FR) => (FR === 'trafego' ? porqueTrafego(c).map((it) => ({ ...it, cls: it.nota >= 80 ? 'g' : it.nota >= 40 ? 'y' : 'r', chip: it.valor != null ? it.fmt(it.valor) : '' })) : FR === 'webdesign' ? porqueWeb(c) : porqueConteudo(c, FR));
   const porqueCelHTML = (c, FR) => { const its = porqueFrente(c, FR); return its.length ? its.map((it) => `<div class="tr-porque${it.causa === 'info' ? ' tr-porque-info' : ''}"><b class="${it.cls}">${esc(it.titulo || 'Na meta')}</b> ${esc(it.txt)}</div>`).join('') : '<span class="na">—</span>'; };
+  // engajamento = curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores — as dicas cobrem as quatro ações
   const DICA_ENG = {
-    social: ['Abrir com um gancho forte na primeira linha ou nos primeiros 3 segundos do vídeo.', 'Fechar o post com uma pergunta ou chamada pra comentar.', 'Repetir os temas e formatos dos posts que bateram a meta (aba Posts, logo abaixo).', 'Publicar nos horários em que o público do cliente mais está online.'],
-    rp: ['Escolher parceiros com público parecido com o do cliente — alcance alto com público errado derruba o engajamento.', 'Combinar com o parceiro uma chamada pra comentar.', 'Repetir os parceiros e formatos que bateram a meta (aba Posts, logo abaixo).'],
-    audiovisual: ['Os 3 primeiros segundos decidem: começar pela cena mais forte.', 'Vídeos mais curtos e com legenda na tela.', 'Fechar com chamada pra comentar.', 'Repetir os temas dos vídeos que bateram a meta (aba Posts, logo abaixo).'],
-  };
-  const DICA_COMP = {
-    social: ['Conteúdo que dá vontade de mandar pra alguém: dica útil, humor, bastidor, curiosidade do produto.', 'Chamada direta: "manda pra quem…" ou "marca quem…".', 'Carrossel com informação prática costuma circular mais que post só de produto.'],
-    rp: ['Pedir ao parceiro o post em collab (aparece nos dois perfis).', 'Conteúdo que dá vontade de mandar pra alguém: dica, humor, bastidor.', 'Chamada direta: "manda pra quem…" ou "marca quem…".'],
-    audiovisual: ['Vídeo com informação prática ou momento engraçado é o que mais circula.', 'Chamada direta no fim: "manda pra quem…".', 'Cortes curtos dos melhores momentos rendem mais compartilhamento que o vídeo inteiro.'],
+    social: ['Abrir com um gancho forte na primeira linha ou nos primeiros 3 segundos do vídeo.', 'Fechar o post com uma pergunta ou chamada pra comentar.', 'Conteúdo que dá vontade de salvar ou mandar pra alguém: dica útil, receita, bastidor, curiosidade do produto (carrossel com informação prática costuma circular mais que post só de produto).', 'Chamada direta: "salva pra depois", "manda pra quem…" ou "marca quem…".', 'Repetir os temas e formatos dos posts que ficaram com 80–100 pts (aba Posts, logo abaixo).', 'Publicar nos horários em que o público do cliente mais está online.'],
+    rp: ['Escolher parceiros com público parecido com o do cliente — alcance alto com público errado derruba o engajamento.', 'Pedir ao parceiro o post em collab (aparece nos dois perfis e soma as interações).', 'Combinar com o parceiro uma chamada pra comentar, salvar ou mandar pra alguém.', 'Repetir os parceiros e formatos que ficaram com 80–100 pts (aba Posts, logo abaixo).'],
+    audiovisual: ['Os 3 primeiros segundos decidem: começar pela cena mais forte.', 'Vídeos mais curtos e com legenda na tela.', 'Vídeo com informação prática ou momento engraçado é o que mais circula e é salvo.', 'Fechar com chamada pra comentar, salvar ou "manda pra quem…".', 'Repetir os temas dos vídeos que ficaram com 80–100 pts (aba Posts, logo abaixo).'],
   };
   const DICAS_FRENTE = (FR, causa) => {
     if (FR === 'trafego') return DICAS_TR[causa] || [];
     if (FR === 'webdesign') return (window.IQW && window.IQW.DICAS && window.IQW.DICAS[causa]) || ['Revisar este ponto antes da próxima entrega (detalhe na seção "Como evoluir", logo abaixo).'];
     if (causa === 'engajamento') return DICA_ENG[FR] || DICA_ENG.social;
-    if (causa === 'compartilhamento') return DICA_COMP[FR] || DICA_COMP.social;
-    if (causa === 'irregular') return ['Comparar os posts que zeraram com os que bateram a meta (aba Posts, logo abaixo) e repetir o que deu certo.', 'Conferir se a meta do cliente faz sentido pra cada formato (aba Metas de desempenho).'];
+    if (causa === 'irregular') return ['Comparar os posts que zeraram com os que ficaram em 80–100 pts (aba Posts, logo abaixo) e repetir o que deu certo.', 'Conferir se o número de seguidores do perfil está certo (aba Régua e seguidores).'];
     return [];
   };
   // bloco "Por que as notas estão baixas" — mesmo desenho em todas as sub-abas do Resultado
@@ -1275,9 +1268,9 @@
     const FR = k === 'trafego' ? frenteAtual() : null;
     const DESC_FR = {
       trafego: 'nota de tráfego ≥ 70 (fora da faixa vermelha) — faixa fixa da métrica do objetivo do cliente na última semana: ROAS, CPM, custo por conversa ou por lead',
-      social: 'nota de Social Media ≥ 70 — performance média dos posts de Social publicados nos últimos 30 dias (engajamento 60% + compartilhamento 40%, medidos 7 dias depois, contra a meta do cliente)',
-      rp: 'nota de RP ≥ 70 — performance média dos posts de RP (UGC, influenciadores, collabs) dos últimos 30 dias (engajamento 60% + compartilhamento 40%, contra a meta do cliente)',
-      audiovisual: 'nota de Audiovisual ≥ 70 — performance média dos vídeos publicados nos últimos 30 dias (engajamento 60% + compartilhamento 40%, contra a meta do cliente)',
+      social: 'nota de Social Media ≥ 70 — engajamento médio dos posts de Social dos últimos 30 dias, medido 7 dias depois: (curtidas + comentários + compartilhamentos + salvamentos) ÷ seguidores × 100, na régua A (estático): abaixo de 0,5% → 0 · 0,5–1% → 40 · 1–2% → 60 · 2–3% → 80 · 3% ou mais → 100',
+      rp: 'nota de RP ≥ 70 — engajamento médio dos posts de RP (UGC, influenciadores, collabs) dos últimos 30 dias: (curtidas + comentários + compartilhamentos + salvamentos) ÷ seguidores × 100, na régua B (vídeo/UGC): abaixo de 1% → 0 · 1–2% → 40 · 2–3% → 60 · 3–5% → 80 · 5% ou mais → 100',
+      audiovisual: 'nota de Audiovisual ≥ 70 — engajamento médio dos vídeos dos últimos 30 dias: (curtidas + comentários + compartilhamentos + salvamentos) ÷ seguidores × 100, na régua B (vídeo/UGC): abaixo de 1% → 0 · 1–2% → 40 · 2–3% → 60 · 3–5% → 80 · 5% ou mais → 100',
       webdesign: 'nota de Web Design ≥ 70 — qualidade média dos projetos de web (LP, site, e-commerce) avaliados nos últimos 90 dias: técnica, experiência, visual e retrabalho',
     };
     const M = k === 'trafego' ? { ...METAS_PILAR.trafego, desc: DESC_FR[FR] + '. Cada área tem sua sub-aba; o pilar Resultado do Health Score é a média das áreas com dado' } : METAS_PILAR[k];

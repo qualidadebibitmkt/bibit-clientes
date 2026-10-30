@@ -1,16 +1,16 @@
 // BIBIT · /api/iqc — IQC (Índice de Qualidade do Conteúdo). Regras em api/_iqc-engine.js, dados em api/_iqc.js.
 //
 // Painel (sem token):
-//   GET /api/iqc?mes=AAAA-MM            avaliação do mês (posts, por cliente × colaborador, colaboradores, metas, pendências)
+//   GET /api/iqc?mes=AAAA-MM            avaliação do mês (posts, por cliente × colaborador, colaboradores, seguidores, pendências)
 //   GET /api/iqc?acao=historico         fechamentos mensais gravados
 // Make / gestor (token ?t=):
 //   GET  ?acao=pendentes                posts com coleta D+2/D+7 vencida → [{taskId, igId, tipo, mes, publicadoEm}]
-//   POST ?acao=metricas                 { taskId, tipo: d2|d7|manual, alcance, curtidas, comentarios, compartilhamentos, ... }
+//   POST ?acao=metricas                 { taskId, tipo: d2|d7|manual, alcance, curtidas, comentarios, compartilhamentos, salvamentos, seguidores?, ... }
+//   GET  ?acao=perfis                   clientes ativos com área de conteúdo → [{clienteId, cliente (chave do De-Para), username}] (Make → Instagram)
+//   POST ?acao=seguidores               { clienteId | cliente, seguidores, username?, igUserId? } — foto diária dos seguidores (denominador do engajamento)
 //   GET  ?acao=aprov-insumo             calendários em aprovação: prompt pronto por cliente (Make → IA → resultado)
 //   POST ?acao=aprov-resultado&cliente=&mes=   JSON da IA → aprovação por post
 //   POST ?acao=aprovacao                { taskId, status, motivo } (gestor; prevalece sobre a IA)
-//   GET  ?acao=metas · POST ?acao=metas { clienteId|'PADRAO', formato|'*', engajamento, compartilhamento, de?, ate? }
-//   POST ?acao=metas-provisorias        gera metas pela mediana do histórico (cliente × formato) onde não houver meta manual
 //   POST ?acao=auditoria&taskId=        roda a auditoria criativa por IA (precisa ANTHROPIC_API_KEY)
 //   POST ?acao=auditoria-revisao        { taskId, notas:{...}, justificativa } (gestor)
 //   POST ?acao=fechar&mes=AAAA-MM       grava o fechamento do mês (definitivo); ?acao=fechar-auto fecha o mês anterior no dia 8+
@@ -51,17 +51,17 @@ const GRACE_NAO_PUBLICADO = 3 * 86400000;
 function elegivel(p, reg, agora) { return p.publicado || p.publicadoEm >= agora - GRACE_NAO_PUBLICADO || !!(reg && reg.aprovacao); }
 async function avaliarTudo(painel, agora) {
   const todos = D.postsDoPainel(painel, { todos: true });
-  const [regs, metas, cfg] = await Promise.all([D.lerRegistros(todos.map((p) => p.taskId)), D.lerMetas(), D.lerConfig()]);
+  const [regs, segs, cfg] = await Promise.all([D.lerRegistros(todos.map((p) => p.taskId)), D.lerSeguidores(todos.map((p) => p.clienteId)), D.lerConfig()]);
   const posts = todos.filter((p) => elegivel(p, regs[p.taskId], agora));
-  const avaliados = posts.map((p) => D.avaliarPost(p, regs[p.taskId], metas, cfg, agora));
+  const avaliados = posts.map((p) => D.avaliarPost(p, regs[p.taskId], segs[p.clienteId] || null, cfg, agora));
   avaliados.foraDoIqc = todos.length - posts.length;
-  return { posts: avaliados, regs, metas, cfg };
+  return { posts: avaliados, regs, segs, cfg };
 }
 
 // ---------- GET painel ----------
 async function painelMes(req, res, agora) {
   const painel = await lerPainel(req);
-  const { posts, metas, cfg } = await avaliarTudo(painel, agora);
+  const { posts, segs, cfg } = await avaliarTudo(painel, agora);
   const mesAtual = hojeBRT(agora).slice(0, 7);
   const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : mesAtual;
   const doMes = posts.filter((p) => p.mes === mes);
@@ -85,7 +85,7 @@ async function painelMes(req, res, agora) {
       const areasPend = [...new Set(doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).map((p) => p.area))];
       return areasPend.some((a) => { const x = cal.porArea.find((y) => areaCanon(y.area) === a); return !x || semResp(x.resposta); });
     }).map((c) => ({ clienteId: c, cliente: (doMes.find((p) => p.clienteId === c) || {}).cliente, pendentes: doMes.filter((p) => p.clienteId === c && (!p.aprovacao || p.aprovacao.status === 'pendente')).length })).filter((x) => x.pendentes > 0),
-    semMeta: doMes.filter((p) => !p.meta).length,
+    semSeguidores: doMes.filter((p) => p.publicado && p.metricas && (!p.seguidores || !(p.seguidores.seguidores > 0))).map((p) => ({ taskId: p.taskId, nome: p.nome, clienteId: p.clienteId, cliente: p.cliente })),
     aguardandoJanela: doMes.filter((p) => !p.janela.fechou).length,
     semMetrica: doMes.filter((p) => p.janela.fechou && !p.metricas).length,
     foraDoIqc: posts.foraDoIqc || 0,
@@ -93,9 +93,9 @@ async function painelMes(req, res, agora) {
   };
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({
-    generatedAt: agora, mes, mesAtual, meses, config: cfg, versaoRegras: E.VERSAO_REGRAS, pesos: E.PESOS, pesosPerformance: E.PESOS_PERF,
+    generatedAt: agora, mes, mesAtual, meses, config: cfg, versaoRegras: E.VERSAO_REGRAS, pesos: E.PESOS, reguas: E.REGUAS, reguaDaArea: E.REGUA_DA_AREA, classesEngajamento: E.CLASSE_ENG,
     posts: doMes.map(sanitizePost), porCliente: cons.porCliente, colaboradores: cons.colaboradores, calendarios, pendencias: pend,
-    metas: metas.map((m) => ({ ...m, clienteNome: m.clienteId === 'PADRAO' ? 'Padrão (carteira)' : ((painel.clients || []).find((c) => c.id === m.clienteId) || {}).name || m.clienteId })),
+    seguidores: Object.fromEntries(Object.entries(segs || {}).map(([cid, sg]) => [cid, { seguidores: sg.seguidores, username: sg.username || null, em: sg.em || null, dias: Object.keys(sg.hist || {}).length }])),
     clientes: (painel.clients || []).filter((c) => ATIVOS.includes(stKey(c))).map((c) => ({ id: c.id, name: c.name })),
     fechamentos, auditoriaDisponivel: !!process.env.ANTHROPIC_API_KEY, transcricaoDisponivel: !!process.env.OPENAI_API_KEY,
   });
@@ -137,6 +137,7 @@ async function gravarMetricas(req, res, agora) {
   const m = {
     alcance, curtidas: num(b.curtidas ?? b.likes), comentarios: num(b.comentarios ?? b.comments), compartilhamentos: num(b.compartilhamentos ?? b.shares),
     salvamentos: num(b.salvamentos ?? b.saved), visualizacoes: num(b.visualizacoes ?? b.views),
+    seguidores: num(b.seguidores ?? b.followers_count ?? b.followers), // opcional: quando vem junto, vale pro post (senão usa a foto diária do perfil)
     em: agora, origem: tipo === 'manual' ? 'manual' : 'meta-api', por: b.por ? String(b.por).slice(0, 60) : null, evidencia: b.evidencia ? String(b.evidencia).slice(0, 300) : null,
   };
   const reg = { ...regAtual, taskId, [tipo]: m };
@@ -329,55 +330,33 @@ async function aprovacaoManual(req, res, agora) {
   res.status(200).json({ ok: true, taskId, aprovacao: reg.aprovacao });
 }
 
-// ---------- metas ----------
-async function metasGet(req, res) { res.status(200).json({ metas: await D.lerMetas() }); }
-async function metasPost(req, res, agora) {
-  const b = await lerBody(req);
-  const eng = num(b.engajamento), sh = num(b.compartilhamento);
-  const clienteId = String(b.clienteId || 'PADRAO'), formato = ['estatico', 'carrossel', 'reel', '*'].includes(b.formato) ? b.formato : '*';
-  if (eng == null || eng <= 0 || sh == null || sh <= 0) { res.status(400).json({ error: 'engajamento e compartilhamento (% > 0) obrigatórios' }); return; }
-  const metas = await D.lerMetas();
-  // nova versão fecha a vigência da anterior do mesmo nível (histórico preservado; avaliações fechadas não mudam)
-  for (const m of metas) if (m.clienteId === clienteId && (m.formato || '*') === formato && !m.ate) m.ate = agora - 1;
-  const nova = { id: 'm' + agora.toString(36), clienteId, formato, engajamento: eng, compartilhamento: sh, de: num(b.de) || agora, ate: num(b.ate) || null, origem: 'manual', provisoria: false, por: String(b.por || 'gestor').slice(0, 60), em: agora, obs: String(b.obs || '').slice(0, 200) };
-  metas.push(nova);
-  await D.gravarMetas(metas);
-  res.status(200).json({ ok: true, meta: nova, total: metas.length });
-}
-// metas provisórias pela mediana do histórico (opção "a" do André, 22/10/26): cliente × formato com ≥3 posts medidos;
-// sem histórico suficiente, PADRAO × formato pela mediana da carteira; PADRAO × * pela mediana geral. Só cria onde não há meta manual.
-async function metasProvisorias(req, res, agora) {
+// ---------- seguidores do perfil (Make "IQC · Seguidores dos perfis", diário) ----------
+// perfis: clientes ativos (execução/atrasado/encerramento) que têm alguém de Social/RP/Audiovisual no card ou post publicado.
+// `cliente` é o nome da opção do Growth = chave do De-Para do publicador (data store 138814 → ig_user_id).
+async function perfis(req, res, agora) {
   const painel = await lerPainel(req);
   const posts = D.postsDoPainel(painel);
-  const regs = await D.lerRegistros(posts.map((p) => p.taskId));
-  const metas = await D.lerMetas();
-  const ini = agora - 90 * 86400000;
-  const tx = (m) => (m && num(m.alcance) > 0 && num(m.curtidas) != null && num(m.comentarios) != null && num(m.compartilhamentos) != null) ? { e: ((m.curtidas + m.comentarios) / m.alcance) * 100, s: (m.compartilhamentos / m.alcance) * 100 } : null;
-  const amostras = {}; // cliente|formato -> [{e,s}]
-  for (const p of posts) {
-    if (p.publicadoEm < ini) continue;
-    const r = regs[p.taskId] || {}; const m = tx(r.manual || r.d7 || r.d2);
-    if (!m) continue;
-    (amostras[p.clienteId + '|' + p.formato] = amostras[p.clienteId + '|' + p.formato] || []).push(m);
-    (amostras['PADRAO|' + p.formato] = amostras['PADRAO|' + p.formato] || []).push(m);
-    (amostras['PADRAO|*'] = amostras['PADRAO|*'] || []).push(m);
+  const comPost = new Set(posts.filter((p) => p.publicadoEm >= agora - 120 * 86400000).map((p) => p.clienteId));
+  const lista = (painel.clients || []).filter((c) => ATIVOS.includes(stKey(c)) && (comPost.has(c.id) || ['social', 'rp', 'audiovisual'].some((k) => ((c.team || {})[k] || []).length)));
+  const segs = await D.lerSeguidores(lista.map((c) => c.id));
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ geradoEm: agora, total: lista.length, perfis: lista.map((c) => ({ clienteId: c.id, cliente: c.name, username: (segs[c.id] && segs[c.id].username) || null, igUserId: (segs[c.id] && segs[c.id].igUserId) || null, seguidores: (segs[c.id] && segs[c.id].seguidores) || null, ultimaFoto: (segs[c.id] && segs[c.id].em) || null })) });
+}
+async function gravarSeguidores(req, res, agora) {
+  const b = await lerBody(req);
+  try { await wa.redisPipeline([['LPUSH', 'iqc:log', JSON.stringify({ em: agora, acao: 'seguidores', corpo: JSON.stringify(b).slice(0, 400) })], ['LTRIM', 'iqc:log', '0', '29']]); } catch {}
+  const n = num(b.seguidores ?? b.followers_count ?? b.followers);
+  if (n == null || n <= 0) { res.status(422).json({ error: 'seguidores ausente ou zero — nada gravado (sem dado não vira zero)' }); return; }
+  let clienteId = String(b.clienteId || '').trim();
+  if (!clienteId && b.cliente) { // chave do De-Para → cliente do painel
+    const painel = await lerPainel(req);
+    const alvo = String(b.cliente).trim().toUpperCase();
+    const c = (painel.clients || []).find((x) => String(x.name || '').trim().toUpperCase() === alvo);
+    if (c) clienteId = c.id;
   }
-  const criadas = [];
-  const temManual = (c, f) => metas.some((m) => m.clienteId === c && (m.formato || '*') === f && m.origem === 'manual' && !m.ate);
-  for (const [k, arr] of Object.entries(amostras)) {
-    const [c, f] = k.split('|');
-    const minimo = c === 'PADRAO' ? 5 : 3;
-    if (arr.length < minimo || temManual(c, f)) continue;
-    // mediana; se der zero (metade dos posts sem compartilhamento, comum), cai pra média e, por fim, piso de 0,05% — meta zero não existe
-    const comPiso = (vals) => { const med = E.mediana(vals); if (med > 0) return med; const m = E.media(vals); return m > 0 ? Math.round(m * 100) / 100 : 0.05; };
-    const eng = comPiso(arr.map((x) => x.e)), sh = comPiso(arr.map((x) => x.s));
-    if (!eng || !sh || eng <= 0 || sh <= 0) continue;
-    for (const m of metas) if (m.clienteId === c && (m.formato || '*') === f && m.origem === 'mediana' && !m.ate) m.ate = agora - 1;
-    const nova = { id: 'm' + agora.toString(36) + Math.random().toString(36).slice(2, 6), clienteId: c, formato: f, engajamento: eng, compartilhamento: sh, de: 0, ate: null, origem: 'mediana', provisoria: true, por: 'sistema', em: agora, obs: `mediana de ${arr.length} posts (90 dias)` };
-    metas.push(nova); criadas.push(nova);
-  }
-  await D.gravarMetas(metas);
-  res.status(200).json({ ok: true, criadas: criadas.length, metas: criadas });
+  if (!clienteId) { res.status(400).json({ error: 'clienteId (ou cliente = nome da opção do Growth) obrigatório' }); return; }
+  const reg = await D.gravarSeguidores(clienteId, { seguidores: n, username: b.username ? String(b.username).slice(0, 80) : null, igUserId: b.igUserId ? String(b.igUserId).slice(0, 40) : null, em: num(b.em) || agora });
+  res.status(200).json({ ok: true, clienteId, seguidores: reg.seguidores, username: reg.username, dias: Object.keys(reg.hist || {}).length });
 }
 
 // ---------- auditoria criativa ----------
@@ -478,14 +457,13 @@ async function fechar(req, res, agora, auto) {
   }
   if (!/^\d{4}-\d{2}$/.test(mes)) { res.status(400).json({ error: 'mes AAAA-MM obrigatório' }); return; }
   const painel = await lerPainel(req);
-  const { posts, cfg, metas } = await avaliarTudo(painel, agora);
+  const { posts, cfg } = await avaliarTudo(painel, agora);
   const doMes = posts.filter((p) => p.mes === mes);
   const cons = D.consolidarMes(doMes, { amostraN: cfg.amostraAuditoria });
   const fech = {
-    mes, em: agora, versaoRegras: E.VERSAO_REGRAS, pesos: E.PESOS, pesosPerformance: E.PESOS_PERF, janelaDias: cfg.janelaDias,
-    posts: doMes.map((p) => ({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, clienteId: p.clienteId, area: p.area, formato: p.formato, responsavel: p.responsavel && p.responsavel.nome, publicadoEm: p.publicadoEm, metricas: p.metricas, fonteMetricas: p.fonteMetricas, meta: p.meta, performance: p.performance && { txEngajamento: p.performance.txEngajamento, txCompartilhamento: p.performance.txCompartilhamento, notaEngajamento: p.performance.notaEngajamento, notaCompartilhamento: p.performance.notaCompartilhamento, nota: p.performance.nota }, aprovacao: p.aprovacao, auditoria: p.auditoria && { notas: p.auditoria.notas, nota: p.auditoria.nota, modelo: p.auditoria.modelo, rubrica: p.auditoria.rubrica, revisadoPor: p.auditoria.revisadoPor } })),
+    mes, em: agora, versaoRegras: E.VERSAO_REGRAS, pesos: E.PESOS, reguas: E.REGUAS, janelaDias: cfg.janelaDias,
+    posts: doMes.map((p) => ({ taskId: p.taskId, nome: p.nome, cliente: p.cliente, clienteId: p.clienteId, area: p.area, formato: p.formato, responsavel: p.responsavel && p.responsavel.nome, publicadoEm: p.publicadoEm, metricas: p.metricas, fonteMetricas: p.fonteMetricas, seguidores: p.seguidores, regua: p.regua, performance: p.performance && { txEngajamento: p.performance.txEngajamento, interacoes: p.performance.interacoes, seguidores: p.performance.seguidores, regua: p.performance.regua, faixa: p.performance.faixa, classificacao: p.performance.classificacao, nota: p.performance.nota }, aprovacao: p.aprovacao, auditoria: p.auditoria && { notas: p.auditoria.notas, nota: p.auditoria.nota, modelo: p.auditoria.modelo, rubrica: p.auditoria.rubrica, revisadoPor: p.auditoria.revisadoPor } })),
     porCliente: cons.porCliente, colaboradores: cons.colaboradores,
-    metasUsadas: metas.filter((m) => m.de == null || m.de <= agora),
   };
   await wa.redis(['SET', 'iqc:fech:' + mes, JSON.stringify(fech)]);
   res.status(200).json({ ok: true, fechado: true, mes, colaboradores: cons.colaboradores.map((c) => ({ nome: c.nome, funcao: c.funcao, iqc: c.iqc, status: c.status })) });
@@ -531,8 +509,8 @@ module.exports = async (req, res) => {
     }
     if (acao === 'aprov-resultado' && post) return await aprovResultado(req, res, agora);
     if (acao === 'aprovacao' && post) return await aprovacaoManual(req, res, agora);
-    if (acao === 'metas') return post ? await metasPost(req, res, agora) : await metasGet(req, res);
-    if (acao === 'metas-provisorias') return await metasProvisorias(req, res, agora);
+    if (acao === 'perfis') return await perfis(req, res, agora);
+    if (acao === 'seguidores' && post) { if (!wa.tokenOk(req)) { res.status(401).json({ error: 'token' }); return; } return await gravarSeguidores(req, res, agora); }
     if (acao === 'auditoria' && post) return await auditoria(req, res, agora);
     if (acao === 'auditoria-fila') return await auditoriaFila(req, res, agora);
     if (acao === 'auditoria-midia') return await auditoriaMidia(req, res);

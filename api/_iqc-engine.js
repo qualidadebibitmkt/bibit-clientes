@@ -4,11 +4,14 @@
 //
 // Matriz (igual pros três cargos):
 //   IQC = Performance × 0,40 + Aprovação (TASA) × 0,40 + Qualidade criativa × 0,20
-//   Performance = Taxa de engajamento × 0,60 + Taxa de compartilhamento × 0,40
-//     engajamento   = (curtidas + comentários) ÷ alcance × 100   (sem shares, sem salvamentos)
-//     compartilham. = compartilhamentos ÷ alcance × 100
-//     cada taxa vira pontos pela régua de ATINGIMENTO da meta do cliente × formato:
-//       ≥100% → 100 · 90–<100 → 80 · 80–<90 → 60 · 70–<80 → 40 · <70 → 0  (sem arredondar antes)
+//   Performance (André, 30/10/26 — substitui engajamento 60 · compartilhamento 40 vs. meta do cliente):
+//     UMA métrica só, por post:
+//       Engajamento = (curtidas + comentários + compartilhamentos + salvamentos) ÷ seguidores do perfil × 100
+//     comparada com uma régua FIXA por área (igual pra todos os clientes, sem meta por cliente):
+//       Régua A — conteúdo estático (Social Media):     < 0,5% → 0 · 0,5–<1% → 40 · 1–<2% → 60 · 2–<3% → 80 · ≥ 3% → 100
+//       Régua B — vídeos e UGC/GC (Audiovisual + RP):   < 1% → 0   · 1–<2% → 40   · 2–<3% → 60 · 3–<5% → 80 · ≥ 5% → 100
+//     classificação: 100 Excelente · 80 Bom · 60 Regular · 40 Fraco · 0 Muito fraco
+//     seguidores = foto diária do perfil (coleta do Make) mais próxima da coleta das métricas do post
 //   TASA = aprovados sem ajustes ÷ elegíveis avaliados × 100
 //       exatamente 100% → 100 · 90–<100 → 80 · 80–<90 → 60 · 70–<80 → 40 · <70 → 0
 //   Qualidade = média de 5 subcritérios (20% cada), cada um em 100/80/60/40/0
@@ -16,9 +19,8 @@
 // Dados ausentes NUNCA viram 0 nem 100 — viram null e a nota fica "incompleta" (sem redistribuir peso).
 // Tudo determinístico; nenhuma chamada externa aqui.
 
-const VERSAO_REGRAS = '2026-10-22.1';
+const VERSAO_REGRAS = '2026-10-30.1';
 const PESOS = { performance: 0.40, aprovacao: 0.40, qualidade: 0.20 };
-const PESOS_PERF = { engajamento: 0.60, compartilhamento: 0.40 };
 const JANELA_DIAS = 7;          // janela padrão de mensuração após a publicação (definitiva)
 const JANELA_PROVISORIA_DIAS = 2; // coleta provisória (acompanhamento diário)
 const SUBCRITERIOS = ['clareza', 'criatividade', 'identidade', 'interesse', 'tecnica'];
@@ -31,46 +33,64 @@ const num = (x) => (x == null || x === '' ? null : Number.isFinite(Number(x)) ? 
 const round1 = (x) => Math.round(x * 10) / 10;
 const round2 = (x) => Math.round(x * 100) / 100;
 
-// ---- Régua de atingimento (performance) ----
-// atingimento em % (ex.: 116,67). Sem arredondar antes de classificar. Nunca passa de 100 pontos.
-function pontosAtingimento(atingimento) {
-  const a = num(atingimento);
-  if (a == null) return null;
-  if (a >= 100) return 100;
-  if (a >= 90) return 80;
-  if (a >= 80) return 60;
-  if (a >= 70) return 40;
+// ---- Réguas de engajamento (André, 30/10/26) ----
+// [limite mínimo em %, pontos], da melhor pra pior faixa; quem não atinge a última leva 0. Limites contínuos fechando
+// pelo lado de cima (mesma regra do Health Score): 1,95% na régua A fica em "1 a menos de 2" → 60.
+const REGUAS = {
+  A: { id: 'A', lbl: 'Régua A — Conteúdo estático', areas: ['social'], areasLbl: 'Social Media', faixas: [[3, 100], [2, 80], [1, 60], [0.5, 40]] },
+  B: { id: 'B', lbl: 'Régua B — Vídeos e UGC/GC', areas: ['audiovisual', 'rp'], areasLbl: 'Audiovisual + RP', faixas: [[5, 100], [3, 80], [2, 60], [1, 40]] },
+};
+const REGUA_DA_AREA = { social: 'A', audiovisual: 'B', rp: 'B' };
+const CLASSE_ENG = { 100: 'Excelente', 80: 'Bom', 60: 'Regular', 40: 'Fraco', 0: 'Muito fraco' };
+const EPS = 1e-9;
+function reguaDaArea(area) { return REGUAS[REGUA_DA_AREA[area] || 'A']; }
+// pontos pela régua: devolve 100/80/60/40/0, ou null sem taxa
+function pontosEngajamento(tx, regua) {
+  const t = num(tx);
+  if (t == null) return null;
+  for (const [lim, pts] of regua.faixas) if (t >= lim - EPS) return pts;
   return 0;
 }
-function atingimento(realizado, meta) {
-  const r = num(realizado), m = num(meta);
-  if (r == null || m == null || m <= 0) return null; // meta inválida: nunca divide por zero
-  return (r / m) * 100;
+// rótulo da faixa em que a taxa caiu ("2% a menos de 3%", "3% ou mais", "abaixo de 0,5%")
+function faixaEngajamento(tx, regua) {
+  const pts = pontosEngajamento(tx, regua);
+  if (pts == null) return null;
+  const fmt = (x) => String(x).replace('.', ',') + '%';
+  const i = regua.faixas.findIndex(([, p]) => p === pts);
+  if (i < 0) return `abaixo de ${fmt(regua.faixas[regua.faixas.length - 1][0])}`;
+  const [lim] = regua.faixas[i];
+  return i === 0 ? `${fmt(lim)} ou mais` : `${fmt(lim)} a menos de ${fmt(regua.faixas[i - 1][0])}`;
+}
+function engajamentoTx(m, seguidores) {
+  const seg = num(seguidores);
+  const partes = ['curtidas', 'comentarios', 'compartilhamentos', 'salvamentos'].map((k) => num(m && m[k]));
+  if (seg == null || seg <= 0 || partes.some((x) => x == null)) return null;
+  return (partes.reduce((a, b) => a + b, 0) / seg) * 100;
 }
 
 // ---- Performance de UM post ----
-// m = { alcance, curtidas, comentarios, compartilhamentos }; metas = { engajamento, compartilhamento } em %
-function performancePost(m, metas) {
-  const alcance = num(m && m.alcance);
-  const curtidas = num(m && m.curtidas), comentarios = num(m && m.comentarios), shares = num(m && m.compartilhamentos);
-  const out = { alcance, curtidas, comentarios, compartilhamentos: shares, txEngajamento: null, txCompartilhamento: null, metaEngajamento: num(metas && metas.engajamento), metaCompartilhamento: num(metas && metas.compartilhamento), atingEngajamento: null, atingCompartilhamento: null, notaEngajamento: null, notaCompartilhamento: null, nota: null, faltando: [] };
-  if (alcance == null || alcance <= 0) { out.faltando.push('alcance'); return out; } // alcance zero/ausente: não calcula taxa
+// m = { curtidas, comentarios, compartilhamentos, salvamentos, alcance? }; ctx = { area, seguidores, seguidoresEm?, seguidoresFonte? }
+function performancePost(m, ctx) {
+  const c = ctx || {};
+  const regua = reguaDaArea(c.area);
+  const seguidores = num(c.seguidores);
+  const curtidas = num(m && m.curtidas), comentarios = num(m && m.comentarios), shares = num(m && m.compartilhamentos), saves = num(m && m.salvamentos);
+  const out = {
+    alcance: num(m && m.alcance), curtidas, comentarios, compartilhamentos: shares, salvamentos: saves, interacoes: null,
+    seguidores, seguidoresEm: c.seguidoresEm || null, seguidoresFonte: c.seguidoresFonte || null,
+    regua: regua.id, reguaLbl: regua.lbl, txEngajamento: null, faixa: null, nota: null, classificacao: null, faltando: [],
+  };
   if (curtidas == null || comentarios == null) out.faltando.push('curtidas/comentários');
-  else { out._txE = ((curtidas + comentarios) / alcance) * 100; out.txEngajamento = round2(out._txE); }
   if (shares == null) out.faltando.push('compartilhamentos');
-  else { out._txC = (shares / alcance) * 100; out.txCompartilhamento = round2(out._txC); }
-  if (out.metaEngajamento == null || out.metaEngajamento <= 0) out.faltando.push('meta de engajamento');
-  if (out.metaCompartilhamento == null || out.metaCompartilhamento <= 0) out.faltando.push('meta de compartilhamento');
-  if (out.faltando.length) { delete out._txE; delete out._txC; return out; }
-  // atingimento com a taxa exata (auditoria 27/10: 5,6996% contra meta 5,70 é 99,99% → 80, não 100); o arredondado é só pra mostrar
-  const limpa = (x) => (x == null ? null : Math.round(x * 1e6) / 1e6); // tira só o ruído do ponto flutuante (89,9999999 → 90)
-  const aE = limpa(atingimento(out._txE, out.metaEngajamento)), aC = limpa(atingimento(out._txC, out.metaCompartilhamento));
-  delete out._txE; delete out._txC;
-  out.atingEngajamento = Math.floor(aE * 10 + 1e-9) / 10;
-  out.atingCompartilhamento = Math.floor(aC * 10 + 1e-9) / 10;
-  out.notaEngajamento = pontosAtingimento(aE);
-  out.notaCompartilhamento = pontosAtingimento(aC);
-  out.nota = round1(out.notaEngajamento * PESOS_PERF.engajamento + out.notaCompartilhamento * PESOS_PERF.compartilhamento);
+  if (saves == null) out.faltando.push('salvamentos');
+  if (seguidores == null || seguidores <= 0) out.faltando.push('seguidores do perfil');
+  if (out.faltando.length) return out;
+  out.interacoes = curtidas + comentarios + shares + saves;
+  const tx = (out.interacoes / seguidores) * 100;
+  out.txEngajamento = round2(tx);
+  out.nota = pontosEngajamento(Math.round(tx * 1e6) / 1e6, regua); // tira só o ruído do ponto flutuante (1,9999999 → 2)
+  out.faixa = faixaEngajamento(Math.round(tx * 1e6) / 1e6, regua);
+  out.classificacao = CLASSE_ENG[out.nota] || null;
   return out;
 }
 
@@ -162,6 +182,7 @@ function amostra(ids, n) {
 }
 
 module.exports = {
-  VERSAO_REGRAS, PESOS, PESOS_PERF, JANELA_DIAS, JANELA_PROVISORIA_DIAS, SUBCRITERIOS, SUBCRITERIO_LBL, STATUS_APROVACAO, STATUS_LBL, CLASSES,
-  pontosAtingimento, atingimento, performancePost, tasa, pontosTASA, qualidade, consolidar, classificar, media, mediana, amostra, hashId,
+  VERSAO_REGRAS, PESOS, JANELA_DIAS, JANELA_PROVISORIA_DIAS, SUBCRITERIOS, SUBCRITERIO_LBL, STATUS_APROVACAO, STATUS_LBL, CLASSES,
+  REGUAS, REGUA_DA_AREA, CLASSE_ENG, reguaDaArea, pontosEngajamento, faixaEngajamento, engajamentoTx, performancePost,
+  tasa, pontosTASA, qualidade, consolidar, classificar, media, mediana, amostra, hashId,
 };
