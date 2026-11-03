@@ -232,12 +232,28 @@ const STATUS_CARTEIRA = ['execucao', 'atrasado', 'encerramento'];
 const stKeyDe = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
 // flag efetiva = score ao vivo quando suficiente; senão a flag gravada no Growth (mesma regra do copo no painel)
 const flagEfetiva = (c) => (c.healthScore && c.healthScore.flag) || c.flag || null;
-// % com 1 casa, arredondado pro lado da meta: verde pra baixo (69,96% não vira "70%" ao lado de "faltam"), amarelo/vermelho
-// pra cima (20,04% não vira "20%" ao lado de "a mais"); o resto arredonda normal
-function pctFlag(a, b, f) {
+// Fatias da carteira em % com 1 casa que FECHAM em 100,0 (André, 03/11/26: 0 + 18 + 82,1 dava 100,1). Método do maior
+// resto: cada fatia leva o piso do seu valor em décimos e os décimos que sobram vão pras maiores frações — nada de arredondar
+// cada fatia separada (o antigo "verde pra baixo, vermelho pra cima" é o que somava 100,1). A leitura "na meta / faltam R$" vem
+// do valor exato (meta.ok), nunca do % mostrado.
+// partes = { chave: valor } (R$ ou nº de clientes); devolve { chave: % } — total zero → tudo 0.
+function fatias100(partes) {
+  const ks = Object.keys(partes);
+  const tot = ks.reduce((a, k) => a + (partes[k] > 0 ? partes[k] : 0), 0);
+  const out = {};
+  if (!(tot > 0)) { for (const k of ks) out[k] = 0; return out; }
+  const raw = ks.map((k) => ((partes[k] > 0 ? partes[k] : 0) / tot) * 1000); // em décimos de %
+  const piso = raw.map((v) => Math.floor(v + 1e-9));
+  let sobra = 1000 - piso.reduce((a, b) => a + b, 0);
+  const ordem = ks.map((k, i) => i).sort((i, j) => (raw[j] - piso[j]) - (raw[i] - piso[i]) || raw[j] - raw[i]);
+  for (const i of ordem) { if (sobra <= 0) break; piso[i] += 1; sobra -= 1; }
+  ks.forEach((k, i) => { out[k] = piso[i] / 10; });
+  return out;
+}
+// compatibilidade: % simples com 1 casa (sem fechar em 100) — usado fora das fatias da carteira
+function pctFlag(a, b) {
   if (!b) return 0;
-  const v = (a / b) * 1000;
-  return (f === 'green' ? Math.floor(v + 1e-9) : f === 'yellow' || f === 'red' ? Math.ceil(v - 1e-9) : Math.round(v)) / 10;
+  return Math.round((a / b) * 1000) / 10;
 }
 // média ponderada por receita: itens [{ v, w }] — sem peso em nenhum item, cai na média simples (nunca divide por zero)
 function mediaPonderada(itens) {
@@ -260,9 +276,11 @@ function carteiraPorFlag(clients) {
   }
   tot.receita = Math.round(tot.receita * 100) / 100;
   const flags = {};
+  const pR = fatias100(Object.fromEntries(Object.keys(sl).map((f) => [f, sl[f].receita])));
+  const pC = fatias100(Object.fromEntries(Object.keys(sl).map((f) => [f, sl[f].clientes])));
   for (const f of Object.keys(sl)) {
     const x = sl[f];
-    const o = { clientes: x.clientes, receita: Math.round(x.receita * 100) / 100, pctReceita: pctFlag(x.receita, tot.receita, f), pctClientes: pctFlag(x.clientes, tot.clientes, f) };
+    const o = { clientes: x.clientes, receita: Math.round(x.receita * 100) / 100, pctReceita: pR[f], pctClientes: pC[f] };
     if (META_FLAGS[f] != null) {
       const alvo = (tot.receita * META_FLAGS[f]) / 100;
       // verde: R$ que faltam pra chegar na meta; amarelo/vermelho: R$ a mais do que a meta permite
@@ -285,4 +303,4 @@ function carteiraPorFlag(clients) {
   };
 }
 
-module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO, META_FLAGS, STATUS_CARTEIRA, carteiraPorFlag, mediaPonderada, pctFlag, flagEfetiva };
+module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO, META_FLAGS, STATUS_CARTEIRA, carteiraPorFlag, mediaPonderada, pctFlag, fatias100, flagEfetiva };

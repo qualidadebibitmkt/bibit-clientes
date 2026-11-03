@@ -1,7 +1,7 @@
 /* bibit-clientes — front */
 (() => {
   'use strict';
-  const VERSION = 105;
+  const VERSION = 106;
   console.log('[bibit-clientes] v' + VERSION);
   // sensor de erros: qualquer falha de JS aparece escrita no rodapé
   window.addEventListener('error', (e) => {
@@ -66,16 +66,20 @@
   const CARTEIRA_ST = new Set(['execucao', 'atrasado', 'encerramento']);
   const emCarteira = (c) => CARTEIRA_ST.has(stKeyOf(c));
   const somaMensal = (arr) => arr.reduce((a, c) => a + (c.mensalidade || 0), 0);
-  const fmtPct1 = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+  const fmtPct1 = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })); // sempre 1 casa: 18,0% ao lado de 82,1% (André, 03/11/26)
   // média ponderada pela mensalidade: itens [{ v, w }]; sem nenhum peso, cai na média simples
   const mediaPond = (itens) => { const ok = itens.filter((x) => x && x.v != null); if (!ok.length) return null; const sw = ok.reduce((a, x) => a + (x.w > 0 ? x.w : 0), 0); if (!(sw > 0)) return ok.reduce((a, x) => a + x.v, 0) / ok.length; return ok.reduce((a, x) => a + x.v * (x.w > 0 ? x.w : 0), 0) / sw; };
   function carteiraDe(arr) {
     const tot = { clientes: arr.length, receita: somaMensal(arr), semValor: arr.filter((c) => !(c.mensalidade > 0)).length };
     const sl = {}; for (const f of ['green', 'yellow', 'red', 'semScore']) sl[f] = { clientes: 0, receita: 0 };
     for (const c of arr) { const f = flagDe(c) || 'semScore'; sl[f].clientes++; sl[f].receita += c.mensalidade || 0; }
+    // fatias fecham em 100,0 (maior resto) — mesma regra do servidor (api/_healthscore.js fatias100); antes cada fatia arredondava
+    // pro lado da meta e 0 + 18 + 82,1 dava 100,1 (André, 03/11/26)
+    const pR = fatias100(Object.fromEntries(Object.keys(sl).map((f) => [f, sl[f].receita])));
+    const pC = fatias100(Object.fromEntries(Object.keys(sl).map((f) => [f, sl[f].clientes])));
     for (const f of Object.keys(sl)) {
       const x = sl[f];
-      x.pctReceita = pctNum(x.receita, tot.receita, f); x.pctClientes = pctNum(x.clientes, tot.clientes, f);
+      x.pctReceita = pR[f]; x.pctClientes = pC[f];
       if (META_FLAGS[f] != null) {
         const alvo = (tot.receita * META_FLAGS[f]) / 100;
         const dif = f === 'green' ? alvo - x.receita : x.receita - alvo; // verde: R$ que faltam; amarelo/vermelho: R$ a mais
@@ -103,10 +107,16 @@
   const MADURO_DIAS = 28;
   // Meta de distribuição das flags na carteira (Bruno, 25/09/26): 70% Green · 20% Yellow · 10% Red
   const META_FLAGS = { green: 70, yellow: 20, red: 10 };
-  // % da carteira com 1 casa, arredondado pro lado da meta (auditoria 27/10): verde pra baixo (69,6% não vira "70%" ao lado de "falta 1"),
-  // amarelo/vermelho pra cima (20,4% não vira "20%" ao lado de "1 a mais")
-  const pctNum = (n, t, f) => { if (!t) return 0; const v = (n / t) * 1000; return (f === 'green' ? Math.floor(v + 1e-9) : f === 'yellow' || f === 'red' ? Math.ceil(v - 1e-9) : Math.round(v)) / 10; };
-  const pct = (n, t, f) => pctNum(n, t, f).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  // % simples com 1 casa (peso de um cliente na receita etc.). As fatias da carteira NÃO usam isto — usam fatias100, que fecha em 100,0.
+  const pctNum = (n, t) => (t ? Math.round((n / t) * 1000) / 10 : 0);
+  function fatias100(partes) {
+    const ks = Object.keys(partes); const tot = ks.reduce((a, k) => a + (partes[k] > 0 ? partes[k] : 0), 0); const out = {};
+    if (!(tot > 0)) { for (const k of ks) out[k] = 0; return out; }
+    const raw = ks.map((k) => ((partes[k] > 0 ? partes[k] : 0) / tot) * 1000); const piso = raw.map((v) => Math.floor(v + 1e-9));
+    let sobra = 1000 - piso.reduce((a, b) => a + b, 0);
+    for (const i of ks.map((k, i) => i).sort((i, j) => (raw[j] - piso[j]) - (raw[i] - piso[i]) || raw[j] - raw[i])) { if (sobra <= 0) break; piso[i] += 1; sobra -= 1; }
+    ks.forEach((k, i) => { out[k] = piso[i] / 10; }); return out;
+  }
   // lacuna em clientes: verde = quantos faltam pra chegar na meta; amarelo/vermelho = quantos a mais que a meta permite
   function lacunaFlag(f, n, t) {
     if (!t) return null;
