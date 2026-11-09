@@ -175,9 +175,11 @@ function resumo(a, tasksOf) {
 }
 
 // pontos de atenção do cliente que não dependem da pessoa (entram no "projeto a projeto")
-function pontosCliente(c) {
+function pontosCliente(c, id) {
   const p = [];
-  if (c.campanha && c.campanha.rodando === false) p.push('sem campanha rodando');
+  // campanha parada é assunto de tráfego: só aparece pra quem é do tráfego no cliente
+  const doTrafego = ((c.team && c.team.trafego) || []).some((x) => pid(x) === id);
+  if (doTrafego && c.campanha && c.campanha.rodando === false) p.push('sem campanha rodando');
   if (!c.metrics || !c.metrics.respostas) p.push('nunca respondeu CSAT');
   if (c.contato && c.contato.resumo && ALERTA_RX.test(c.contato.resumo)) p.push('sinal de alerta no WhatsApp');
   if (stKey(c) === 'atrasado') p.push('pagamento atrasado');
@@ -264,7 +266,7 @@ module.exports = async (req, res) => {
     const porCliente = a.clientes.map((c) => {
       const pontos = [];
       for (const x of abaixo.filter((x) => x.c.id === c.id)) pontos.push(x.k === 'contato' && x.m.calado ? 'sem mensagem sua' : x.k === 'produtividade' ? x.m.txt : x.k === 'trafego' && x.m.curto ? x.m.curto : `${LBL[x.k].toLowerCase()} ${fmtV(x.k, x.m.valor)}`);
-      pontos.push(...pontosCliente(c));
+      pontos.push(...pontosCliente(c, a.id));
       return { cliente: c.name, clienteId: c.id, flag: flagDe(c) || null, pontos };
     }).sort((x, y) => y.pontos.length - x.pontos.length || x.cliente.localeCompare(y.cliente, 'pt-BR'));
     const calados = abaixo.filter((x) => x.k === 'contato' && x.m.calado).map((x) => ({ cliente: x.c.name, msgsCliente: x.m.msgsCliente || 0 }));
