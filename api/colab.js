@@ -203,7 +203,9 @@ function mensagem(x, quando) {
     if (p.media == null && k === 'produtividade') { L.push(`${EMOJI[k]} ${LBL[k]}: 100% · nenhuma tarefa com prazo no mês ✓`); continue; }
     if (p.media == null) { L.push(`${EMOJI[k]} ${LBL[k]}: sem dado`); continue; }
     const rot = k === 'trafego' && p.frentes && p.frentes.length ? `${LBL[k]} (${p.frentes.map((f) => FRENTE_LBL[f] || f).join(' + ')})` : LBL[k];
-    L.push(`${EMOJI[k]} ${rot}: ${fmtV(k, p.media)} (meta ${fmtV(k, p.meta)}) ${p.falta > 0 ? `— falta ${fmtLac(k, p.falta)}` : '✓'}`);
+    const base = k === 'produtividade' && p.fonte === 'ranking' ? ` · ${p.atrasadas} de ${p.totais} tarefa${p.totais === 1 ? '' : 's'} do mês atrasada${p.atrasadas === 1 ? '' : 's'}` : '';
+    if (k === 'produtividade' && p.fonte === 'ranking' && !p.totais) { L.push(`${EMOJI[k]} ${LBL[k]}: 100% · nenhuma tarefa com prazo no mês ✓`); continue; }
+    L.push(`${EMOJI[k]} ${rot}: ${fmtV(k, p.media)}${base} (meta ${fmtV(k, p.meta)}) ${p.falta > 0 ? `— falta ${fmtLac(k, p.falta)}` : '✓'}`);
   }
   L.push('');
   if (x.atacar.length) {
@@ -244,6 +246,31 @@ async function whatsapps(token) {
   return out;
 }
 
+// Produtividade OFICIAL da pessoa = card "Ranking - MM/AA - NOME" do mês vigente (André, 09/11/26): o Make
+// "Produtividade Diária" (5470796) grava Tarefas Totais / Tarefas Atrasadas todo dia — mesmo número dos painéis individuais.
+const CF_RK_PESSOA = '202d0b1a-6350-4835-adaf-820bf094dd10';
+const CF_RK_TOTAIS = '3d9a9019-b6e7-44e5-9c11-3151138c956a';    // Tarefas Totais
+const CF_RK_ATRASADAS = 'daf6f735-e7e3-4bed-bdc4-32a13ab4dc73'; // Tarefas Atrasadas
+function prodRanking(cards) {
+  const out = new Map(); if (!Array.isArray(cards)) return out;
+  const [ano, mes] = hoje().split('-'); const rotulo = `${mes}/${ano.slice(2)}`;
+  for (const t of cards) {
+    if (!String(t.name || '').includes(rotulo)) continue;
+    const cf = (id) => { const f = (t.custom_fields || []).find((x) => x.id === id); return f ? f.value : null; };
+    const n = (v) => (v == null || v === '' ? null : Number(v));
+    const totais = n(cf(CF_RK_TOTAIS)), atrasadas = n(cf(CF_RK_ATRASADAS));
+    if (totais == null || !Number.isFinite(totais)) continue;
+    const pctV = totais > 0 ? Math.floor(((totais - (atrasadas || 0)) / totais) * 1000 + 1e-9) / 10 : 100;
+    const v = { pct: pctV, totais, atrasadas: atrasadas || 0, card: t.url || null };
+    const pes = cf(CF_RK_PESSOA); const u = Array.isArray(pes) && pes[0];
+    if (u && u.id) out.set(String(u.id), v);
+    if (u && u.username) out.set(norm(u.username), v);
+    out.set(norm(String(t.name).replace(/^.*\d{2}\/\d{2}\s*-\s*/, '')), v);
+  }
+  return out;
+}
+const rkDe = (rk, a) => rk.get(String(a.id)) || rk.get(norm(a.p.name)) || [...rk.entries()].find(([k]) => k.split(' ')[0] === norm(a.p.name).split(' ')[0])?.[1] || null;
+
 module.exports = async (req, res) => {
   let captured = null, status = 200;
   const fake = { setHeader() {}, status(s) { status = s; return this; }, json(o) { captured = o; return this; } };
@@ -254,7 +281,8 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
 
   const token = process.env.CLICKUP_API_TOKEN || process.env.CLICKUP_TOKEN;
-  const tel = await whatsapps(token);
+  const [tel, rkCards] = await Promise.all([whatsapps(token), data.rankingCards().catch(() => null)]);
+  const rk = prodRanking(rkCards);
   const clients = captured.clients.filter((c) => stKey(c) !== 'briefing');
   const tasksOf = (id) => captured.tasks.filter((t) => t.clienteId === id);
   const want = (req.query && req.query.pessoa) || null;
@@ -262,7 +290,12 @@ module.exports = async (req, res) => {
   const quando = new Date(captured.generatedAt).toLocaleDateString('pt-BR', { timeZone: BRT, weekday: 'long', day: '2-digit', month: '2-digit' }).replace(/^./, (s) => s.toUpperCase());
 
   const pessoas = colaboradores(clients, tasksOf).filter((a) => !want || a.id === want).map((a) => {
-    const { por, abaixo } = resumo(a, tasksOf);
+    const r0 = resumo(a, tasksOf); const por = r0.por; let abaixo = r0.abaixo;
+    const ofi = rkDe(rk, a);
+    if (ofi) {
+      por.produtividade = { ...por.produtividade, aplica: true, media: ofi.pct, cls: cls('produtividade', ofi.pct), falta: Math.max(0, 95 - ofi.pct), fonte: 'ranking', totais: ofi.totais, atrasadas: ofi.atrasadas };
+      if (!ofi.atrasadas) abaixo = abaixo.filter((x) => x.k !== 'produtividade'); // Ranking sem atraso no mês = nada a cobrar por cliente
+    }
     const flags = { green: 0, yellow: 0, red: 0 }; for (const c of a.clientes) { const f = flagDe(c); if (flags[f] != null) flags[f]++; }
     // no máximo 3 itens e, enquanto der, um por cliente (o item mais grave de cada um)
     const usados = new Set(); const top = []; for (const x of abaixo) { if (top.length >= 3) break; if (usados.has(x.c.id)) continue; usados.add(x.c.id); top.push(x); }
@@ -296,3 +329,4 @@ module.exports = async (req, res) => {
 module.exports.whatsapps = whatsapps;
 // reutilizado por /api/ranking (mesma medida por pessoa × cliente × pilar)
 Object.assign(module.exports, { colaboradores, medida, resumo, equipeDe, PILARES, LBL, META, PAPEL_LBL, norm, pid, stKey, flagDe, cls, isOpen, isLate, concluida, conclFora, noMes });
+module.exports._prodRanking = prodRanking;
