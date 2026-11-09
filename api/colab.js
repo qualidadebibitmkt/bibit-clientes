@@ -23,7 +23,8 @@ const EMOJI = { trafego: '📈', satisfacao: '😊', produtividade: '✅', conta
 const META = { trafego: 70, satisfacao: 9, produtividade: 95, contato: 70 };
 const PAPEL_LBL = { trafego: 'Tráfego', social: 'Social Media', rp: 'RP', audiovisual: 'Audiovisual', webdesign: 'Web Designer' };
 const FORA_PLACAR = ['willian pereira', 'will', 'gabriel beltrao', 'gabriel beltrão'];
-const JANELA_CONCL_DIAS = 30;
+// Produtividade por pessoa = MÊS VIGENTE (André, 09/11/26): mesma régua do "Produtividade Diária"/painéis individuais —
+// tarefas com prazo dentro do mês corrente; atrasada = aberta já vencida ou concluída depois do prazo. (Antes: janela móvel de 30 dias.)
 const ALERTA_RX = /cancel|encerr|reclama|insatisf|sem resposta|urg[êe]nc|cobran/i;
 
 const norm = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -50,7 +51,9 @@ const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
 const hoje = () => dayKey(Date.now());
 const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < hoje();
 const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
-const concluida = (t) => !isOpen(t) && !descartada(t) && t.dateClosed && Date.now() - t.dateClosed <= JANELA_CONCL_DIAS * 864e5;
+const mesAtual = () => hoje().slice(0, 7);
+const noMes = (t) => !!t.dueDate && dayKey(t.dueDate).slice(0, 7) === mesAtual();
+const concluida = (t) => !isOpen(t) && !descartada(t) && !!t.dateClosed;
 const conclFora = (t) => concluida(t) && t.dueDate && dayKey(t.dateClosed) > dayKey(t.dueDate);
 
 function equipeDe(c) {
@@ -100,8 +103,8 @@ function medida(k, c, a, tasksOf) {
     return { valor: v, lacuna: Math.max(0, 9 - v), cls: cls(k, v), txt: `nota ${fmtNota(v)} ao ${PAP[papel]} no CSAT`, papel: PAP[papel] };
   }
   if (k === 'produtividade') {
-    // tarefa sem prazo fica fora (André, 26/10/26) — mesma regra do pilar do cliente (auditoria 27/10)
-    const ts = tasksOf(c.id).filter((t) => t.dueDate && (t.assignees || []).some((p) => pid(p) === a.id));
+    // tarefa sem prazo fica fora (André, 26/10/26); só tarefas com prazo no MÊS VIGENTE (André, 09/11/26) — começa o mês em 100%
+    const ts = tasksOf(c.id).filter((t) => noMes(t) && !descartada(t) && (t.assignees || []).some((p) => pid(p) === a.id));
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate), lateCo = concl.filter(conclFora);
     const total = abertas.length + concl.length; if (!total) return null;
@@ -290,4 +293,4 @@ module.exports = async (req, res) => {
 // reutilizado por /api/acoes-dia (números do Time - Operação)
 module.exports.whatsapps = whatsapps;
 // reutilizado por /api/ranking (mesma medida por pessoa × cliente × pilar)
-Object.assign(module.exports, { colaboradores, medida, resumo, equipeDe, PILARES, LBL, META, PAPEL_LBL, norm, pid, stKey, flagDe, cls, isOpen, isLate, concluida, conclFora });
+Object.assign(module.exports, { colaboradores, medida, resumo, equipeDe, PILARES, LBL, META, PAPEL_LBL, norm, pid, stKey, flagDe, cls, isOpen, isLate, concluida, conclFora, noMes });
