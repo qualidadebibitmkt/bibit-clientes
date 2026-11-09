@@ -199,6 +199,8 @@ function mensagem(x, quando) {
   L.push('*Seu placar*');
   for (const k of PILARES) {
     const p = x.pilares[k]; if (!p.aplica) continue;
+    // produtividade sem tarefa com prazo no mês = 100% (André, 09/11/26) — igual ao painel individual, que começa o mês em 100%
+    if (p.media == null && k === 'produtividade') { L.push(`${EMOJI[k]} ${LBL[k]}: 100% · nenhuma tarefa com prazo no mês ✓`); continue; }
     if (p.media == null) { L.push(`${EMOJI[k]} ${LBL[k]}: sem dado`); continue; }
     const rot = k === 'trafego' && p.frentes && p.frentes.length ? `${LBL[k]} (${p.frentes.map((f) => FRENTE_LBL[f] || f).join(' + ')})` : LBL[k];
     L.push(`${EMOJI[k]} ${rot}: ${fmtV(k, p.media)} (meta ${fmtV(k, p.meta)}) ${p.falta > 0 ? `— falta ${fmtLac(k, p.falta)}` : '✓'}`);
