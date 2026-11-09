@@ -40,6 +40,10 @@ const pct = (n) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFract
 const fmtV = (k, v) => (v == null ? '—' : k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? pct(v) : `${Math.round(v)} pts`);
 const fmtLac = (k, v) => (k === 'satisfacao' ? fmtNota(v) : k === 'produtividade' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' p.p.' : `${Math.round(v)} pts`);
 const cls = (k, v) => (v == null ? 'na' : k === 'satisfacao' ? (v >= 9 ? 'g' : v >= 8 ? 'y' : 'r') : k === 'produtividade' ? (v >= 95 ? 'g' : v >= 85 ? 'y' : 'r') : (v >= 70 ? 'g' : v >= 50 ? 'y' : 'r'));
+const fmtPts = (n) => `${Math.round(n)} pts`;
+const pctE = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+const AREA_LBL = { social: 'Social', audiovisual: 'Audiovisual', rp: 'RP' };
+const FRENTE_LBL = { trafego: 'Tráfego', social: 'Social', audiovisual: 'Audiovisual', rp: 'RP', webdesign: 'Web' };
 const BOLA = { green: '🟢', yellow: '🟡', red: '🔴' };
 
 const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
@@ -70,8 +74,21 @@ function medida(k, c, a, tasksOf) {
     const fr = (hs && hs.pilares && hs.pilares.trafego.frentes) || {};
     if (!frente || !fr[frente] || fr[frente].nota == null) return null;
     const n = fr[frente].nota;
-    const det = frente === 'trafego' ? (hs.pilares.trafego.detalhe || []).filter((f) => f.valor != null && !f.frente).map((f) => `${f.rotulo} ${f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`).join(' · ') : (frente === 'webdesign' ? `${fr[frente].n} projeto(s) de web avaliado(s) nos últimos 90 dias (IQW)` : `${fr[frente].n} post(s) nos últimos 30 dias`);
-    return { valor: n, lacuna: Math.max(0, META.trafego - n), cls: cls(k, n), txt: `nota ${n} pts · frente ${frente}${det ? ' · ' + det : ''}`, frente };
+    const base = { valor: n, lacuna: Math.max(0, META.trafego - n), cls: cls(k, n), frente };
+    if (frente === 'trafego') {
+      const det = (hs.pilares.trafego.detalhe || []).filter((f) => f.valor != null && !f.frente).map((f) => `${f.rotulo} ${f.rotulo === 'ROAS' ? f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + 'x' : 'R$ ' + f.valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`).join(' · ');
+      return { ...base, txt: `tráfego: nota ${fmtPts(n)}${det ? ' · ' + det : ''}`, curto: `tráfego ${fmtPts(n)}` };
+    }
+    if (frente === 'webdesign') return { ...base, txt: `web: nota ${fmtPts(n)} · ${fr[frente].n} projeto(s) avaliado(s) nos últimos 90 dias`, curto: `web ${fmtPts(n)}` };
+    // conteúdo (Social / Audiovisual / RP): o resultado é o ENGAJAMENTO dos posts da área (André, 30/10/26)
+    const pq = (c.conteudo && c.conteudo[frente] && c.conteudo[frente].porque) || {};
+    const tx = pq.medTxE != null ? pq.medTxE : pq.txE;
+    const area = AREA_LBL[frente];
+    const nPosts = fr[frente].n;
+    const txt = tx != null
+      ? `engajamento ${area} ${pctE(tx)} no post típico (${nPosts} post${nPosts === 1 ? '' : 's'} em 30 dias) → ${fmtPts(n)}`
+      : `engajamento ${area}: nota ${fmtPts(n)} (${nPosts} post${nPosts === 1 ? '' : 's'} em 30 dias)`;
+    return { ...base, txt, curto: tx != null ? `engajamento ${pctE(tx)}` : `engajamento ${fmtPts(n)}`, prox: pq.proximaFaixa || null, area };
   }
   if (k === 'satisfacao') {
     const pp = (c.metrics && c.metrics.porPapel) || {}; const t = c.team || {};
@@ -116,7 +133,14 @@ function acao(x) {
   }
   if (x.k === 'satisfacao') return `ligue pro cliente e pergunte o que faltou no ${m.papel}`;
   if (x.k === 'produtividade') return m.lateAb ? `replaneje o prazo hoje ou conclua${m.vencidas[0] ? ` (${m.vencidas[0].name}, desde ${fmtCurto(m.vencidas[0].dueDate)})` : ''}` : `entregue dentro do prazo combinado — ${m.lateCo} ${m.lateCo === 1 ? 'saiu atrasada' : 'saíram atrasadas'} no mês`;
-  if (x.k === 'trafego') return `revise a campanha esta semana — a nota está na faixa ${m.cls === 'r' ? 'vermelha' : 'amarela'} da carteira`;
+  if (x.k === 'trafego') {
+    const faixa = m.cls === 'r' ? 'vermelha' : 'amarela';
+    if (m.frente === 'trafego') return `revise a campanha esta semana — a nota está na faixa ${faixa}`;
+    if (m.frente === 'webdesign') return `revise as entregas de web com o cliente — a nota está na faixa ${faixa}`;
+    const p = m.prox;
+    const alvo = p ? `pra chegar a ${pctE(p.limite)} (${p.pontos} pts) faltam ~${p.faltaInteracoes} interaç${p.faltaInteracoes === 1 ? 'ão' : 'ões'} por post` : `a nota está na faixa ${faixa}`;
+    return `${alvo} — puxe conversa nos posts (pergunta, enquete, chamada pra salvar e compartilhar)`;
+  }
   return '';
 }
 
@@ -143,7 +167,8 @@ function resumo(a, tasksOf) {
     const vals = [];
     for (const c of a.clientes) { const m = medida(k, c, a, tasksOf); if (!m) continue; vals.push({ v: m.valor, w: c.mensalidade > 0 ? c.mensalidade : 0 }); if (m.lacuna > 0) abaixo.push({ k, c, m, rel: m.lacuna / META[k] }); }
     const media = vals.length ? require('./_healthscore').mediaPonderada(vals) : null;
-    por[k] = { aplica: k !== 'trafego' || a.papeis.includes('trafego'), media, n: vals.length, cls: cls(k, media), meta: META[k], falta: media == null ? null : Math.max(0, META[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
+    const frentes = k === 'trafego' ? [...new Set(a.clientes.map((c) => { const m = medida(k, c, a, tasksOf); return m && m.frente; }).filter(Boolean))] : [];
+    por[k] = { aplica: k !== 'trafego' || vals.length > 0, frentes, media, n: vals.length, cls: cls(k, media), meta: META[k], falta: media == null ? null : Math.max(0, META[k] - media), abaixo: abaixo.filter((x) => x.k === k).length };
   }
   abaixo.sort((x, y) => (x.m.cls === y.m.cls ? y.rel - x.rel : x.m.cls === 'r' ? -1 : y.m.cls === 'r' ? 1 : 0));
   return { por, abaixo };
@@ -163,14 +188,15 @@ function pontosCliente(c) {
 function mensagem(x, quando) {
   const primeiro = x.nome.split(' ')[0];
   const L = [];
-  L.push(`🤖 *Resumo da semana · Painel de Clientes*`);
+  L.push(`🤖 *Resumo da semana · Painel de Health Score*`);
   L.push(`${quando} · ${primeiro} · ${x.clientes} cliente${x.clientes === 1 ? '' : 's'} (${x.flags.green} 🟢 · ${x.flags.yellow} 🟡 · ${x.flags.red} 🔴)`);
   L.push('');
   L.push('*Seu placar*');
   for (const k of PILARES) {
     const p = x.pilares[k]; if (!p.aplica) continue;
     if (p.media == null) { L.push(`${EMOJI[k]} ${LBL[k]}: sem dado`); continue; }
-    L.push(`${EMOJI[k]} ${LBL[k]}: ${fmtV(k, p.media)} (meta ${fmtV(k, p.meta)}) ${p.falta > 0 ? `— falta ${fmtLac(k, p.falta)}` : '✓'}`);
+    const rot = k === 'trafego' && p.frentes && p.frentes.length ? `${LBL[k]} (${p.frentes.map((f) => FRENTE_LBL[f] || f).join(' + ')})` : LBL[k];
+    L.push(`${EMOJI[k]} ${rot}: ${fmtV(k, p.media)} (meta ${fmtV(k, p.meta)}) ${p.falta > 0 ? `— falta ${fmtLac(k, p.falta)}` : '✓'}`);
   }
   L.push('');
   if (x.atacar.length) {
@@ -186,7 +212,7 @@ function mensagem(x, quando) {
   if (ok) L.push(`_+ ${ok} em dia ✓_`);
   if (x.foiBem.length) { L.push(''); L.push('*Foi bem* 👏'); for (const f of x.foiBem) L.push(`• ${f}`); }
   L.push('');
-  L.push('_Resumo automático de segunda, gerado a partir do Painel de Clientes. Qualquer dúvida, fala com o Will._');
+  L.push('_Resumo automático de segunda, gerado a partir do Painel de Health Score. Qualquer dúvida, fala com o Will._');
   return L.join('\n');
 }
 
@@ -237,7 +263,7 @@ module.exports = async (req, res) => {
     const atacar = top.map((x) => ({ cliente: x.c.name, clienteId: x.c.id, pilar: LBL[x.k], valor: fmtV(x.k, x.m.valor), falta: fmtLac(x.k, x.m.lacuna), fato: x.m.txt, acao: acao(x), cls: x.m.cls }));
     const porCliente = a.clientes.map((c) => {
       const pontos = [];
-      for (const x of abaixo.filter((x) => x.c.id === c.id)) pontos.push(x.k === 'contato' && x.m.calado ? 'sem mensagem sua' : x.k === 'produtividade' ? x.m.txt : `${LBL[x.k].toLowerCase()} ${fmtV(x.k, x.m.valor)}`);
+      for (const x of abaixo.filter((x) => x.c.id === c.id)) pontos.push(x.k === 'contato' && x.m.calado ? 'sem mensagem sua' : x.k === 'produtividade' ? x.m.txt : x.k === 'trafego' && x.m.curto ? x.m.curto : `${LBL[x.k].toLowerCase()} ${fmtV(x.k, x.m.valor)}`);
       pontos.push(...pontosCliente(c));
       return { cliente: c.name, clienteId: c.id, flag: flagDe(c) || null, pontos };
     }).sort((x, y) => y.pontos.length - x.pontos.length || x.cliente.localeCompare(y.cliente, 'pt-BR'));
