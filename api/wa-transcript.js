@@ -1,7 +1,7 @@
-// BIBIT · GET /api/wa-transcript?grupo=<wa_grupo_id>&t=<token>[&days=7]
+// BIBIT · GET /api/wa-transcript?grupo=<wa_grupo_id>&t=<token>[&days=7][&media=1]
 // Devolve a transcrição pronta pra análise (Make → Claude). Só o Make chama isto.
 
-const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao, carregarEquipe, rotuloAutor } = require('./_wa');
+const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao, carregarEquipe, rotuloAutor, anexarMidia } = require('./_wa');
 
 const fmt = (ms) => {
   const d = new Date(ms);
@@ -52,7 +52,9 @@ module.exports = async (req, res) => {
 
     // mark=1 (só o Make usa): registra quando a análise leu este grupo → "atualizado em" no painel
     if (req.query.mark) { try { await redisPipeline([['SET', 'wa:last:' + grupo, String(Date.now())], ['EXPIRE', 'wa:last:' + grupo, String(180 * 86400)]]); } catch {} }
-    const linhas = msgs.map((m) => `${fmt(m.t)} ${rotuloAutor(m, nomeCliente)} ${m.s || 'alguém'}: ${m.m}`);
+    // media=1: áudio/imagem/documento entram com o texto convertido (ou "aguardando…"); as métricas seguem nas originais
+    const comTexto = req.query.media ? await anexarMidia(msgs) : msgs;
+    const linhas = comTexto.map((m) => `${fmt(m.t)} ${rotuloAutor(m, nomeCliente)} ${m.s || 'alguém'}: ${m.m}`);
     const remetentes = [...new Set(msgs.map((m) => m.s).filter(Boolean))];
     // métricas por pessoa da Bibit (pro prompt individual do Make e pro painel)
     const met = metricasEquipe(msgs, hoje, nomeCliente);

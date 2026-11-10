@@ -90,7 +90,8 @@ async function insumo(req, res) {
     const ultimaBibit = bibitHumano.length ? bibitHumano[bibitHumano.length - 1].t : null;
     const ultimaCliente = uteis.filter((m) => !wa.ehBibit(m, c.name) && !m.me).slice(-1)[0];
     const met = wa.metricasEquipe(msgs, agora, c.name);
-    const recentes = msgs.filter((m) => m.t >= agora - DIAS_TRANSCRICAO * 86400000);
+    // áudio/imagem/documento com o texto convertido — pra não pedir de novo o que já foi resolvido por áudio (André, 04/11/26)
+    const recentes = await wa.anexarMidia(msgs.filter((m) => m.t >= agora - DIAS_TRANSCRICAO * 86400000));
     const linhas = []; let marcou = false;
     for (const m of recentes) {
       if (!marcou && m.t >= ini) { linhas.push(`---- início da janela de hoje (${fmtHora(ini)}) ----`); marcou = true; }

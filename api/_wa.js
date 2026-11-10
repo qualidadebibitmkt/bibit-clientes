@@ -275,4 +275,34 @@ function parsePareceres(txt) {
   return out;
 }
 
-module.exports = { FERIADOS, carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres };
+// ---------- áudios, imagens e documentos convertidos em texto (André, 04/11/26) ----------
+// O /api/wa-inbound guarda em cada mensagem de mídia o id (mid) e o tipo (k: a=áudio, i=imagem, d=documento) e põe o
+// endereço do arquivo numa fila; o /api/wa-media (Make, 22h, e a tarefa das Ações do dia) converte com o Gemini e grava
+// o texto em wa:mt:<mid>. Aqui só se LÊ o resultado — sem conversão pronta a linha sai marcada como "aguardando", e a
+// análise segue normalmente (a conversão nunca pode derrubar o IEC: foi o que parou o cenário de 04 a 09/11/26).
+const MEDIA_FILA = 'wa:media:pend';
+const mediaKey = (mid) => 'wa:mt:' + mid;
+const limpa1 = (x, n) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, n);
+// v = { ok, x } gravado pelo /api/wa-media; null/undefined = ainda não convertido
+function textoMidia(m, v) {
+  const base = String(m.m || '');
+  const pronto = v && v.ok && v.x;
+  const falhou = v && !v.ok;
+  if (m.k === 'a') return pronto ? `[áudio · transcrição] ${limpa1(v.x, 1500)}` : falhou ? '[áudio · não transcrito]' : '[áudio · aguardando transcrição]';
+  if (m.k === 'i') return pronto ? `${base} · descrição: ${limpa1(v.x, 500)}` : falhou ? `${base} · sem descrição` : `${base} · aguardando descrição`;
+  if (m.k === 'd') return pronto ? `${base} · resumo: ${limpa1(v.x, 600)}` : falhou ? `${base} · sem resumo` : `${base} · aguardando resumo`;
+  return base;
+}
+// devolve CÓPIAS das mensagens com o texto da mídia no lugar de "[áudio]" etc. — as originais ficam intactas, pra não
+// mexer nas métricas (quem é automação, reação, clipping) que olham o começo do texto. Falha de leitura → "aguardando".
+async function anexarMidia(msgs) {
+  const com = (msgs || []).filter((m) => m && m.mid && m.k);
+  if (!com.length) return msgs;
+  let out = [];
+  try { out = await redisPipeline(com.map((m) => ['GET', mediaKey(m.mid)])); } catch { out = []; }
+  const porMid = new Map();
+  com.forEach((m, i) => { let v = null; try { const r = out[i] && out[i].result; v = r ? JSON.parse(r) : null; } catch {} porMid.set(m.mid, v); });
+  return msgs.map((m) => (m && m.mid && m.k ? { ...m, m: textoMidia(m, porMid.get(m.mid)) } : m));
+}
+
+module.exports = { FERIADOS, carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres, MEDIA_FILA, mediaKey, textoMidia, anexarMidia };

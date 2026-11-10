@@ -3,7 +3,7 @@
 // Guarda apenas mensagens de GRUPO, em chave diária com expiração — nada é lido daqui
 // pelo navegador; só o Make (via /api/wa-transcript) na análise semanal.
 
-const { redisReady, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS } = require('./_wa');
+const { redisReady, redisPipeline, dayKey, keyFor, normGrupo, tokenOk, TTL_DIAS, MEDIA_FILA } = require('./_wa');
 
 function textoDe(b) {
   if (b.text && b.text.message) return String(b.text.message);
@@ -15,6 +15,18 @@ function textoDe(b) {
   if (b.reaction) return '[reação ' + (b.reaction.value || '') + ']';
   if (b.contact) return '[contato]';
   if (b.location) return '[localização]';
+  return null;
+}
+
+// áudio, imagem e documento: o endereço do arquivo vai pra fila de conversão em texto (/api/wa-media). Vídeo e figurinha
+// ficam de fora (peso/custo). Sem id da mensagem ou sem endereço, a mensagem segue só como "[áudio]" etc., como antes.
+function midiaDe(b) {
+  const mid = String(b.messageId || '').replace(/[^\w.-]/g, '').slice(0, 80);
+  if (!mid) return null;
+  const mk = (k, o, url, nome) => (url && /^https?:\/\//i.test(String(url)) ? { mid, k, url: String(url), mime: String((o && o.mimeType) || '').split(';')[0].trim().toLowerCase(), n: String(nome || '').slice(0, 120) } : null);
+  if (b.audio) return mk('a', b.audio, b.audio.audioUrl || b.audio.url);
+  if (b.image) return mk('i', b.image, b.image.imageUrl || b.image.url);
+  if (b.document) return mk('d', b.document, b.document.documentUrl || b.document.url, b.document.fileName || b.document.title);
   return null;
 }
 
@@ -49,12 +61,17 @@ module.exports = async (req, res) => {
     me: !!b.fromMe,
     m: texto.slice(0, 2000),
   };
+  const midia = midiaDe(b);
+  if (midia) { msg.mid = midia.mid; msg.k = midia.k; }
   const key = keyFor(grupo, dayKey(ts));
   try {
-    const out = await redisPipeline([
+    const cmds = [
       ['RPUSH', key, JSON.stringify(msg)],
       ['EXPIRE', key, String(TTL_DIAS * 86400)],
-    ]);
+    ];
+    // fila de conversão: no mesmo envio (sem acesso extra ao banco); LTRIM segura a fila se a conversão ficar parada
+    if (midia) cmds.push(['RPUSH', MEDIA_FILA, JSON.stringify({ ...midia, t: ts })], ['LTRIM', MEDIA_FILA, '-3000', '-1']);
+    const out = await redisPipeline(cmds);
     const erro = (out || []).find((x) => x && x.error);
     // erro do Redis (ex.: cota do mês estourada) volta 200: devolver 500 faria o Z-API reenviar e gastar mais cota (27/10/26)
     if (erro) { res.status(200).json({ ok: false, error: String(erro.error) }); return; }

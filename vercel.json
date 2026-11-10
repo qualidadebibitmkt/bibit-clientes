@@ -26,6 +26,9 @@
     }
   ],
   "functions": {
+    "api/wa-media.js": {
+      "maxDuration": 300
+    },
     "api/iqw.js": {
       "maxDuration": 300,
       "includeFiles": "node_modules/@sparticuz/chromium/bin/**"
