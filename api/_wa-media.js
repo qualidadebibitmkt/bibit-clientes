@@ -105,6 +105,20 @@ module.exports = async (req, res) => {
       res.status(200).json({ ok: false, motivo: 'GEMINI_API_KEY não configurada no Vercel — os arquivos ficam na fila e as análises seguem sem o texto deles', pendentes: await pendentes() });
       return;
     }
+    // ?teste=1: confere a chave e o modelo com um pedido mínimo de texto, sem tocar na fila (pra validar depois de trocar a chave)
+    if (req.query.teste) {
+      try {
+        const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Responda apenas com a palavra: ok' }] }], generationConfig: { temperature: 0, maxOutputTokens: 256 } }),
+          signal: AbortSignal.timeout(30000),
+        });
+        const corpo = await rr.text();
+        let resposta = ''; try { resposta = ((((JSON.parse(corpo).candidates || [])[0] || {}).content || {}).parts || []).filter((p) => p && p.text && !p.thought).map((p) => p.text).join(' ').trim(); } catch {}
+        res.status(200).json(rr.ok ? { ok: true, teste: true, modelo: GEMINI_MODEL, resposta: resposta.slice(0, 80), pendentes: await pendentes() } : { ok: false, teste: true, modelo: GEMINI_MODEL, motivo: 'Gemini ' + rr.status + ' · ' + corpo.replace(/\s+/g, ' ').slice(0, 300) });
+      } catch (e) { res.status(200).json({ ok: false, teste: true, modelo: GEMINI_MODEL, motivo: String((e && e.message) || e) }); }
+      return;
+    }
     // uma conversão por vez (Make às 22h e a tarefa da manhã podem se cruzar): a trava cai sozinha em 5 min
     const trava = await redis(['SET', LOCK, String(inicio), 'NX', 'EX', '300']);
     if (!trava) { res.status(200).json({ ok: true, ocupado: true, motivo: 'outra conversão em andamento', pendentes: await pendentes() }); return; }
