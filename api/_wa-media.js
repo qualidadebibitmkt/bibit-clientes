@@ -1,4 +1,6 @@
 // BIBIT · GET /api/wa-media?t=<token>[&max=150]
+// (arquivo com "_": o plano do Vercel aceita no máximo 12 funções e o painel já tem 12 — o endereço /api/wa-media é
+// reescrito no vercel.json pra /api/wa-transcript?acao=media, que entrega o pedido pra cá)
 // Converte em texto os áudios, imagens e documentos pendentes dos grupos de WhatsApp (André, 04/11/26: a análise precisa
 // "escutar" o que foi resolvido por áudio). Chamado pelo Make (cenário 6200759, módulo 0, 22h) e pela tarefa das Ações do dia.
 //

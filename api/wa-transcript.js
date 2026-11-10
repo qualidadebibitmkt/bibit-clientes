@@ -12,6 +12,8 @@ const fmt = (ms) => {
 };
 
 module.exports = async (req, res) => {
+  // /api/wa-media chega aqui (rewrite no vercel.json): conversão de áudio/imagem/documento em texto
+  if (req.query && req.query.acao === 'media') return require('./_wa-media')(req, res);
   if (!tokenOk(req)) { res.status(401).json({ error: 'token' }); return; }
   if (!redisReady()) { res.status(503).json({ error: 'buffer não configurado (Redis)' }); return; }
   // diagnóstico: ?all=1 lista os grupos com mensagem no buffer

@@ -1,4 +1,4 @@
-// Testes da conversão de áudio/imagem/documento em texto (api/wa-media.js, api/wa-inbound.js, anexarMidia) — node scripts/test-wa-media.js
+// Testes da conversão de áudio/imagem/documento em texto (api/_wa-media.js, api/wa-inbound.js, anexarMidia) — node scripts/test-wa-media.js
 // Tudo em memória: Redis (Upstash REST), download do arquivo e Gemini são simulados por um fetch falso.
 const assert = require('assert');
 process.env.KV_REST_API_URL = 'https://redis.fake';
@@ -42,7 +42,9 @@ global.fetch = async (url, opt = {}) => {
 
 const W = require('../api/_wa');
 const inbound = require('../api/wa-inbound');
-const media = require('../api/wa-media');
+// o endereço público /api/wa-media é um rewrite pra wa-transcript?acao=media — o teste entra pelo mesmo caminho
+const transcript = require('../api/wa-transcript');
+const media = (req, res) => transcript({ ...req, query: { ...req.query, acao: 'media' } }, res);
 const chamar = async (h, req) => { let out; const res = { setHeader() {}, status(c) { return { json(j) { out = { status: c, ...j }; } }; } }; await h({ method: 'GET', query: { t: TOKEN }, ...req }, res); return out; };
 const fila = () => (db.get(W.MEDIA_FILA) || []).map((x) => JSON.parse(x));
 
@@ -129,8 +131,8 @@ const t = async (n, f) => { try { await f(); ok++; console.log('  ok', n); } cat
   await t('token errado continua 401', async () => { const r = await chamar(media, { query: { t: 'x' } }); assert.strictEqual(r.status, 401); });
   await t('sem GEMINI_API_KEY: 200 com o motivo e fila intacta', async () => {
     await chamar(inbound, { method: 'POST', body: { ...base, messageId: 'F1', audio: { audioUrl: 'https://z/f1.ogg', mimeType: 'audio/ogg' } } });
-    delete process.env.GEMINI_API_KEY; delete require.cache[require.resolve('../api/wa-media')];
-    const r = await chamar(require('../api/wa-media'), {});
+    delete process.env.GEMINI_API_KEY; delete require.cache[require.resolve('../api/_wa-media')];
+    const r = await chamar(media, {});
     assert.deepStrictEqual([r.status, r.ok, r.pendentes], [200, false, 1]);
     assert.ok(/GEMINI_API_KEY/.test(r.motivo));
   });
