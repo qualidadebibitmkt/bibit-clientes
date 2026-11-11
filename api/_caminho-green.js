@@ -81,7 +81,7 @@ function frentesResultado(c) {
     if (d.frente) { // conteúdo por área
       const pq = (c.conteudo && c.conteudo[d.frente] && c.conteudo[d.frente].porque) || null;
       out.push({
-        frente: d.frente, nome: d.rotulo, tipo: 'conteudo', nota: d.nota, posts: (c.conteudo && c.conteudo[d.frente] && c.conteudo[d.frente].n) || null,
+        frente: d.frente, nome: d.rotulo, tipo: d.frente === 'webdesign' ? 'web' : 'conteudo', nota: d.nota, posts: (c.conteudo && c.conteudo[d.frente] && c.conteudo[d.frente].n) || null,
         engajamentoTipico: pq ? pq.medTxE : null, // % (mediana dos posts medidos)
         proximoDegrau: pq && pq.proximaFaixa ? { engajamento: pq.proximaFaixa.limite, nota: pq.proximaFaixa.pontos, faltaInteracoesPorPost: pq.proximaFaixa.faltaInteracoes } : null,
         postsAbaixoDeBom: pq ? pq.abaixo : null, postsZerados: pq ? pq.zerados : null,
@@ -99,22 +99,33 @@ function frentesResultado(c) {
   }
   return out.filter((f) => f.nota != null);
 }
-// combinação mais barata de degraus nas frentes pra a média do Resultado chegar em `alvo` (sobe sempre a frente mais fraca)
+// combinação mais barata de degraus nas frentes pra a média do Resultado chegar em `alvo`: testa todas as combinações
+// de degrau (40/60/80/100) e fica com a de MENOS degraus; empate → a que sobe menos pontos. Web Design não entra como
+// alavanca (a nota vem de projetos já entregues), só compõe a média.
+const DEGRAUS = [40, 60, 80, 100];
 function combinacaoResultado(frentes, alvo) {
-  const fs = frentes.map((f) => ({ ...f, alvo: f.nota }));
-  const media = () => Math.round(fs.reduce((a, f) => a + f.alvo, 0) / (fs.length || 1));
-  let guard = 0;
-  while (fs.length && media() < alvo && guard++ < 40) {
-    const f = fs.filter((x) => x.alvo < 100).sort((a, b) => a.alvo - b.alvo)[0];
-    if (!f) break;
-    f.alvo = [40, 60, 80, 100].find((n) => n > f.alvo);
-  }
+  if (!frentes.length) return null;
+  const opcoes = frentes.map((f) => (f.tipo === 'web' || (f.tipo === 'trafego' && !f.degraus) ? [f.nota] : [f.nota, ...DEGRAUS.filter((n) => n > f.nota)]));
+  let melhor = null;
+  const anda = (i, escolha) => {
+    if (i === frentes.length) {
+      const media = Math.round(escolha.reduce((a, b) => a + b, 0) / escolha.length);
+      if (media < alvo) return;
+      const passos = escolha.reduce((a, v, k) => a + opcoes[k].indexOf(v), 0), pontos = escolha.reduce((a, v, k) => a + (v - frentes[k].nota), 0);
+      if (!melhor || passos < melhor.passos || (passos === melhor.passos && pontos < melhor.pontos)) melhor = { passos, pontos, media, escolha: [...escolha] };
+      return;
+    }
+    for (const v of opcoes[i]) { escolha.push(v); anda(i + 1, escolha); escolha.pop(); }
+  };
+  anda(0, []);
+  if (!melhor) return { atinge: false, mediaFinal: null, frentes: [] };
+  const REGUA = { social: { 40: 0.5, 60: 1, 80: 2, 100: 3 }, outras: { 40: 1, 60: 2, 80: 3, 100: 5 } };
   return {
-    atinge: fs.length ? media() >= alvo : false, mediaFinal: fs.length ? media() : null,
-    frentes: fs.filter((f) => f.alvo > f.nota).map((f) => {
-      const o = { frente: f.frente, nome: f.nome, de: f.nota, para: f.alvo };
-      if (f.tipo === 'trafego' && f.degraus) { const d = f.degraus.find((x) => x.nota === f.alvo); if (d) { o.metrica = f.metrica; o.valorHoje = f.valor; o.valorAlvo = d.limite; o.sentido = d.menorMelhor ? 'ou menos' : 'ou mais'; } }
-      if (f.tipo === 'conteudo') { const reg = f.frente === 'social' ? { 40: 0.5, 60: 1, 80: 2, 100: 3 } : { 40: 1, 60: 2, 80: 3, 100: 5 }; o.engajamentoHoje = f.engajamentoTipico; o.engajamentoAlvo = reg[f.alvo]; }
+    atinge: true, mediaFinal: melhor.media, degraus: melhor.passos,
+    frentes: frentes.map((f, k) => ({ f, para: melhor.escolha[k] })).filter((x) => x.para > x.f.nota).map(({ f, para }) => {
+      const o = { frente: f.frente, nome: f.nome, de: f.nota, para };
+      if (f.tipo === 'trafego') { const d = (f.degraus || []).find((x) => x.nota === para); if (d) { o.metrica = f.metrica; o.valorHoje = f.valor; o.valorAlvo = d.limite; o.sentido = d.menorMelhor ? 'ou menos' : 'ou mais'; } }
+      if (f.tipo === 'conteudo') { o.engajamentoHoje = f.engajamentoTipico; o.engajamentoAlvo = (f.frente === 'social' ? REGUA.social : REGUA.outras)[para]; }
       return o;
     }),
   };
@@ -265,6 +276,8 @@ module.exports = async (req, res) => {
     const resMinPrazo100 = p.trafego == null ? null : minimoPara90({ ...alvo, produtividade: p.produtividade == null ? null : 100 }, 'trafego');
     const precisaResultado = resMin != null && resMin > (p.trafego || 0);
     const comb = precisaResultado && frentes.length ? combinacaoResultado(frentes, resMin) : null;
+    // quando o Prazo segura o score hoje, o mesmo caminho com o Prazo já de volta em 100 (mais leve pro Resultado)
+    const combPrazo100 = resMinPrazo100 != null && resMinPrazo100 !== resMin && resMinPrazo100 > (p.trafego || 0) && frentes.length ? combinacaoResultado(frentes, resMinPrazo100) : null;
     const teto = scoreDe({ trafego: p.trafego == null ? null : 100, satisfacao: sat.teto != null ? sat.teto : p.satisfacao, produtividade: p.produtividade == null ? null : 100, contato: p.contato == null ? null : 100 });
 
     linhas.push({
@@ -282,6 +295,7 @@ module.exports = async (req, res) => {
         viavelAgora: p.trafego == null ? semResultado >= GREEN : resMin != null, // false = nem com Resultado 100 fecha 90 hoje (o Prazo ou a Satisfação seguram)
         tetoDoScore: teto,                                // tudo no máximo possível, com a Satisfação no teto realista
         resultadoPorFrente: comb,                         // quais frentes subir, de quanto pra quanto, e o número-alvo
+        resultadoPorFrenteComPrazoEm100: combPrazo100,
       },
       resultado: { nota: p.trafego, tipoDeCampanha: c.tipoRelatorio || null, campanhaRodando: c.campanha ? c.campanha.rodando : null, frentes },
       satisfacao: sat, prazo: prz, relacionamento: rel,
