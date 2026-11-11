@@ -1,7 +1,7 @@
 // BIBIT · GET /api/wa-transcript?grupo=<wa_grupo_id>&t=<token>[&days=7][&media=1]
 // Devolve a transcrição pronta pra análise (Make → Claude). Só o Make chama isto.
 
-const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao, carregarEquipe, rotuloAutor, anexarMidia } = require('./_wa');
+const { redisReady, redisPipeline, normGrupo, tokenOk, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehAutomacao, carregarEquipe, rotuloAutor, anexarMidia, anotarContexto, LEGENDA_TRANSCRICAO } = require('./_wa');
 
 const fmt = (ms) => {
   const d = new Date(ms);
@@ -55,7 +55,8 @@ module.exports = async (req, res) => {
     // mark=1 (só o Make usa): registra quando a análise leu este grupo → "atualizado em" no painel
     if (req.query.mark) { try { await redisPipeline([['SET', 'wa:last:' + grupo, String(Date.now())], ['EXPIRE', 'wa:last:' + grupo, String(180 * 86400)]]); } catch {} }
     // media=1: áudio/imagem/documento entram com o texto convertido (ou "aguardando…"); as métricas seguem nas originais
-    const comTexto = req.query.media ? await anexarMidia(msgs) : msgs;
+    // cada resposta/reação sai dizendo a qual mensagem se refere (quando o WhatsApp informou)
+    const comTexto = anotarContexto(req.query.media ? await anexarMidia(msgs) : msgs);
     const linhas = comTexto.map((m) => `${fmt(m.t)} ${rotuloAutor(m, nomeCliente)} ${m.s || 'alguém'}: ${m.m}`);
     const remetentes = [...new Set(msgs.map((m) => m.s).filter(Boolean))];
     // métricas por pessoa da Bibit (pro prompt individual do Make e pro painel)
@@ -73,6 +74,7 @@ module.exports = async (req, res) => {
       `Contagem do sistema: cliente escreveu ${cli.msgs7d} mensagem(ns) em ${cli.nDiasAtivos} dia(s) distinto(s) (${cli.diasAtivos.join(', ') || '—'}); ${cli.msgs24h} nas últimas 24h. Bibit: ${cli.msgsBibit7d} mensagem(ns), ${cli.msgsBibit24h} nas últimas 24h.`,
       cli.semRespostaBibit.length ? `Turno do cliente SEM resposta da Bibit há mais de 24h úteis: ${cli.semRespostaBibit.map((x) => `${fmt(x.t)} ${x.s}: "${x.m}"`).join(' | ')}.` : 'Nenhum turno do cliente sem resposta da Bibit há mais de 24h úteis.',
       'Cada linha já vem marcada pelo SISTEMA com quem escreveu: [BIBIT] = equipe da agência, [CLIENTE] = lado do cliente, [AUTOMAÇÃO] = robô (relatório, alertas, clipping; não conta como engajamento). Use SEMPRE essa marcação para saber quem perguntou, pediu ou respondeu — nunca deduza pelo nome ou pelo conteúdo. Pergunta de linha [BIBIT] é pedido da Bibit, nunca pergunta do cliente.',
+      LEGENDA_TRANSCRICAO,
     ].join('\n');
     const metricasTxt = met.pessoas.length
       ? met.pessoas.map((p) => `${p.nome}: ${p.msgs} mensagens em ${p.diasAtivos} dia(s), ${p.reacoes} reações, respondeu ${p.respostas} vez(es) ao cliente (${p.respostas2h} em até 2h úteis${p.tempoMedioH != null ? `, tempo médio ${p.tempoMedioH}h` : ''})`).join('\n') + `\nCliente: ${met.grupo.msgsCliente} mensagens de ${met.grupo.remetentesCliente} pessoa(s), ${met.grupo.turnosCliente} vez(es) puxou assunto, ${met.grupo.semResposta} ficou sem resposta da Bibit por mais de 24h úteis`
@@ -80,6 +82,7 @@ module.exports = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({
       grupo, dias: days, count: msgs.length,
+      comAlvo: { respostas: msgs.filter((m) => m.re).length, reacoes: msgs.filter((m) => m.rx).length, comId: msgs.filter((m) => m.mid).length }, // conferência: o WhatsApp está informando a quem cada resposta/reação se refere?
       domingo: dow === 0, diaSemana: dow, // pro Make rodar os pareceres por colaborador só no domingo
       remetentes, metricas: metricasTxt, metricasJson: met,
       iecContexto, cliente: cli,

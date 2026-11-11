@@ -61,6 +61,13 @@ module.exports = async (req, res) => {
     me: !!b.fromMe,
     m: texto.slice(0, 2000),
   };
+  // id desta mensagem, da mensagem respondida (citação) e da mensagem reagida — é o que permite dizer, na transcrição,
+  // a quem cada resposta/reação se refere (11/11/26); "l" é o identificador do remetente, pra traduzir menções "@123…"
+  const idLimpo = (x) => String(x || '').replace(/[^\w.-]/g, '').slice(0, 80);
+  const mid = idLimpo(b.messageId); if (mid) msg.mid = mid;
+  const re = idLimpo(b.referenceMessageId); if (re && re !== mid) msg.re = re;
+  const rx = idLimpo(b.reaction && b.reaction.referencedMessage && b.reaction.referencedMessage.messageId); if (rx) msg.rx = rx;
+  const lid = String(b.participantLid || '').replace(/\D/g, '').slice(0, 24); if (lid) msg.l = lid;
   const midia = midiaDe(b);
   if (midia) { msg.mid = midia.mid; msg.k = midia.k; }
   const key = keyFor(grupo, dayKey(ts));

@@ -305,4 +305,44 @@ async function anexarMidia(msgs) {
   return msgs.map((m) => (m && m.mid && m.k ? { ...m, m: textoMidia(m, porMid.get(m.mid)) } : m));
 }
 
-module.exports = { FERIADOS, carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres, MEDIA_FILA, mediaKey, textoMidia, anexarMidia };
+// ---------- a qual mensagem cada resposta e cada reação se refere (André, 11/11/26) ----------
+// Caso que motivou: no grupo da Mare Nostrum o cliente reagiu com 👍 ao vídeo da Gabriela e respondeu (citando) "não gostei
+// da música" ao vídeo do Rômulo, enviado horas antes. A transcrição só tinha as linhas em ordem de chegada, então a análise
+// colou a reclamação na mensagem mais próxima e avisou a Gabriela de uma reprovação que não era dela. Desde 11/11/26 o
+// /api/wa-inbound guarda o id de toda mensagem (mid), o id da mensagem respondida (re), o da mensagem reagida (rx) e o
+// identificador de quem enviou (l), e aqui a linha passa a dizer com todas as letras a quem a resposta/reação se refere.
+const fmtBR = (ms) => { const d = new Date(ms - 3 * 3600 * 1000); const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`; };
+const quemEnviou = (m) => (m.me ? 'número oficial da Bibit' : pessoaDe(m.s));
+// msgs: as mensagens que vão virar linha (de preferência já com o texto das mídias); base: onde procurar a mensagem citada
+// (padrão: as próprias msgs — passe a janela inteira quando msgs for um recorte). Devolve cópias; as originais não mudam.
+function anotarContexto(msgs, base) {
+  const todas = base || msgs || [];
+  const porMid = new Map(); const porLid = new Map();
+  for (const m of todas) { if (m && m.mid && !porMid.has(m.mid)) porMid.set(m.mid, m); if (m && m.l && m.s && !m.me) porLid.set(String(m.l), pessoaDe(m.s)); }
+  for (const m of msgs || []) if (m && m.mid) porMid.set(m.mid, m); // a versão com o texto da mídia vale mais que a crua
+  const mencoes = (x) => (porLid.size ? String(x || '').replace(/@(\d{8,20})(?!\d)/g, (tudo, d) => (porLid.has(d) ? '@' + porLid.get(d) : tudo)) : String(x || ''));
+  const alvo = (a) => `${quemEnviou(a)} (${fmtBR(a.t)}): "${limpa1(mencoes(a.m), 90)}"`;
+  return (msgs || []).map((m) => {
+    if (!m) return m;
+    let txt = mencoes(m.m);
+    if (m.rx) {
+      const a = porMid.get(m.rx);
+      txt = txt.replace(/\]\s*$/, '') + (a ? ` na mensagem de ${alvo(a)}]` : ' em uma mensagem anterior, fora desta transcrição]');
+    } else if (m.re) {
+      const a = porMid.get(m.re);
+      txt = (a ? `↪ respondendo a ${alvo(a)} — ` : '↪ respondendo a uma mensagem anterior, fora desta transcrição — ') + txt;
+    }
+    return txt === m.m ? m : { ...m, m: txt };
+  });
+}
+// legenda que acompanha a transcrição em tudo que vai pra análise (IEC, Ações do dia, aprovação do calendário)
+const LEGENDA_TRANSCRICAO = [
+  'COMO LER A TRANSCRIÇÃO (quem respondeu a quê):',
+  '1. "↪ respondendo a Fulano (dd/mm hh:mm): \\"trecho\\" — texto" = a pessoa respondeu ESPECIFICAMENTE àquela mensagem (resposta com citação no WhatsApp). O comentário, a aprovação ou a reclamação vale para aquela mensagem/entrega e para quem a enviou — não para a mensagem que aparece logo acima na ordem de chegada.',
+  '2. "[reação 👍 na mensagem de Fulano (dd/mm hh:mm): \\"trecho\\"]" = reação àquela mensagem específica. Reação positiva do cliente (👍 🙏 ❤️ 👏 ✅ 🔥 😍 e parecidas) a uma entrega ou a um pedido de aprovação conta como ciente/aprovação DAQUELA entrega; não gera pendência para quem a enviou.',
+  '3. Resposta ou reação SEM essa indicação (mensagens anteriores a 11/11/2026, ou "fora desta transcrição") tem alvo DESCONHECIDO: não presuma que se refere à mensagem imediatamente anterior. Só ligue a uma pessoa ou entrega se o próprio texto deixar claro (cita o nome, o arquivo ou o assunto). Na dúvida, não trate como reprovação e não atribua a ninguém em específico.',
+  '4. "@Nome" = menção direta àquela pessoa; "@" seguido só de números é menção a alguém que o sistema não identificou.',
+  '5. Uma reclamação, um pedido de ajuste ou uma pergunta do cliente pertence a quem enviou a mensagem respondida ou a quem foi mencionado — não a quem apenas escreveu por último no grupo, nem a toda a equipe. Quando várias entregas de pessoas diferentes estão em aberto, confira a qual delas cada resposta se refere antes de concluir quem tem algo a fazer.',
+].join('\n');
+
+module.exports = { FERIADOS, carregarEquipe, definirEquipe, rotuloAutor, redisReady, redis, redisPipeline, dayKey, dayKeyBR, keyFor, normGrupo, tokenOk, TTL_DIAS, lerMsgs, metricasEquipe, metricasCliente, ehBibit, ehCliente, ehAutomacao, ehReacao, pessoaDe, horasUteis, parsePareceres, MEDIA_FILA, mediaKey, textoMidia, anexarMidia, anotarContexto, LEGENDA_TRANSCRICAO };

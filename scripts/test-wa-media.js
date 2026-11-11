@@ -128,6 +128,23 @@ const t = async (n, f) => { try { await f(); ok++; console.log('  ok', n); } cat
     assert.deepStrictEqual([r.processadas, r.pendentes], [2, 2]);
     await chamar(media, {});
   });
+  await t('inbound guarda id, resposta citada, reação e remetente; transcript mostra a quem se refere', async () => {
+    const G2 = '120363000000000099-group';
+    const b2 = { ...base, phone: G2 };
+    await chamar(inbound, { method: 'POST', body: { ...b2, messageId: 'M1', senderName: 'Rômulo', participantLid: '111@lid', text: { message: 'segue o vídeo do Paulo' } } });
+    await chamar(inbound, { method: 'POST', body: { ...b2, messageId: 'M2', senderName: 'Gabriela', participantLid: '222@lid', text: { message: 'segue o UGC' } } });
+    await chamar(inbound, { method: 'POST', body: { ...b2, messageId: 'M3', senderName: 'Paulo', participantLid: '333@lid', referenceMessageId: 'M1', text: { message: 'não gostei da música' } } });
+    await chamar(inbound, { method: 'POST', body: { ...b2, messageId: 'M4', senderName: 'Paulo', participantLid: '333@lid', reaction: { value: '👍', referencedMessage: { messageId: 'M2' } } } });
+    const guardadas = db.get(W.keyFor(G2, W.dayKey(agora))).map((x) => JSON.parse(x));
+    assert.deepStrictEqual([guardadas[2].mid, guardadas[2].re, guardadas[2].l], ['M3', 'M1', '333']);
+    assert.strictEqual(guardadas[3].rx, 'M2');
+    W.definirEquipe({ fones: [], nomes: [] });
+    const r = await chamar(require('../api/wa-transcript'), { query: { t: TOKEN, grupo: G2 } });
+    assert.ok(/Paulo: ↪ respondendo a Rômulo \(\d\d\/\d\d \d\d:\d\d\): "segue o vídeo do Paulo" — não gostei da música/.test(r.transcript));
+    assert.ok(/\[reação 👍 na mensagem de Gabriela \(/.test(r.transcript));
+    assert.deepStrictEqual(r.comAlvo, { respostas: 1, reacoes: 1, comId: 4 });
+    assert.ok(r.iecContexto.includes('COMO LER A TRANSCRIÇÃO'));
+  });
   await t('token errado continua 401', async () => { const r = await chamar(media, { query: { t: 'x' } }); assert.strictEqual(r.status, 401); });
   await t('sem GEMINI_API_KEY: 200 com o motivo e fila intacta', async () => {
     await chamar(inbound, { method: 'POST', body: { ...base, messageId: 'F1', audio: { audioUrl: 'https://z/f1.ogg', mimeType: 'audio/ogg' } } });

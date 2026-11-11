@@ -91,7 +91,8 @@ async function insumo(req, res) {
     const ultimaCliente = uteis.filter((m) => !wa.ehBibit(m, c.name) && !m.me).slice(-1)[0];
     const met = wa.metricasEquipe(msgs, agora, c.name);
     // áudio/imagem/documento com o texto convertido — pra não pedir de novo o que já foi resolvido por áudio (André, 04/11/26)
-    const recentes = await wa.anexarMidia(msgs.filter((m) => m.t >= agora - DIAS_TRANSCRICAO * 86400000));
+    // e cada resposta/reação dizendo a qual mensagem se refere (11/11/26) — a citada é procurada nos 8 dias lidos, não só no recorte
+    const recentes = wa.anotarContexto(await wa.anexarMidia(msgs.filter((m) => m.t >= agora - DIAS_TRANSCRICAO * 86400000)), msgs);
     const linhas = []; let marcou = false;
     for (const m of recentes) {
       if (!marcou && m.t >= ini) { linhas.push(`---- início da janela de hoje (${fmtHora(ini)}) ----`); marcou = true; }
@@ -111,7 +112,7 @@ async function insumo(req, res) {
     });
   }
   res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({ geradoEm: agora, hoje: hojeBRT(agora), janela: { de: fmtHora(ini), ate: fmtHora(agora) }, totalGrupos: out.length, clientes: out });
+  res.status(200).json({ geradoEm: agora, hoje: hojeBRT(agora), janela: { de: fmtHora(ini), ate: fmtHora(agora) }, totalGrupos: out.length, comoLerTranscricao: wa.LEGENDA_TRANSCRICAO, clientes: out });
 }
 
 // ---------- gravação dos itens ----------
