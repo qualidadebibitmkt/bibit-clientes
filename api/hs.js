@@ -11,6 +11,9 @@
 const data = require('./data');
 
 module.exports = async (req, res) => {
+  // ?caminho=1 → caminho de cada cliente até a Green Flag (módulo _caminho-green.js; relatório diário do Head). Sem o
+  // parâmetro, nada muda. Fica aqui porque o projeto está no limite de 12 funções do plano Hobby da Vercel.
+  if (req.query && req.query.caminho) return require('./_caminho-green')(req, res);
   // captura o JSON que /api/data escreveria
   let captured = null, status = 200;
   const fake = {
