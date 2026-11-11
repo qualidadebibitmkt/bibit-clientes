@@ -3,11 +3,10 @@
 // Aqui só tem CONTA: reusa integralmente o cálculo de /api/data (fonte única da fórmula em _healthscore.js) e devolve,
 // por cliente, a nota de cada pilar, o número que está por trás dela e o que precisa mudar pra o score chegar em 90.
 // Quem escreve o texto é o agente; nenhum número do relatório nasce da IA.
-// Arquivo novo e isolado: não altera nenhum endpoint existente.
+// Arquivo com "_" na frente de propósito: o projeto está no limite de 12 funções do plano Hobby da Vercel, então este
+// módulo NÃO é um endpoint próprio — precisa ser chamado por dentro de um endpoint existente (handler(req, res)).
 //
-// GET /api/caminho-green            → todos os clientes da base (execução + atrasado + encerramento) fora de Green
-// GET /api/caminho-green?id=<uuid>  → um cliente
-// GET /api/caminho-green?top=8      → só os N mais perto de virar (o bloco `carteira` e `planoMeta` vêm sempre)
+// parâmetros (query): id=<uuid> → um cliente · top=8 → só os N mais perto de virar (`carteira` e `planoMeta` vêm sempre)
 
 const data = require('./data');
 const HS = require('./_healthscore');
