@@ -34,8 +34,9 @@ const diaBR = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: BRT, year: 'n
 
 // fora do ranking: quem saiu (Beltrão) e a Web Designer (Michelle) — decisão do André em 23/10/26: Web Design não entra no
 // Ranking (ela segue na aba Colaborador e nos pilares). Não usa o FORA_PLACAR do colab.js.
-// Will (Head/Estrategista) saiu do Ranking em 26/10/26 — decisão do André ("ele não faz mais parte")
-const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle', 'willian pereira', 'willian'];
+// Will (Head/Estrategista) saiu do Ranking em 26/10/26 — decisão do André ("ele não faz mais parte").
+// 16/11/26: ele voltou a aparecer porque o nome no ClickUp mudou de "Willian Pereira" pra "Will Pereira" — a lista cobre os dois.
+const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle', 'willian pereira', 'willian', 'will pereira', 'will'];
 const fora = (nome) => { const n = norm(nome); return FORA.some((x) => n === norm(x) || n.startsWith(norm(x) + ' ')); };
 
 const round0 = (n) => Math.round(n);
