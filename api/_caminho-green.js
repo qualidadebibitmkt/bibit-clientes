@@ -182,7 +182,7 @@ function prazoDe(c, tasks, agora) {
   const o = {
     nota: c.healthScore.pilares.produtividade.nota, noPrazoPct: c.healthScore.pilares.produtividade.detalhe ? c.healthScore.pilares.produtividade.detalhe.prodPct : null,
     tarefasNaConta: total, atrasadasAbertas: atrasadas.length, concluidasForaDoPrazo30d: fora.length,
-    atrasadas: atrasadas.sort((a, b) => a.dueDate - b.dueDate).slice(0, 6).map((t) => ({ nome: t.name, area: t.listName, responsavel: (t.assignees || []).map((p) => p && (p.name || p.username)).filter(Boolean).join(', ') || null, diasDeAtraso: Math.max(1, Math.round((agora - t.dueDate) / DIA)) })),
+    atrasadas: atrasadas.sort((a, b) => a.dueDate - b.dueDate).slice(0, 6).map((t) => ({ nome: t.name, area: t.listName, responsavel: (t.assigneesAll || t.assignees || []).map((p) => p && (p.name || p.username)).filter(Boolean).join(', ') || null, diasDeAtraso: Math.max(1, Math.round((agora - t.dueDate) / DIA)) })),
   };
   if (late > 0) {
     // concluir uma atrasada NÃO limpa o pilar na hora: ela passa a contar como "concluída fora do prazo" por 30 dias

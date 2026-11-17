@@ -722,7 +722,7 @@
     if (!lateTasks.length) return '';
     const rank = new Map();
     for (const t of lateTasks) {
-      const who = t.assignees.length ? t.assignees : [{ name: 'Sem responsável', initials: '—', color: null }];
+      const who = (t.assigneesAll || t.assignees).length ? (t.assigneesAll || t.assignees) : [{ name: 'Sem responsável', initials: '—', color: null }];
       for (const p of who) {
         if (!rank.has(p.name)) rank.set(p.name, { p, n: 0 });
         rank.get(p.name).n += 1;
@@ -841,7 +841,7 @@
   // ---------- funções ----------
   function rowHTML(t) {
     const due = t.dueDate ? `<span class="task-due${isLate(t) ? ' is-late' : ''}">${isLate(t) ? 'atrasada · ' : ''}${fmtCurto(t.dueDate)}</span>` : '<span class="task-due"></span>';
-    const a = t.assignees[0];
+    const a = (t.assigneesAll || t.assignees)[0];
     const av = a ? avatarHTML(a, 'avatar task-assignee') : '<span class="task-assignee"></span>';
     const st = t.status ? `<span class="status-pill"${t.status.color ? ` style="color:${esc(t.status.color)}"` : ''}>${esc(t.status.label)}</span>` : '';
     return `<a class="task-row" href="${esc(t.url)}" target="_blank" rel="noopener">

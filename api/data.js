@@ -168,8 +168,14 @@ async function fetchAllTasks(token, listId, includeClosed = false) {
 }
 
 // ---------- shaping ----------
+// Will (Head/Estrategista, id 101174603) não entra nas contas das tarefas de Social Media (André, 17/11/26): as tarefas
+// dele são as de Estratégia. Nos cards de Social ele sai de `assignees` (base de toda conta por pessoa: produtividade,
+// atrasadas, vínculo pessoa–cliente) e continua em `assigneesAll`, que é só o que o painel mostra como responsável.
+const FORA_CONTA_SOCIAL = new Set(['101174603']);
 function shapeOperacaoTask(task, listKey) {
   const cliente = cfDropdown(getCF(task, CF_CLIENTE));
+  const todos = (task.assignees || []).filter(Boolean);
+  const naConta = listKey === 'social' ? todos.filter((u) => !FORA_CONTA_SOCIAL.has(String(u.id))) : todos;
   return {
     id: task.id,
     name: task.name,
@@ -190,8 +196,9 @@ function shapeOperacaoTask(task, listKey) {
       (listKey === 'social' && /(^|\s)POST/i.test(task.name) && task.due_date ? Number(task.due_date) : null),
     clienteId: cliente ? cliente.id : null,
     clienteName: cliente ? cliente.name : null,
-    assignees: (task.assignees || []).map(person).filter(Boolean),
-    assigneeIds: (task.assignees || []).map((u) => u && u.id).filter(Boolean),
+    assignees: naConta.map(person).filter(Boolean),
+    assigneesAll: todos.map(person).filter(Boolean),
+    assigneeIds: naConta.map((u) => u.id).filter(Boolean),
     // IQC: só nas listas de conteúdo
     igId: ['social', 'audiovisual', 'rp'].includes(listKey) ? igIdDe(cfText(getCF(task, CF_ID_POST_META))) : null,
     igLink: ['social', 'audiovisual', 'rp'].includes(listKey) ? igShortcodeDe(cfText(getCF(task, CF_ID_POST_META))) : null,
