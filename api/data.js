@@ -181,6 +181,9 @@ function shapeOperacaoTask(task, listKey) {
       : null,
     dueDate: task.due_date ? Number(task.due_date) : null,
     dateClosed: Number(task.date_done) || Number(task.date_closed) || null, // quando foi concluída (pra "concluída fora do prazo")
+    // etiqueta "fora da produtividade" no ClickUp (André, 17/11/26): atraso que não foi da equipe (ex.: falha da automação
+    // de post no Facebook) — a tarefa sai da Produtividade por inteiro: nem no total, nem como atrasada, de cliente e de pessoa.
+    foraProd: (task.tags || []).some((g) => norm(g && g.name) === 'FORA DA PRODUTIVIDADE'),
     dataAgendamento: cfDate(getCF(task, CF_DATA_AGENDAMENTO)),
     // data usada no calendário: agendamento explícito, ou vencimento quando é um post de social
     calDate: cfDate(getCF(task, CF_DATA_AGENDAMENTO)) ||
@@ -537,7 +540,7 @@ async function calcular(req, res) {
     const hojeKey = diaDe(now);
     const JANELA_CONCL_MS = 30 * 864e5;
     const isOpenT = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
-    const isLateT = (t) => isOpenT(t) && t.dueDate && diaDe(t.dueDate) < hojeKey;
+    const isLateT = (t) => !t.foraProd && isOpenT(t) && t.dueDate && diaDe(t.dueDate) < hojeKey;
     const descartadaT = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
     const concluidaT = (t) => !isOpenT(t) && !descartadaT(t) && t.dateClosed && now - t.dateClosed <= JANELA_CONCL_MS;
     const conclForaT = (t) => concluidaT(t) && t.dueDate && diaDe(t.dateClosed) > diaDe(t.dueDate);
@@ -545,7 +548,7 @@ async function calcular(req, res) {
     // processo") — antes contava como "no prazo" e inflava a nota (Rock Brewing e Verano: 64 de 107 sem prazo).
     // Sem nenhuma tarefa com prazo, o pilar fica sem dado (fora do score).
     const prodDe = (cid) => {
-      const ts = tasks.filter((t) => t.clienteId === cid && t.dueDate);
+      const ts = tasks.filter((t) => t.clienteId === cid && t.dueDate && !t.foraProd); // etiqueta "fora da produtividade" não entra
       const abertas = ts.filter(isOpenT), concl = ts.filter(concluidaT);
       const total = abertas.length + concl.length;
       if (!total) return null;

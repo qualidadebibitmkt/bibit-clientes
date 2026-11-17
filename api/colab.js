@@ -49,7 +49,7 @@ const BOLA = { green: '🟢', yellow: '🟡', red: '🔴' };
 
 const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
 const hoje = () => dayKey(Date.now());
-const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < hoje();
+const isLate = (t) => !t.foraProd && isOpen(t) && t.dueDate && dayKey(t.dueDate) < hoje(); // etiqueta "fora da produtividade" nunca é atraso
 const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
 const mesAtual = () => hoje().slice(0, 7);
 const noMes = (t) => !!t.dueDate && dayKey(t.dueDate).slice(0, 7) === mesAtual();
@@ -104,7 +104,7 @@ function medida(k, c, a, tasksOf) {
   }
   if (k === 'produtividade') {
     // tarefa sem prazo fica fora (André, 26/10/26); só tarefas com prazo no MÊS VIGENTE (André, 09/11/26) — começa o mês em 100%
-    const ts = tasksOf(c.id).filter((t) => noMes(t) && !descartada(t) && (t.assignees || []).some((p) => pid(p) === a.id));
+    const ts = tasksOf(c.id).filter((t) => noMes(t) && !t.foraProd && !descartada(t) && (t.assignees || []).some((p) => pid(p) === a.id)); // etiqueta "fora da produtividade" não entra (André, 17/11/26)
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate), lateCo = concl.filter(conclFora);
     const total = abertas.length + concl.length; if (!total) return null;

@@ -96,7 +96,8 @@
   const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
   const isOpen = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
-  const isLate = (t) => isOpen(t) && t.dueDate && dayKey(t.dueDate) < todayKey();
+  // etiqueta "fora da produtividade" no ClickUp (André, 17/11/26): atraso que não foi da equipe — nunca conta como atrasada
+  const isLate = (t) => !t.foraProd && isOpen(t) && t.dueDate && dayKey(t.dueDate) < todayKey();
 
   // flag EFETIVA (08/09/26): o copo segue o score AO VIVO quando ele é suficiente;
   // a Flag do Growth é a foto semanal gravada pelo Make e só manda quando não há score.
@@ -1017,7 +1018,7 @@
   const METAS_PILAR = {
     trafego:       { lbl: 'Resultado',     meta: 70, unid: 'pts', desc: 'nota do pilar ≥ 70 (fora da faixa vermelha) — média das frentes com dado: tráfego (faixa fixa da métrica do objetivo: ROAS, CPM, custo por conversa ou por lead) e conteúdo por área (Social Media, Audiovisual e RP Manager: engajamento dos posts — curtidas + comentários + compartilhamentos + salvamentos ÷ seguidores — na régua fixa da área)' },
     satisfacao:    { lbl: 'Satisfação',    meta: 9,  unid: '',    desc: 'CSAT ≥ 9 (escala 0–10 do Typeform) — 10 vale 100 pontos, 9–9,9 vale 80; 8–8,9 amarelo (60); 7–7,9 vermelho (40); abaixo de 7 zera' },
-    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score); 100% vale 100 pontos, 95–99,9 vale 80' },
+    produtividade: { lbl: 'Produtividade', meta: 95, unid: '%',   desc: 'tarefas no prazo ≥ 95% — conta abertas vencidas e concluídas fora do prazo nos últimos 30 dias (mesma regra do pilar do score); tarefa com a etiqueta "fora da produtividade" no ClickUp (atraso que não foi da equipe, como falha da automação de post) não entra na conta; 100% vale 100 pontos, 95–99,9 vale 80' },
     contato:       { lbl: 'Relacionamento', meta: 70, unid: 'pts', desc: 'nota de engajamento do cliente ≥ 70 — calculada todo dia sobre os últimos 7 dias do grupo de WhatsApp (presença 20 · responsividade 20 · iniciativa 20 · tom 40); 50–69 amarelo; abaixo de 50 vermelho' },
   };
   const PILARES = ['trafego', 'satisfacao', 'produtividade', 'contato'];
@@ -1030,7 +1031,7 @@
   const conclFora = (t) => concluida(t) && t.dueDate && dayKey(t.dateClosed) > dayKey(t.dueDate);
   // tarefa sem prazo fica fora da conta (André, 26/10/26) — é erro de processo e aparece à parte pra ser corrigida
   function prodDetalhe(tsTodas) {
-    const ts = tsTodas.filter((t) => t.dueDate);
+    const ts = tsTodas.filter((t) => t.dueDate && !t.foraProd); // "fora da produtividade" sai do total e do atraso
     const semPrazo = tsTodas.filter((t) => isOpen(t) && !t.dueDate).length;
     const abertas = ts.filter(isOpen), concl = ts.filter(concluida);
     const lateAb = abertas.filter(isLate).length, lateCo = concl.filter(conclFora).length;
@@ -1385,7 +1386,7 @@
     let porPessoa = '';
     if (k === 'produtividade') {
       const agg = new Map();
-      for (const c of filtrados) for (const t of tasksOf(c.id)) { if (!t.dueDate) continue; const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
+      for (const c of filtrados) for (const t of tasksOf(c.id)) { if (!t.dueDate || t.foraProd) continue; const ab = isOpen(t), co = !ab && concluida(t); if (!ab && !co) continue; for (const p of t.assignees || []) { if (foraPlacar(p.name)) continue; const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set() }); const a = agg.get(id); if (ab) { a.abertas++; if (isLate(t)) a.lateAb++; } else { a.concl++; if (conclFora(t)) a.lateCo++; } a.clientes.add(c.id); } }
       for (const c of filtrados) for (const p of semExcluidos(equipeDe(c))) { const id = String(p.id || p.name); if (!agg.has(id)) agg.set(id, { p, abertas: 0, concl: 0, lateAb: 0, lateCo: 0, clientes: new Set(), semTarefa: true }); if (agg.get(id).semTarefa) agg.get(id).clientes.add(c.id); }
       const rows = [...agg.values()].map((a) => { const total = a.abertas + a.concl; const late = a.lateAb + a.lateCo; return { ...a, total, late, pct: total ? Math.floor(((total - late) / total) * 1000 + 1e-9) / 10 : null }; }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
       if (rows.length) porPessoa = `<p class="eyebrow">Placar por colaborador <span class="hs-hist-info">tarefas abertas + concluídas nos últimos ${JANELA_CONCL_DIAS} dias, de todos os clientes${filtroLbl ? ' · ' + esc(filtroLbl) : ''}</span></p>

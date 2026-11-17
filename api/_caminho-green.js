@@ -174,7 +174,7 @@ function prazoDe(c, tasks, agora) {
   const aberta = (t) => !t.status || !['done', 'closed'].includes(t.status.type);
   const descartada = (t) => /descart|cancel/i.test((t.status && t.status.label) || '');
   const concl = (t) => !aberta(t) && !descartada(t) && t.dateClosed && agora - t.dateClosed <= 30 * DIA;
-  const ts = tasks.filter((t) => t.clienteId === c.id && t.dueDate);
+  const ts = tasks.filter((t) => t.clienteId === c.id && t.dueDate && !t.foraProd); // etiqueta "fora da produtividade" não entra
   const abertas = ts.filter(aberta), conc = ts.filter(concl);
   const atrasadas = abertas.filter((t) => diaDe(t.dueDate) < hoje);
   const fora = conc.filter((t) => diaDe(t.dateClosed) > diaDe(t.dueDate));
