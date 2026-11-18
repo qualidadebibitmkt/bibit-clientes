@@ -36,7 +36,8 @@ const diaBR = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: BRT, year: 'n
 // Ranking (ela segue na aba Colaborador e nos pilares). Não usa o FORA_PLACAR do colab.js.
 // Will (Head/Estrategista) saiu do Ranking em 26/10/26 — decisão do André ("ele não faz mais parte").
 // 16/11/26: ele voltou a aparecer porque o nome no ClickUp mudou de "Willian Pereira" pra "Will Pereira" — a lista cobre os dois.
-const FORA = ['gabriel beltrao', 'gabriel beltrão', 'michelle luiza', 'michelle', 'willian pereira', 'willian', 'will pereira', 'will'];
+// 18/11/26: João Ribas (Social Media) saiu da Bibit em 17/11 — fora do ranking de hoje e dos meses (o Fabrício assumiu).
+const FORA = ['gabriel beltrao', 'gabriel beltrão', 'joao ribas', 'michelle luiza', 'michelle', 'willian pereira', 'willian', 'will pereira', 'will'];
 const fora = (nome) => { const n = norm(nome); return FORA.some((x) => n === norm(x) || n.startsWith(norm(x) + ' ')); };
 
 const round0 = (n) => Math.round(n);

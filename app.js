@@ -1252,7 +1252,7 @@
   // fora das análises por colaborador (Bruno, 28/09/26): Will (Head de Operação, não é mais operacional) e Gabriel Beltrão (saiu)
   // (André, 22/10/26) Will volta às análises por colaborador — ele responde pelos posts de Social e precisa aparecer no Resultado
   // com a frente dele; Beltrão (saiu) continua fora. Antes (Bruno, 28/09/26) Will também ficava fora.
-  const FORA_PLACAR = ['gabriel beltrao', 'gabriel beltrão'];
+  const FORA_PLACAR = ['gabriel beltrao', 'gabriel beltrão', 'joao ribas']; // João Ribas saiu em 17/11/26
   const normNome = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const foraPlacar = (nome) => { const n = normNome(nome); return FORA_PLACAR.some((x) => n === normNome(x) || n.startsWith(normNome(x) + ' ')); };
   const semExcluidos = (lista) => lista.filter((p) => !foraPlacar(p.name || p.nome));
