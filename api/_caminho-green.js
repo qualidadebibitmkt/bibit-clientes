@@ -332,6 +332,9 @@ module.exports = async (req, res) => {
     meta: { greenPctAlvo: HS.META_FLAGS.green, scoreGreen: GREEN, leitura: 'percentual da RECEITA recorrente da carteira em Green Flag' },
     carteira: {
       clientes: cart.base.clientes, receita: cart.base.receita,
+      // MRR exibido (André, 24/11/26) = receita da base + clientes em onboarding; a meta de Green segue sobre `receita`
+      mrr: cart.mrr ? cart.mrr.total : cart.base.receita,
+      onboarding: cart.mrr ? { clientes: cart.mrr.onboarding.clientes, receita: cart.mrr.onboarding.receita, nomes: cart.mrr.onboarding.nomes } : null,
       green: { clientes: cart.flags.green.clientes, receita: cart.flags.green.receita, pctReceita: cart.flags.green.pctReceita },
       yellow: { clientes: cart.flags.yellow.clientes, receita: cart.flags.yellow.receita, pctReceita: cart.flags.yellow.pctReceita },
       red: { clientes: cart.flags.red.clientes, receita: cart.flags.red.receita, pctReceita: cart.flags.red.pctReceita },

@@ -229,6 +229,22 @@ function calcularTodos(clientes) {
 //    contado em `semValor` pra aparecer como pendência de cadastro.
 const META_FLAGS = { green: 70, yellow: 20, red: 10 }; // meta de distribuição (Bruno, 25/09/26) — desde 28/10/26 sobre a receita
 const STATUS_CARTEIRA = ['execucao', 'atrasado', 'encerramento'];
+// MRR com onboarding (André, 24/11/26): novo cliente, briefing, estratégia e kickoff entram no MRR EXIBIDO da carteira, desde
+// o dia em que o card entra na Growth (o card nasce em "novo cliente", então o status atual já diz isso). É SÓ o número do MRR:
+// a base das flags, a meta 70/20/10, a média ponderada, o Ranking e o caminho até Green seguem sobre STATUS_CARTEIRA — cliente em
+// onboarding ainda não tem score, e somá-lo à base derrubaria o % em Green sem ninguém ter piorado.
+const STATUS_ONBOARDING = ['novocliente', 'briefing', 'estrategia', 'kickoff'];
+function mrrDaCarteira(clients) {
+  const rec = (arr) => Math.round(arr.reduce((a, c) => a + (c.mensalidade > 0 ? c.mensalidade : 0), 0) * 100) / 100;
+  const exec = clients.filter((c) => STATUS_CARTEIRA.includes(stKeyDe(c.status)));
+  const onb = clients.filter((c) => STATUS_ONBOARDING.includes(stKeyDe(c.status)));
+  const execucao = rec(exec), onboarding = rec(onb);
+  return {
+    total: Math.round((execucao + onboarding) * 100) / 100,
+    execucao: { clientes: exec.length, receita: execucao },
+    onboarding: { clientes: onb.length, receita: onboarding, status: STATUS_ONBOARDING, nomes: onb.map((c) => c.name) },
+  };
+}
 const stKeyDe = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
 // flag efetiva = score ao vivo quando suficiente; senão a flag gravada no Growth (mesma regra do copo no painel)
 const flagEfetiva = (c) => (c.healthScore && c.healthScore.flag) || c.flag || null;
@@ -297,10 +313,11 @@ function carteiraPorFlag(clients) {
   const mediaSimples = comScore.length ? comScore.reduce((a, c) => a + c.healthScore.score, 0) / comScore.length : null;
   return {
     base: { status: STATUS_CARTEIRA, ...tot },
+    mrr: mrrDaCarteira(clients), // MRR exibido = base + onboarding (André, 24/11/26); as flags abaixo seguem só sobre a base
     flags,
     meta: META_FLAGS,
     score: { ponderado: mediaPond == null ? null : Math.round(mediaPond), simples: mediaSimples == null ? null : Math.round(mediaSimples), clientes: comScore.length },
   };
 }
 
-module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO, META_FLAGS, STATUS_CARTEIRA, carteiraPorFlag, mediaPonderada, pctFlag, fatias100, flagEfetiva };
+module.exports = { calcularTodos, notaFaixa, notaResultado, PESOS, FAIXAS, FLAG_FAIXAS, flagDoScore, CARENCIA_TRAFEGO_DIAS, FRENTES_CONTEUDO, META_FLAGS, STATUS_CARTEIRA, STATUS_ONBOARDING, mrrDaCarteira, carteiraPorFlag, mediaPonderada, pctFlag, fatias100, flagEfetiva };
