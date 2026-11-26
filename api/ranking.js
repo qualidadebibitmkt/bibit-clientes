@@ -11,6 +11,8 @@
 //   4. NRR (0–200) — NRR individual do mês: <100% = 0 · 100 = 40 · 105 = 60 · 110 = 80 · 120 = 100 · 130 = 150 · 150%+ = 200
 //   Total = soma (máx. 600). Posição: total ↓ · empate → maior Satisfação · maior Health Score · nome.
 //   Renovação e NRR são lidos dos cards "Ranking - MM/AA - NOME" (o Make calcula todo dia, como no ranking antigo).
+//   Elegibilidade (André, 26/11/26): só entra no Ranking e só começa a contar pontos quem tem 10 clientes ou mais
+//   (RR.MIN_CLIENTES). Com menos de 10 a pessoa aparece sem posição e sem total; no mês só contam os dias com 10 ou mais.
 // Histórico: 1 foto por dia no Redis (rk:snap:AAAA-MM-DD, 400 dias). No mês: Health Score = média das fotos diárias;
 // Renovação, Vendas e NRR = os números do mês.
 //
@@ -64,7 +66,10 @@ function compor(notas) {
 // soma dos 4 pilares do Ranking (Health Score + Renovação + Vendas + NRR) → score = total de pontos
 function somar(p, vendas, card) {
   const { rk, total } = RR.pilaresRanking({ hsBase: p.base, hsInsuficiente: p.insuficiente, vendas, card });
-  p.rk = rk; p.score = p.insuficiente ? null : total; p.vendas = vendas;
+  if (p.elegivel === undefined) p.elegivel = RR.elegivel(p.clientes);
+  p.minClientes = RR.MIN_CLIENTES;
+  // menos de 10 clientes: fora do Ranking, os pontos não contam (total fica vazio; os pilares seguem visíveis no detalhe)
+  p.rk = rk; p.score = p.insuficiente || !p.elegivel ? null : total; p.vendas = vendas;
   return p;
 }
 const cardDe = (cards, mes, nome) => (cards && cards[mes] && cards[mes][RR.norm(nome)]) || null;
@@ -72,10 +77,10 @@ const cardDe = (cards, mes, nome) => (cards && cards[mes] && cards[mes][RR.norm(
 function ordenar(lista) {
   const sat = (p) => (p.pilares && p.pilares.satisfacao && p.pilares.satisfacao.nota != null ? p.pilares.satisfacao.nota : -1);
   // desempate da matriz: maior Satisfação (CSAT); depois maior Health Score
-  const rank = lista.filter((p) => !p.insuficiente && p.score != null).sort((a, b) => b.score - a.score || (sat(b) - sat(a)) || ((b.base || 0) - (a.base || 0)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const rank = lista.filter((p) => p.elegivel !== false && !p.insuficiente && p.score != null).sort((a, b) => b.score - a.score || (sat(b) - sat(a)) || ((b.base || 0) - (a.base || 0)) || a.nome.localeCompare(b.nome, 'pt-BR'));
   rank.forEach((p, i) => { p.posicao = i + 1; p.empate = i > 0 && rank[i - 1].score === p.score; if (p.empate) rank[i - 1].empate = true; }); // marca os dois lados do empate
-  const resto = lista.filter((p) => p.insuficiente || p.score == null).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  resto.forEach((p) => { p.posicao = null; });
+  const resto = lista.filter((p) => p.elegivel === false || p.insuficiente || p.score == null).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  resto.forEach((p) => { p.posicao = null; p.empate = false; });
   return [...rank, ...resto];
 }
 
@@ -134,6 +139,15 @@ async function garantirFoto(dia, lista) {
   return !ja;
 }
 
+// posição de uma foto recalculada só entre os elegíveis (10 clientes ou mais) — as fotos de antes da regra de 26/11/26
+// guardaram a posição com gente de menos de 10 clientes na frente
+function posElegiveis(pessoas) {
+  const satF = (p) => (p.p && p.p.satisfacao != null ? p.p.satisfacao : -1);
+  return new Map((pessoas || []).filter((p) => !fora(p.nome) && RR.elegivel(p.clientes) && p.posicao && p.score != null)
+    .sort((a, b) => b.score - a.score || satF(b) - satF(a) || (b.b || 0) - (a.b || 0) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
+    .map((p, i) => [p.id, i + 1]));
+}
+
 async function lerFotos(dias) {
   if (!wa.redisReady() || !dias.length) return [];
   const out = await wa.redisPipeline(dias.map((d) => ['GET', 'rk:snap:' + d]));
@@ -157,24 +171,40 @@ async function consolidarMes(mes, mapaVendas, cards) {
   const nd = new Date(y, m, 0).getDate();
   const dias = []; for (let d = 1; d <= nd; d++) dias.push(`${mes}-${String(d).padStart(2, '0')}`);
   const fotos = await lerFotos(dias);
+  // Elegibilidade (André, 26/11/26): o dia só conta pra quem tinha 10 clientes ou mais naquele dia. Cada pessoa guarda
+  // duas contas: "el" (só os dias elegíveis — é a que vale no Ranking) e "all" (todos os dias — só pra mostrar os pilares
+  // de quem ficou o mês inteiro abaixo de 10, na aba Colaborador; essa pessoa não tem posição nem total).
+  const novo = () => ({ scores: [], pil: Object.fromEntries(PILARES.map((k) => [k, []])), clientes: [], abaixo: [], dias: 0 });
   const acc = new Map();
-  for (const f of fotos) for (const p of f.pessoas) {
-    if (fora(p.nome)) continue; // fotos antigas podem trazer quem saiu do ranking depois
-    if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, scores: [], pos: [], pil: Object.fromEntries(PILARES.map((k) => [k, []])), clientes: [], abaixo: [], dias: 0, melhor: null, pior: null, ultimo: null });
-    const a = acc.get(p.id); a.dias++; a.ultimo = p; if (p.pessoa) a.pessoa = p.pessoa;
-    const base = p.b !== undefined ? p.b : p.score;
-    if (base != null && !(p.cobertura < MIN_PILARES)) { a.scores.push(base); if (p.posicao) { a.pos.push(p.posicao); a.melhor = a.melhor == null ? p.posicao : Math.min(a.melhor, p.posicao); a.pior = a.pior == null ? p.posicao : Math.max(a.pior, p.posicao); } }
-    for (const k of PILARES) if (p.p && p.p[k] != null) a.pil[k].push(p.p[k]);
-    a.clientes.push(p.clientes || 0); a.abaixo.push(p.abaixo || 0);
+  for (const f of fotos) {
+    const doDia = f.pessoas.filter((p) => !fora(p.nome)); // fotos antigas podem trazer quem saiu do ranking depois
+    const posDia = posElegiveis(doDia);
+    for (const p of doDia) {
+      if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, el: novo(), all: novo(), melhor: null, pior: null, ultimaPos: null });
+      const a = acc.get(p.id); if (p.pessoa) a.pessoa = p.pessoa;
+      const eleg = RR.elegivel(p.clientes);
+      const base = p.b !== undefined ? p.b : p.score;
+      for (const x of eleg ? [a.el, a.all] : [a.all]) {
+        x.dias++;
+        if (base != null && !(p.cobertura < MIN_PILARES)) x.scores.push(base);
+        for (const k of PILARES) if (p.p && p.p[k] != null) x.pil[k].push(p.p[k]);
+        x.clientes.push(p.clientes || 0); x.abaixo.push(p.abaixo || 0);
+      }
+      const pos = posDia.get(p.id) || null;
+      if (pos) { a.melhor = a.melhor == null ? pos : Math.min(a.melhor, pos); a.pior = a.pior == null ? pos : Math.max(a.pior, pos); }
+      a.ultimaPos = pos;
+    }
   }
   const pessoas = [...acc.values()].map((a) => {
-    const notas = Object.fromEntries(PILARES.map((k) => [k, a.pil[k].length ? round0(media(a.pil[k])) : null]));
-    const base = a.scores.length ? round0(media(a.scores)) : null;
+    const eleg = a.el.dias > 0; // teve pelo menos um dia com 10 clientes ou mais no mês
+    const x = eleg ? a.el : a.all;
+    const notas = Object.fromEntries(PILARES.map((k) => [k, x.pil[k].length ? round0(media(x.pil[k])) : null]));
+    const base = x.scores.length ? round0(media(x.scores)) : null;
     // Vendas, Renovação e NRR do mês: os números do mês inteiro (lidos agora do ClickUp), não a média das fotos
     const vendas = { ...V.pilar(mapaVendas, a.nome, mes), mes, disponivel: !!mapaVendas };
     const cobertura = PILARES.filter((k) => notas[k] != null).length;
     const insuf = base == null || cobertura < MIN_PILARES;
-    return somar({ id: a.id, nome: a.nome, papeis: a.papeis, pessoa: a.pessoa || null, base, flag: insuf ? null : hs.flagDoScore(base), cobertura, insuficiente: insuf, cardsDisponivel: !!cards, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: a.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(a.clientes) || 0), abaixo: round0(media(a.abaixo) || 0), dias: a.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimo ? a.ultimo.posicao : null }, vendas, cardDe(cards, mes, a.nome));
+    return somar({ id: a.id, nome: a.nome, papeis: a.papeis, pessoa: a.pessoa || null, base, flag: insuf ? null : hs.flagDoScore(base), cobertura, insuficiente: insuf, elegivel: eleg, cardsDisponivel: !!cards, pilares: Object.fromEntries(PILARES.map((k) => [k, { nota: notas[k], n: x.pil[k].length, meta: META[k], peso: PESOS[k] }])), clientes: round0(media(x.clientes) || 0), abaixo: round0(media(x.abaixo) || 0), dias: x.dias, diasFora: a.all.dias - a.el.dias, melhorPosicao: a.melhor, piorPosicao: a.pior, ultimaPosicao: a.ultimaPos }, vendas, cardDe(cards, mes, a.nome));
   });
   return { mes, dias: fotos.length, primeiroDia: fotos[0] ? fotos[0].dia : null, ultimoDia: fotos.length ? fotos[fotos.length - 1].dia : null, pessoas: ordenar(pessoas) };
 }
@@ -184,8 +214,10 @@ const REGRAS = {
   pilares: PILARES.map((k) => ({ k, rotulo: LBL[k], peso: PESOS[k], meta: META[k] })), // pilares do Health Score compilado
   faixas: hs.FLAG_FAIXAS,
   minPilares: MIN_PILARES,
+  minClientes: RR.MIN_CLIENTES,
   regua: { satisfacao: hs.FAIXAS.csat.faixas, produtividade: hs.FAIXAS.produtividade.faixas, renovacao: RR.REGUA_RENOVACAO, nrr: RR.REGUA_NRR, vendas: V.REGUA.map((r) => ({ faixa: r.rot, pts: r.pts })) },
   texto: [
+    ['Quem entra', `Só entra no Ranking — e só começa a contar pontos — quem tem ${RR.MIN_CLIENTES} clientes ou mais (regra de 26/11/26). Com menos de ${RR.MIN_CLIENTES}, a pessoa aparece na lista sem posição e sem total. No mês, só contam os dias em que ela tinha ${RR.MIN_CLIENTES} clientes ou mais: quem chega a ${RR.MIN_CLIENTES} no meio do mês começa a contar a partir desse dia.`],
     ['Total', 'O Ranking soma pontos, como a Matriz de Avaliação de Desempenho: Health Score (até 100) + Renovação (até 100) + Vendas (até 200) + NRR (até 200) = até 600 pontos. Pilar sem dado soma 0.'],
     ['Health Score', 'O Health Score de cada pessoa, de 0 a 100: Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado. Cada pilar é a média dos clientes em que ela está, ponderada pela mensalidade de cada cliente (desde 28/10/26): cliente que paga mais pesa mais na nota da pessoa. Satisfação na régua 10→100 · 9→80 · 8→60 · 7→40 · <7→0; Produtividade 100%→100 · 95→80 · 90→60 · 85→40 · <85→0. Com menos de 2 pilares com dado a pessoa fica sem posição.'],
     ['Renovação', '% de renovação contratual do mês (clientes que continuam ÷ carteira do mês, igual ao ranking antigo): 90–100% = 100 · 80–89% = 80 · 70–79% = 60 · 60–69% = 40 · abaixo de 60% = 0.'],
@@ -228,7 +260,7 @@ module.exports = async (req, res) => {
       anteriorPos = fs.find((f) => f.em) || null; // posição: só fotos do ranking de pontos (com 'em', desde 26/10/26)
     } catch { /* opcional */ }
     const antMap = new Map((anterior ? anterior.pessoas : []).map((p) => [p.id, p]));
-    const posMap = new Map((anteriorPos ? anteriorPos.pessoas : []).map((p) => [p.id, p]));
+    const posMap = posElegiveis(anteriorPos ? anteriorPos.pessoas : []);
     for (const p of lista) {
       const a = antMap.get(p.id);
       p.anterior = a ? { dia: anterior.dia, score: a.score, posicao: a.posicao } : null;
@@ -237,7 +269,7 @@ module.exports = async (req, res) => {
       p.deltaScore = antBase != null && p.base != null ? p.base - antBase : null;
       // posição só compara com placar do ranking de pontos (fotos com 'em', a partir de 26/10/26); antes a posição era de outra regra
       const ap = posMap.get(p.id);
-      p.deltaPosicao = ap && ap.posicao && p.posicao ? ap.posicao - p.posicao : null; // positivo = subiu
+      p.deltaPosicao = ap && p.posicao ? ap - p.posicao : null; // positivo = subiu
     }
     res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, anteriorPosDia: anteriorPos ? anteriorPos.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });
   } catch (e) {
@@ -247,3 +279,5 @@ module.exports = async (req, res) => {
 
 module.exports.calcular = calcular;
 module.exports.consolidarMes = consolidarMes;
+module.exports.ordenar = ordenar;
+module.exports.somar = somar;

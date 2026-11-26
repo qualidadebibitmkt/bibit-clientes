@@ -15,6 +15,10 @@ const REGUA_NRR = [[150, 200], [130, 150], [120, 100], [110, 80], [105, 60], [10
 const MAXIMOS = { hs: 100, renovacao: 100, vendas: 200, nrr: 200 };
 const PILARES_RK = ['hs', 'renovacao', 'vendas', 'nrr'];
 const ROTULO = { hs: 'Health Score', renovacao: 'Renovação', vendas: 'Vendas', nrr: 'NRR' };
+// Elegibilidade (André, 26/11/26): só entra no Ranking — e só começa a contar pontos — quem tem pelo menos 10 clientes.
+// Com menos de 10 a pessoa aparece na lista, mas sem posição e sem total; no mês, só contam os dias em que ela tinha 10 ou mais.
+const MIN_CLIENTES = 10;
+const elegivel = (nClientes) => Number(nClientes || 0) >= MIN_CLIENTES;
 
 const faixa = (v, regua) => { if (v == null || !Number.isFinite(Number(v))) return null; const n = Number(v); for (const [lim, pts] of regua) if (n >= lim - 1e-9) return pts; return 0; };
 const pontosRenovacao = (pct) => faixa(pct, REGUA_RENOVACAO);
@@ -62,4 +66,4 @@ function pilaresRanking({ hsBase, hsInsuficiente, vendas, card }) {
   return { rk: p, total };
 }
 
-module.exports = { proxima, REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };
+module.exports = { MIN_CLIENTES, elegivel, proxima, REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };

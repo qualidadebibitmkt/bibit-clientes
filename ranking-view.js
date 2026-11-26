@@ -59,6 +59,10 @@
     const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
     return `<td class="hs-td ${c}" title="${esc(rkTxt(k, x, mes))}"><b class="rk-nota">${x.pts == null ? '—' : x.pts}</b>${sub && sub !== '—' ? `<small class="na rk-bruto">${sub}</small>` : ''}</td>`;
   };
+  // fora do ranking por ter menos de 10 clientes (André, 26/11/26) — api/_ranking-regras.js MIN_CLIENTES
+  const semCarteira = (p) => p.elegivel === false;
+  const minCli = (p, d) => p.minClientes || (d && d.regras && d.regras.minClientes) || 10;
+  const txtCarteira = (p, d, hoje) => `${hoje ? 'tem' : 'média de'} ${p.clientes || 0} cliente${p.clientes === 1 ? '' : 's'}${hoje ? '' : ' no mês'} — entra no ranking e começa a contar pontos a partir de ${minCli(p, d)}`;
   const medalha = (pos) => (pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '');
 
 
@@ -103,6 +107,10 @@
     const R = d.regras || {};
     const mes = (p.vendas && p.vendas.mes) || (hoje ? mesAtual() : d.mes);
     const total = p.score == null ? 0 : p.score;
+    if (semCarteira(p)) {
+      const avisoFora = `<div class="rk-det-top"><div><b>Fora do ranking</b><span class="na"> · ${esc(txtCarteira(p, d, hoje))}.</span></div><div class="rk-falta">Os pontos abaixo são só pra acompanhar — não entram no total nem na posição enquanto a carteira tiver menos de ${minCli(p, d)} clientes.</div></div>`;
+      return `<tr class="rk-det"><td colspan="${hoje ? 9 : 8}">${avisoFora}<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div><div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
+    }
     const barra = `<div class="rk-barra" title="total ${total} de 600">${RK.map((k) => { const v = (p.rk && p.rk[k] && p.rk[k].pts) || 0; return v ? `<span class="rk-seg" style="width:${(v / 600) * 100}%;background:${SEG_COR[k]}" title="${RK_LBL[k]}: ${v}"></span>` : ''; }).join('')}</div><div class="rk-legenda">${RK.map((k) => `<span><i style="background:${SEG_COR[k]}"></i>${RK_LBL[k]} ${(p.rk && p.rk[k] && p.rk[k].pts) || 0}</span>`).join('')}</div>`;
     const cab = `<div class="rk-det-top"><div><span class="rk-det-total">${total}</span><span class="na"> de 600 pontos</span>${p.posicao ? ` · <b>${p.posicao}º lugar</b>` : ' · sem posição'}</div>${barra}</div>`;
     const cards = `<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div>`;
@@ -165,7 +173,7 @@
       const tds = hoje
         ? `<td class="hs-td rk-td-delta" title="variação do Health Score">${delta(p.deltaScore)}${p.deltaPosicao != null && p.deltaPosicao !== 0 ? `<small class="na"> · ${p.deltaPosicao > 0 ? 'subiu' : 'caiu'} ${Math.abs(p.deltaPosicao)}</small>` : ''}</td>`
         : '';
-      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
+      return `<tr class="hs-tr rk-tr${aberto ? ' is-open' : ''}${p.posicao ? '' : ' rk-sem'}" data-abrir="${esc(p.id)}" title="clique pra ver o detalhamento dos pontos"><td class="hs-td rk-pos">${p.posicao ? `${medalha(p.posicao)}${p.posicao}º${p.empate ? '<small class="na">=</small>' : ''}` : '<span class="na">—</span>'}</td><td class="hs-td-cli">${avatar(p.pessoa)}<span>${esc(p.nome)}</span></td><td class="hs-td-txt">${esc((p.papeis || []).join(', ') || 'equipe')}</td><td class="hs-td hs-td-score">${p.score == null ? '—' : p.score}${semCarteira(p) ? `<small class="na rk-ab" title="${esc(txtCarteira(p, d, hoje))}">fora do ranking · ${p.clientes || 0} de ${minCli(p, d)} clientes</small>` : p.insuficiente ? '<small class="na rk-ab" title="Health Score com menos de 2 pilares com dado — sem posição">sem posição</small>' : ''}</td>${tds}${RK.map((k) => celRk(k, p, mes)).join('')}</tr>${aberto ? detalheHTML(p, d, hoje) : ''}`;
     };
 
     // placar do time (André, 26/10/26): logo abaixo do pódio, em destaque
@@ -177,7 +185,7 @@
             <div class="hs-termo-p"><span class="hs-termo-pn g">${nF('green')}</span><span class="hs-termo-pl">Health Score ≥ 90</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn y">${nF('yellow')}</span><span class="hs-termo-pl">Health Score 70–89</span></div>
             <div class="hs-termo-p"><span class="hs-termo-pn ${nF('red') ? 'r' : 'g'}">${nF('red')}</span><span class="hs-termo-pl">Health Score &lt; 70</span></div>
-            <div class="hs-termo-p"><span class="hs-termo-pn na">${semPos.length}</span><span class="hs-termo-pl">sem posição</span></div>
+            <div class="hs-termo-p"><span class="hs-termo-pn na">${semPos.length}</span><span class="hs-termo-pl">fora do ranking ou sem posição</span></div>
           </div>
         </div>`;
 
