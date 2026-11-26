@@ -116,8 +116,9 @@ async function pendentes(req, res, agora) {
     const r = regs[p.taskId] || {};
     const d2Due = agora >= p.publicadoEm + cfg.janelaProvisoriaDias * 86400000;
     const d7Due = agora >= p.publicadoEm + cfg.janelaDias * 86400000;
-    if (d7Due && !(r.d7 && r.d7.alcance != null)) out.push({ taskId: p.taskId, igId: p.igId, tipo: 'd7', mes: p.mes, publicadoEm: p.publicadoEm, cliente: p.cliente, atrasada: agora - (p.publicadoEm + cfg.janelaDias * 86400000) > 86400000 });
-    else if (d2Due && !d7Due && !(r.d2 && r.d2.alcance != null)) out.push({ taskId: p.taskId, igId: p.igId, tipo: 'd2', mes: p.mes, publicadoEm: p.publicadoEm, cliente: p.cliente, atrasada: false });
+    const extra = { collab: !!p.collab, clienteKey: p.clienteKey || p.cliente }; // collab: o Make busca na lista de collabs do cliente (chave do De-Para)
+    if (d7Due && !D.temMetrica(r.d7)) out.push({ taskId: p.taskId, igId: p.igId, tipo: 'd7', mes: p.mes, publicadoEm: p.publicadoEm, cliente: p.cliente, atrasada: agora - (p.publicadoEm + cfg.janelaDias * 86400000) > 86400000, ...extra });
+    else if (d2Due && !d7Due && !D.temMetrica(r.d2)) out.push({ taskId: p.taskId, igId: p.igId, tipo: 'd2', mes: p.mes, publicadoEm: p.publicadoEm, cliente: p.cliente, atrasada: false, ...extra });
   }
   const limite = Math.min(Number(req.query.limite) || 120, 400);
   res.setHeader('Cache-Control', 'no-store');
@@ -132,13 +133,16 @@ async function gravarMetricas(req, res, agora) {
   const tipo = ['d2', 'd7', 'manual'].includes(b.tipo) ? b.tipo : null;
   if (!taskId || !tipo) { res.status(400).json({ error: 'taskId e tipo (d2|d7|manual) obrigatórios' }); return; }
   const alcance = num(b.alcance ?? b.reach);
-  if (alcance == null) { res.status(422).json({ error: 'alcance ausente — nada gravado (sem dado não vira zero)' }); return; }
+  const collab = b.collab === true || b.collab === 'true' || b.collab === 1 || b.collab === '1';
+  // post em collab: a Meta não entrega alcance ao colaborador — vale com as curtidas (o engajamento não usa alcance)
+  if (alcance == null && !(collab && num(b.curtidas ?? b.likes) != null)) { res.status(422).json({ error: 'alcance ausente — nada gravado (sem dado não vira zero)' }); return; }
   const regAtual = (await D.lerRegistros([taskId]))[taskId] || {};
   const m = {
     alcance, curtidas: num(b.curtidas ?? b.likes), comentarios: num(b.comentarios ?? b.comments), compartilhamentos: num(b.compartilhamentos ?? b.shares),
     salvamentos: num(b.salvamentos ?? b.saved), visualizacoes: num(b.visualizacoes ?? b.views),
     seguidores: num(b.seguidores ?? b.followers_count ?? b.followers), // opcional: quando vem junto, vale pro post (senão usa a foto diária do perfil)
-    em: agora, origem: tipo === 'manual' ? 'manual' : 'meta-api', por: b.por ? String(b.por).slice(0, 60) : null, evidencia: b.evidencia ? String(b.evidencia).slice(0, 300) : null,
+    ...(collab ? { collab: true } : {}),
+    em: agora, origem: tipo === 'manual' ? 'manual' : collab ? 'meta-api-collab' : 'meta-api', por: b.por ? String(b.por).slice(0, 60) : null, evidencia: b.evidencia ? String(b.evidencia).slice(0, 300) : null,
   };
   const reg = { ...regAtual, taskId, [tipo]: m };
   if (b.mes) reg.mes = b.mes;

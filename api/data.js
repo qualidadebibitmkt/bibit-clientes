@@ -190,6 +190,9 @@ function shapeOperacaoTask(task, listKey) {
     // etiqueta "fora da produtividade" no ClickUp (André, 17/11/26): atraso que não foi da equipe (ex.: falha da automação
     // de post no Facebook) — a tarefa sai da Produtividade por inteiro: nem no total, nem como atrasada, de cliente e de pessoa.
     foraProd: (task.tags || []).some((g) => norm(g && g.name) === 'FORA DA PRODUTIVIDADE'),
+    // etiqueta "collab" (André, 26/11/26): post publicado no perfil de um creator com o cliente como colaborador — a automação
+    // do Make põe a etiqueta ao trocar o link pelo ID; as métricas vêm da lista de collabs da Meta (sem alcance)
+    collab: (task.tags || []).some((g) => norm(g && g.name) === 'COLLAB'),
     dataAgendamento: cfDate(getCF(task, CF_DATA_AGENDAMENTO)),
     // data usada no calendário: agendamento explícito, ou vencimento quando é um post de social
     calDate: cfDate(getCF(task, CF_DATA_AGENDAMENTO)) ||

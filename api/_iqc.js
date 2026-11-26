@@ -60,6 +60,7 @@ function postsDoPainel(painel, { todos = false } = {}) {
       responsavel: resp ? { id: String(resp.id || resp.name), nome: resp.name, foto: resp.foto || null, initials: resp.initials } : null,
       publicadoEm: quando, mes: mesDe(quando), status: t.status ? t.status.label : null,
       numero: num ? Number(num) : null,
+      collab: !!t.collab, clienteKey: t.clienteName || null,
     });
   }
   return out;
@@ -134,12 +135,14 @@ const fmtPrazo = (ms) => { const d = new Date(ms - 3 * 3600 * 1000 - 1); return 
 
 // ---------- avaliação de um post ----------
 // seg = registro iqc:seg do cliente do post (lerSeguidores), ou null
+// coleta válida = tem alcance; post em collab (perfil do creator) não tem alcance pela Meta — vale quando vieram as curtidas
+function temMetrica(x) { return !!x && (num(x.alcance) != null || (!!x.collab && num(x.curtidas) != null)); }
 function avaliarPost(post, reg, seg, cfg, agora = Date.now()) {
   const r = reg || {};
   const jan = cfg.janelaDias * 86400000, janP = cfg.janelaProvisoriaDias * 86400000;
-  const d7 = r.d7 && num(r.d7.alcance) != null ? r.d7 : null;
-  const d2 = r.d2 && num(r.d2.alcance) != null ? r.d2 : null;
-  const manual = r.manual && num(r.manual.alcance) != null ? r.manual : null;
+  const d7 = temMetrica(r.d7) ? r.d7 : null;
+  const d2 = temMetrica(r.d2) ? r.d2 : null;
+  const manual = temMetrica(r.manual) ? r.manual : null;
   const fonte = manual ? 'manual' : d7 ? 'definitiva' : d2 ? 'provisoria' : null;
   const metricas = post.publicado ? (manual || d7 || d2 || null) : null;
   // seguidores: os que vieram junto com a métrica (manual) ou a foto diária mais próxima da coleta
@@ -282,4 +285,4 @@ function porqueConteudo(posts, area) {
 }
 
 async function gravarConfig(cfg) { await wa.redis(['SET', 'iqc:config', JSON.stringify(cfg)]); }
-module.exports = { MESES_SEM_APROVACAO, AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerSeguidores, gravarSeguidores, seguidoresPara, lerConfig, gravarConfig, avaliarPost, consolidarMes, conteudoPorCliente };
+module.exports = { MESES_SEM_APROVACAO, AREAS, FORMATO_LBL, TTL, mesDe, diaDe, formatoDe, postsDoPainel, lerRegistros, gravarRegistro, lerSeguidores, gravarSeguidores, seguidoresPara, lerConfig, gravarConfig, avaliarPost, temMetrica, consolidarMes, conteudoPorCliente };
