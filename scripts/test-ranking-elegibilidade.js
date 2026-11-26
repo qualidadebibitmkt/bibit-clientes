@@ -60,5 +60,11 @@ const foto = (dia, pessoas) => { FOTOS['rk:snap:' + dia] = { dia, pessoas, em: 1
     assert.strictEqual(P.A.base, 80); assert.strictEqual(P.A.dias, 4); assert.strictEqual(P.A.posicao, 1); assert.strictEqual(P.C.posicao, 2);
     assert.strictEqual(P.A.melhorPosicao, 1); // nas fotos antigas o B (2 clientes) estava em 1º — recalculado sem ele
   });
+  await t('mês: a mesma pessoa com o nome trocado no ClickUp aparece uma vez só, com o nome mais recente', async () => {
+    const r2 = (nome, b) => ({ ...pes(nome, 14, b, b, 1), papeis: ['Audiovisual'] });
+    foto('2031-03-01', [r2('Romulo Alcantra', 50)]); foto('2031-03-02', [r2('Rômulo Alcântara', 60)]); foto('2031-03-03', [r2('Rômulo Alcântara Videomaker', 70)]);
+    const m = await rk.consolidarMes('2031-03', null, null);
+    assert.deepStrictEqual(m.pessoas.map((p) => [p.nome, p.dias, p.base, p.posicao]), [['Rômulo Alcântara Videomaker', 3, 60, 1]]);
+  });
   console.log(`\n${ok} ok, ${falhas} falha(s)`); process.exit(falhas ? 1 : 0);
 })();

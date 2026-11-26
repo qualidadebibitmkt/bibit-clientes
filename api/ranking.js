@@ -43,6 +43,12 @@ const diaBR = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: BRT, year: 'n
 const FORA = ['gabriel beltrao', 'gabriel beltrão', 'joao ribas', 'michelle luiza', 'michelle', 'willian pereira', 'willian', 'will pereira', 'will'];
 const fora = (nome) => { const n = norm(nome); return FORA.some((x) => n === norm(x) || n.startsWith(norm(x) + ' ')); };
 
+// Mesma pessoa com nomes diferentes nas fotos (o painel identifica a pessoa pelo nome do ClickUp; quando o nome muda,
+// as fotos antigas ficam com o nome velho e a pessoa aparecia duas ou três vezes no mês). André, 26/11/26: o Rômulo só
+// pode aparecer uma vez. Cada grupo = os nomes que já foram da mesma pessoa; vale o nome da foto mais recente.
+const MESMA_PESSOA = [['romulo alcantra', 'romulo alcantara', 'romulo alcantara videomaker']];
+const chave = (p) => { const n = norm(p.nome || p.id); const g = MESMA_PESSOA.find((x) => x.includes(n)); return g ? 'mp:' + g[0] : String(p.id); };
+
 const round0 = (n) => Math.round(n);
 const round1 = (n) => Math.round(n * 10) / 10;
 const media = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -146,7 +152,7 @@ function posElegiveis(pessoas) {
   const satF = (p) => (p.p && p.p.satisfacao != null ? p.p.satisfacao : -1);
   return new Map((pessoas || []).filter((p) => !fora(p.nome) && RR.elegivel(p.clientes, p.papeis) && p.posicao && p.score != null)
     .sort((a, b) => b.score - a.score || satF(b) - satF(a) || (b.b || 0) - (a.b || 0) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
-    .map((p, i) => [p.id, i + 1]));
+    .map((p, i) => [chave(p), i + 1]));
 }
 
 async function lerFotos(dias) {
@@ -179,10 +185,12 @@ async function consolidarMes(mes, mapaVendas, cards) {
   const acc = new Map();
   for (const f of fotos) {
     const doDia = f.pessoas.filter((p) => !fora(p.nome)); // fotos antigas podem trazer quem saiu do ranking depois
-    const posDia = posElegiveis(doDia);
+    const posDia = posElegiveis(doDia); const vistos = new Set();
     for (const p of doDia) {
-      if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, el: novo(), all: novo(), melhor: null, pior: null, ultimaPos: null });
-      const a = acc.get(p.id); if (p.pessoa) a.pessoa = p.pessoa;
+      const ch = chave(p);
+      if (vistos.has(ch)) continue; vistos.add(ch); // dois nomes da mesma pessoa no mesmo dia contam uma vez só
+      if (!acc.has(ch)) acc.set(ch, { el: novo(), all: novo(), melhor: null, pior: null, ultimaPos: null });
+      const a = acc.get(ch); a.id = p.id; a.nome = p.nome; a.papeis = p.papeis; if (p.pessoa) a.pessoa = p.pessoa; // identidade = a da foto mais recente
       const eleg = RR.elegivel(p.clientes, p.papeis);
       const base = p.b !== undefined ? p.b : p.score;
       for (const x of eleg ? [a.el, a.all] : [a.all]) {
@@ -191,7 +199,7 @@ async function consolidarMes(mes, mapaVendas, cards) {
         for (const k of PILARES) if (p.p && p.p[k] != null) x.pil[k].push(p.p[k]);
         x.clientes.push(p.clientes || 0); x.abaixo.push(p.abaixo || 0);
       }
-      const pos = posDia.get(p.id) || null;
+      const pos = posDia.get(ch) || null;
       if (pos) { a.melhor = a.melhor == null ? pos : Math.min(a.melhor, pos); a.pior = a.pior == null ? pos : Math.max(a.pior, pos); }
       a.ultimaPos = pos;
     }
@@ -261,16 +269,16 @@ module.exports = async (req, res) => {
       if (fs.length) anterior = fs[0];
       anteriorPos = fs.find((f) => f.em) || null; // posição: só fotos do ranking de pontos (com 'em', desde 26/10/26)
     } catch { /* opcional */ }
-    const antMap = new Map((anterior ? anterior.pessoas : []).map((p) => [p.id, p]));
+    const antMap = new Map((anterior ? anterior.pessoas : []).map((p) => [chave(p), p]));
     const posMap = posElegiveis(anteriorPos ? anteriorPos.pessoas : []);
     for (const p of lista) {
-      const a = antMap.get(p.id);
+      const a = antMap.get(chave(p));
       p.anterior = a ? { dia: anterior.dia, score: a.score, posicao: a.posicao } : null;
       // variação compara só a base (4 pilares): o bônus de vendas zera na virada do mês e fotos antigas não têm b
       const antBase = a ? (a.b !== undefined ? a.b : a.score) : null;
       p.deltaScore = antBase != null && p.base != null ? p.base - antBase : null;
       // posição só compara com placar do ranking de pontos (fotos com 'em', a partir de 26/10/26); antes a posição era de outra regra
-      const ap = posMap.get(p.id);
+      const ap = posMap.get(chave(p));
       p.deltaPosicao = ap && p.posicao ? ap - p.posicao : null; // positivo = subiu
     }
     res.status(200).json({ generatedAt: captured.generatedAt, tipo: 'hoje', dia, anteriorDia: anterior ? anterior.dia : null, anteriorPosDia: anteriorPos ? anteriorPos.dia : null, pessoas: lista, meses: await mesesDisponiveis(), regras: REGRAS });
