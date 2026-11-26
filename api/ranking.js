@@ -11,8 +11,9 @@
 //   4. NRR (0–200) — NRR individual do mês: <100% = 0 · 100 = 40 · 105 = 60 · 110 = 80 · 120 = 100 · 130 = 150 · 150%+ = 200
 //   Total = soma (máx. 600). Posição: total ↓ · empate → maior Satisfação · maior Health Score · nome.
 //   Renovação e NRR são lidos dos cards "Ranking - MM/AA - NOME" (o Make calcula todo dia, como no ranking antigo).
-//   Elegibilidade (André, 26/11/26): só entra no Ranking e só começa a contar pontos quem tem 10 clientes ou mais
-//   (RR.MIN_CLIENTES). Com menos de 10 a pessoa aparece sem posição e sem total; no mês só contam os dias com 10 ou mais.
+//   Elegibilidade (André, 26/11/26): só entra no Ranking e só começa a contar pontos quem tem o mínimo de clientes do
+//   cargo — Social Media e Gestor de Tráfego 10 · RP Manager e Videomaker 5 (RR.MIN_CLIENTES_CARGO). Abaixo do mínimo a
+//   pessoa aparece sem posição e sem total; no mês só contam os dias em que ela tinha o mínimo.
 // Histórico: 1 foto por dia no Redis (rk:snap:AAAA-MM-DD, 400 dias). No mês: Health Score = média das fotos diárias;
 // Renovação, Vendas e NRR = os números do mês.
 //
@@ -66,9 +67,9 @@ function compor(notas) {
 // soma dos 4 pilares do Ranking (Health Score + Renovação + Vendas + NRR) → score = total de pontos
 function somar(p, vendas, card) {
   const { rk, total } = RR.pilaresRanking({ hsBase: p.base, hsInsuficiente: p.insuficiente, vendas, card });
-  if (p.elegivel === undefined) p.elegivel = RR.elegivel(p.clientes);
-  p.minClientes = RR.MIN_CLIENTES;
-  // menos de 10 clientes: fora do Ranking, os pontos não contam (total fica vazio; os pilares seguem visíveis no detalhe)
+  if (p.elegivel === undefined) p.elegivel = RR.elegivel(p.clientes, p.papeis);
+  p.minClientes = RR.minClientes(p.papeis);
+  // abaixo do mínimo de clientes do cargo: fora do Ranking, os pontos não contam (total fica vazio; os pilares seguem visíveis no detalhe)
   p.rk = rk; p.score = p.insuficiente || !p.elegivel ? null : total; p.vendas = vendas;
   return p;
 }
@@ -139,11 +140,11 @@ async function garantirFoto(dia, lista) {
   return !ja;
 }
 
-// posição de uma foto recalculada só entre os elegíveis (10 clientes ou mais) — as fotos de antes da regra de 26/11/26
-// guardaram a posição com gente de menos de 10 clientes na frente
+// posição de uma foto recalculada só entre os elegíveis (mínimo de clientes do cargo) — as fotos de antes da regra de 26/11/26
+// guardaram a posição com gente abaixo do mínimo na frente
 function posElegiveis(pessoas) {
   const satF = (p) => (p.p && p.p.satisfacao != null ? p.p.satisfacao : -1);
-  return new Map((pessoas || []).filter((p) => !fora(p.nome) && RR.elegivel(p.clientes) && p.posicao && p.score != null)
+  return new Map((pessoas || []).filter((p) => !fora(p.nome) && RR.elegivel(p.clientes, p.papeis) && p.posicao && p.score != null)
     .sort((a, b) => b.score - a.score || satF(b) - satF(a) || (b.b || 0) - (a.b || 0) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
     .map((p, i) => [p.id, i + 1]));
 }
@@ -171,9 +172,9 @@ async function consolidarMes(mes, mapaVendas, cards) {
   const nd = new Date(y, m, 0).getDate();
   const dias = []; for (let d = 1; d <= nd; d++) dias.push(`${mes}-${String(d).padStart(2, '0')}`);
   const fotos = await lerFotos(dias);
-  // Elegibilidade (André, 26/11/26): o dia só conta pra quem tinha 10 clientes ou mais naquele dia. Cada pessoa guarda
+  // Elegibilidade (André, 26/11/26): o dia só conta pra quem tinha o mínimo de clientes do cargo naquele dia. Cada pessoa guarda
   // duas contas: "el" (só os dias elegíveis — é a que vale no Ranking) e "all" (todos os dias — só pra mostrar os pilares
-  // de quem ficou o mês inteiro abaixo de 10, na aba Colaborador; essa pessoa não tem posição nem total).
+  // de quem ficou o mês inteiro abaixo do mínimo, na aba Colaborador; essa pessoa não tem posição nem total).
   const novo = () => ({ scores: [], pil: Object.fromEntries(PILARES.map((k) => [k, []])), clientes: [], abaixo: [], dias: 0 });
   const acc = new Map();
   for (const f of fotos) {
@@ -182,7 +183,7 @@ async function consolidarMes(mes, mapaVendas, cards) {
     for (const p of doDia) {
       if (!acc.has(p.id)) acc.set(p.id, { id: p.id, nome: p.nome, papeis: p.papeis, el: novo(), all: novo(), melhor: null, pior: null, ultimaPos: null });
       const a = acc.get(p.id); if (p.pessoa) a.pessoa = p.pessoa;
-      const eleg = RR.elegivel(p.clientes);
+      const eleg = RR.elegivel(p.clientes, p.papeis);
       const base = p.b !== undefined ? p.b : p.score;
       for (const x of eleg ? [a.el, a.all] : [a.all]) {
         x.dias++;
@@ -196,7 +197,7 @@ async function consolidarMes(mes, mapaVendas, cards) {
     }
   }
   const pessoas = [...acc.values()].map((a) => {
-    const eleg = a.el.dias > 0; // teve pelo menos um dia com 10 clientes ou mais no mês
+    const eleg = a.el.dias > 0; // teve pelo menos um dia com o mínimo de clientes do cargo no mês
     const x = eleg ? a.el : a.all;
     const notas = Object.fromEntries(PILARES.map((k) => [k, x.pil[k].length ? round0(media(x.pil[k])) : null]));
     const base = x.scores.length ? round0(media(x.scores)) : null;
@@ -215,9 +216,10 @@ const REGRAS = {
   faixas: hs.FLAG_FAIXAS,
   minPilares: MIN_PILARES,
   minClientes: RR.MIN_CLIENTES,
+  minClientesCargo: RR.MIN_CLIENTES_CARGO.map((c) => ({ cargo: c.cargo, min: c.min })),
   regua: { satisfacao: hs.FAIXAS.csat.faixas, produtividade: hs.FAIXAS.produtividade.faixas, renovacao: RR.REGUA_RENOVACAO, nrr: RR.REGUA_NRR, vendas: V.REGUA.map((r) => ({ faixa: r.rot, pts: r.pts })) },
   texto: [
-    ['Quem entra', `Só entra no Ranking — e só começa a contar pontos — quem tem ${RR.MIN_CLIENTES} clientes ou mais (regra de 26/11/26). Com menos de ${RR.MIN_CLIENTES}, a pessoa aparece na lista sem posição e sem total. No mês, só contam os dias em que ela tinha ${RR.MIN_CLIENTES} clientes ou mais: quem chega a ${RR.MIN_CLIENTES} no meio do mês começa a contar a partir desse dia.`],
+    ['Quem participa', 'Mínimo de clientes para participar do Ranking (regra de 26/11/26): Social Media e Gestor de Tráfego — mínimo de 10 clientes · RP Manager e Videomaker — mínimo de 5 clientes. Abaixo do mínimo, a pessoa aparece na lista sem posição e sem total de pontos. No mês, só contam os dias em que ela tinha o mínimo: quem chega ao mínimo no meio do mês começa a contar a partir desse dia.'],
     ['Total', 'O Ranking soma pontos, como a Matriz de Avaliação de Desempenho: Health Score (até 100) + Renovação (até 100) + Vendas (até 200) + NRR (até 200) = até 600 pontos. Pilar sem dado soma 0.'],
     ['Health Score', 'O Health Score de cada pessoa, de 0 a 100: Resultado 30 · Satisfação 25 · Produtividade 20 · Relacionamento 25, média ponderada dos pilares com dado. Cada pilar é a média dos clientes em que ela está, ponderada pela mensalidade de cada cliente (desde 28/10/26): cliente que paga mais pesa mais na nota da pessoa. Satisfação na régua 10→100 · 9→80 · 8→60 · 7→40 · <7→0; Produtividade 100%→100 · 95→80 · 90→60 · 85→40 · <85→0. Com menos de 2 pilares com dado a pessoa fica sem posição.'],
     ['Renovação', '% de renovação contratual do mês (clientes que continuam ÷ carteira do mês, igual ao ranking antigo): 90–100% = 100 · 80–89% = 80 · 70–79% = 60 · 60–69% = 40 · abaixo de 60% = 0.'],

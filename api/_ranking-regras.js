@@ -15,10 +15,23 @@ const REGUA_NRR = [[150, 200], [130, 150], [120, 100], [110, 80], [105, 60], [10
 const MAXIMOS = { hs: 100, renovacao: 100, vendas: 200, nrr: 200 };
 const PILARES_RK = ['hs', 'renovacao', 'vendas', 'nrr'];
 const ROTULO = { hs: 'Health Score', renovacao: 'Renovação', vendas: 'Vendas', nrr: 'NRR' };
-// Elegibilidade (André, 26/11/26): só entra no Ranking — e só começa a contar pontos — quem tem pelo menos 10 clientes.
-// Com menos de 10 a pessoa aparece na lista, mas sem posição e sem total; no mês, só contam os dias em que ela tinha 10 ou mais.
-const MIN_CLIENTES = 10;
-const elegivel = (nClientes) => Number(nClientes || 0) >= MIN_CLIENTES;
+// Elegibilidade (André, 26/11/26): só entra no Ranking — e só começa a contar pontos — quem tem o mínimo de clientes do cargo:
+//   Social Media e Gestor de Tráfego = 10 · RP Manager e Videomaker = 5.
+// Abaixo do mínimo a pessoa aparece na lista, mas sem posição e sem total; no mês, só contam os dias em que ela tinha o mínimo.
+const normTxt = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+const MIN_CLIENTES = 10; // padrão (cargo sem regra própria ou pessoa sem cargo definido nos cards)
+const MIN_CLIENTES_CARGO = [
+  { k: 'social', cargo: 'Social Media', min: 10, nomes: ['social', 'social media'] },
+  { k: 'trafego', cargo: 'Gestor de Tráfego', min: 10, nomes: ['trafego', 'gestor de trafego'] },
+  { k: 'rp', cargo: 'RP Manager', min: 5, nomes: ['rp', 'rp manager'] },
+  { k: 'audiovisual', cargo: 'Videomaker', min: 5, nomes: ['audiovisual', 'videomaker'] },
+];
+// mínimo da pessoa pelos papéis dela (chave ou rótulo: 'rp', 'RP', 'Audiovisual'…); com mais de um papel vale o menor mínimo
+function minClientes(papeis) {
+  const ms = (papeis || []).map((x) => MIN_CLIENTES_CARGO.find((c) => c.nomes.includes(normTxt(x)))).filter(Boolean).map((c) => c.min);
+  return ms.length ? Math.min(...ms) : MIN_CLIENTES;
+}
+const elegivel = (nClientes, papeis) => Number(nClientes || 0) >= minClientes(papeis);
 
 const faixa = (v, regua) => { if (v == null || !Number.isFinite(Number(v))) return null; const n = Number(v); for (const [lim, pts] of regua) if (n >= lim - 1e-9) return pts; return 0; };
 const pontosRenovacao = (pct) => faixa(pct, REGUA_RENOVACAO);
@@ -66,4 +79,4 @@ function pilaresRanking({ hsBase, hsInsuficiente, vendas, card }) {
   return { rk: p, total };
 }
 
-module.exports = { MIN_CLIENTES, elegivel, proxima, REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };
+module.exports = { MIN_CLIENTES, MIN_CLIENTES_CARGO, minClientes, elegivel, proxima, REGUA_RENOVACAO, REGUA_NRR, MAXIMOS, PILARES_RK, ROTULO, pontosRenovacao, pontosNrr, cardsPorMes, pilaresRanking, norm };

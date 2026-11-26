@@ -59,10 +59,10 @@
     const c = k === 'hs' ? cls(x.pts) : clsPts(x.pts, RK_MAX[k]);
     return `<td class="hs-td ${c}" title="${esc(rkTxt(k, x, mes))}"><b class="rk-nota">${x.pts == null ? '—' : x.pts}</b>${sub && sub !== '—' ? `<small class="na rk-bruto">${sub}</small>` : ''}</td>`;
   };
-  // fora do ranking por ter menos de 10 clientes (André, 26/11/26) — api/_ranking-regras.js MIN_CLIENTES
+  // fora do ranking por não ter o mínimo de clientes do cargo — Social Media e Tráfego 10 · RP e Videomaker 5 (André, 26/11/26) — api/_ranking-regras.js
   const semCarteira = (p) => p.elegivel === false;
   const minCli = (p, d) => p.minClientes || (d && d.regras && d.regras.minClientes) || 10;
-  const txtCarteira = (p, d, hoje) => `${hoje ? 'tem' : 'média de'} ${p.clientes || 0} cliente${p.clientes === 1 ? '' : 's'}${hoje ? '' : ' no mês'} — entra no ranking e começa a contar pontos a partir de ${minCli(p, d)}`;
+  const txtCarteira = (p, d, hoje) => `${hoje ? 'tem' : 'média de'} ${p.clientes || 0} cliente${p.clientes === 1 ? '' : 's'}${hoje ? '' : ' no mês'} — entra no ranking e começa a contar pontos a partir de ${minCli(p, d)} (mínimo do cargo)`;
   const medalha = (pos) => (pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '');
 
 
@@ -108,7 +108,7 @@
     const mes = (p.vendas && p.vendas.mes) || (hoje ? mesAtual() : d.mes);
     const total = p.score == null ? 0 : p.score;
     if (semCarteira(p)) {
-      const avisoFora = `<div class="rk-det-top"><div><b>Fora do ranking</b><span class="na"> · ${esc(txtCarteira(p, d, hoje))}.</span></div><div class="rk-falta">Os pontos abaixo são só pra acompanhar — não entram no total nem na posição enquanto a carteira tiver menos de ${minCli(p, d)} clientes.</div></div>`;
+      const avisoFora = `<div class="rk-det-top"><div><b>Fora do ranking</b><span class="na"> · ${esc(txtCarteira(p, d, hoje))}.</span></div><div class="rk-falta">Os pontos abaixo são só pra acompanhar — não entram no total nem na posição enquanto a carteira não chegar a ${minCli(p, d)} clientes (mínimo do cargo).</div></div>`;
       return `<tr class="rk-det"><td colspan="${hoje ? 9 : 8}">${avisoFora}<div class="rk-cards">${RK.map((k) => cardPilar(k, p, R, mes)).join('')}</div><div class="chips rk-det-acoes"><button class="hs-chip" data-colab="${esc(p.id)}">abrir visão do colaborador ↗</button><button class="hs-chip pl-limpar" data-fechar="1">fechar</button></div></td></tr>`;
     }
     const barra = `<div class="rk-barra" title="total ${total} de 600">${RK.map((k) => { const v = (p.rk && p.rk[k] && p.rk[k].pts) || 0; return v ? `<span class="rk-seg" style="width:${(v / 600) * 100}%;background:${SEG_COR[k]}" title="${RK_LBL[k]}: ${v}"></span>` : ''; }).join('')}</div><div class="rk-legenda">${RK.map((k) => `<span><i style="background:${SEG_COR[k]}"></i>${RK_LBL[k]} ${(p.rk && p.rk[k] && p.rk[k].pts) || 0}</span>`).join('')}</div>`;

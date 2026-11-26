@@ -17,6 +17,20 @@ const foto = (dia, pessoas) => { FOTOS['rk:snap:' + dia] = { dia, pessoas, em: 1
 (async () => {
   await t('régua: 9 fica fora, 10 entra', () => { assert.strictEqual(RR.elegivel(9), false); assert.strictEqual(RR.elegivel(10), true); assert.strictEqual(RR.elegivel(null), false); });
 
+  await t('mínimo por cargo: Social Media e Tráfego 10 · RP e Videomaker 5 · sem cargo 10 · dois cargos = o menor', () => {
+    assert.deepStrictEqual([['Tráfego'], ['Social Media'], ['RP'], ['Audiovisual'], [], ['Web Designer'], ['Social Media', 'Audiovisual'], ['trafego'], ['rp']].map((x) => RR.minClientes(x)), [10, 10, 5, 5, 10, 10, 5, 10, 5]);
+    assert.strictEqual(RR.elegivel(5, ['RP']), true); assert.strictEqual(RR.elegivel(4, ['Audiovisual']), false);
+    assert.strictEqual(RR.elegivel(9, ['Tráfego']), false); assert.strictEqual(RR.elegivel(9, ['Social Media']), false);
+  });
+  await t('hoje e mês: RP com 6 clientes entra; Tráfego com 6 não', async () => {
+    const mk = (nome, papeis, clientes, base) => rk.somar({ id: nome, nome, papeis, clientes, base, insuficiente: false, pilares: {} }, { pts: 0 }, null);
+    const l = rk.ordenar([mk('T', ['Tráfego'], 6, 90), mk('R', ['RP'], 6, 50)]);
+    assert.deepStrictEqual(l.map((p) => [p.nome, p.posicao, p.minClientes]), [['R', 1, 5], ['T', null, 10]]);
+    FOTOS['rk:snap:2031-02-01'] = { dia: '2031-02-01', em: 1, pessoas: [{ ...pes('T', 6, 90, 90, 1), papeis: ['Tráfego'] }, { ...pes('R', 6, 50, 50, 2), papeis: ['RP'] }, { ...pes('V', 4, 80, 80, 3), papeis: ['Audiovisual'] }] };
+    const m = await rk.consolidarMes('2031-02', null, null);
+    assert.deepStrictEqual(m.pessoas.map((p) => [p.nome, p.posicao, p.elegivel]), [['R', 1, true], ['T', null, false], ['V', null, false]]);
+  });
+
   await t('hoje: menos de 10 clientes fica sem posição e sem total, mesmo com mais pontos', () => {
     const mk = (nome, clientes, base) => rk.somar({ id: nome, nome, clientes, base, insuficiente: false, pilares: {} }, { pts: 0 }, { renovacao: 100, nrr: 100 });
     const l = rk.ordenar([mk('Poucos', 2, 95), mk('Dez', 10, 60), mk('Trinta', 30, 70)]);
